@@ -1,8 +1,10 @@
 // Deploy smoke for the fixture host (TSPACK-22). Public repo: no account or Hyperdrive ids here.
 // Deploy with CLOUDFLARE_ACCOUNT_ID set, from an ignored copy (wrangler.deploy.jsonc) with the
 // Hyperdrive id filled in, after `pnpm build` (packages resolve to dist) and `opulon migrate`
-// against the direct URL. Pass the stub token with `--var DEMO_TOKEN:<random>` and the build id
-// with `--var OPULON_BUILD_ID:$OPULON_BUILD_ID` (the same value the admin build read).
+// against the direct URL. Pass the build id with `--var OPULON_BUILD_ID:$OPULON_BUILD_ID` (the
+// same value the admin build read) and the Worker's origin with `--var USERS_BASE_URL:<origin>`;
+// set `wrangler secret put USERS_AUTH_SECRET` (32+ random characters). The first user comes from
+// `opulon users invite-super-admin --server server/opulon.ts --email <address>`.
 // The Worker runs first for every path: serveAdmin answers /admin/** from ASSETS (SPA fallback
 // with no-store, immutable hashed assets), everything else goes to the composed API.
 {
