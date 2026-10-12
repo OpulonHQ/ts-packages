@@ -1,0 +1,120 @@
+import { Layer, Schema } from 'effect'
+import * as HttpApiEndpoint from 'effect/http-api/HttpApiEndpoint'
+import * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
+import { describe, expect, test } from 'vitest'
+import {
+  Authorization,
+  composeServer,
+  CompositionError,
+  type Module,
+  Policy,
+  Public,
+} from '../src/index.ts'
+
+const ping = HttpApiEndpoint.get('ping', '/ping', { success: Schema.String })
+const authed = ping.middleware(Authorization)
+
+// Composition checks never build handlers, so the test modules skip them (and defineModule's
+// key types, which would reject the bad keys these tests need).
+const module = (
+  id: string,
+  options: {
+    dependsOn?: ReadonlyArray<string>
+    group?: HttpApiGroup.Constraint
+    permissions?: ReadonlyArray<string>
+    auditActions?: ReadonlyArray<string>
+  } = {},
+): Module => ({
+  id,
+  dependsOn: options.dependsOn ?? [],
+  groups: [options.group ?? HttpApiGroup.make(id).add(ping).annotate(Public, true)],
+  handlers: () => Layer.empty,
+  layer: undefined,
+  migrations: {},
+  permissions: options.permissions ?? [],
+  auditActions: (options.auditActions ?? []).map((key) => ({ key, subject: 'thing' })),
+})
+
+const protectedGroup = (id: string, endpoint: HttpApiEndpoint.Constraint) =>
+  HttpApiGroup.make(id).add(endpoint)
+const fails = (modules: ReadonlyArray<Module>, message: RegExp) =>
+  expect(() => composeServer({ modules })).toThrow(
+    expect.objectContaining({
+      name: CompositionError.name,
+      message: expect.stringMatching(message),
+    }),
+  )
+
+describe('composeServer fails at startup on', () => {
+  test('a duplicate module id', () =>
+    fails([module('demo'), module('demo')], /duplicate module id "demo"/))
+
+  test('an invalid module id', () => fails([module('Demo')], /module id "Demo" must match/))
+
+  test('an unknown dependsOn', () =>
+    fails([module('cms', { dependsOn: ['media'] })], /cms: dependsOn unknown module "media"/))
+
+  test('a dependency cycle', () =>
+    fails(
+      [module('a', { dependsOn: ['b'] }), module('b', { dependsOn: ['a'] })],
+      /dependency cycle among modules: a, b/,
+    ))
+
+  test('a permission outside the module prefix', () =>
+    fails(
+      [module('demo', { permissions: ['cms.pages.edit'] })],
+      /demo: permission "cms.pages.edit" is outside/,
+    ))
+
+  test('an audit action outside the module prefix', () =>
+    fails(
+      [module('demo', { auditActions: ['auth.signed_in'] })],
+      /demo: audit action "auth.signed_in" is outside/,
+    ))
+
+  test('an API group outside the module prefix', () =>
+    fails(
+      [module('demo', { group: HttpApiGroup.make('other').add(ping).annotate(Public, true) })],
+      /API group "other"/,
+    ))
+
+  test('a non-public endpoint without the Authorization middleware', () =>
+    fails(
+      [
+        module('demo', {
+          permissions: ['demo.view'],
+          group: protectedGroup('demo', ping.annotate(Policy, 'demo.view')),
+        }),
+      ],
+      /demo.ping: non-public endpoint without the Authorization middleware/,
+    ))
+
+  test('a non-public endpoint without a policy', () =>
+    fails(
+      [module('demo', { group: protectedGroup('demo', authed) })],
+      /demo.ping: non-public endpoint without a Policy/,
+    ))
+
+  test('a policy key missing from the composed catalog', () =>
+    fails(
+      [module('demo', { group: protectedGroup('demo', authed.annotate(Policy, 'demo.view')) })],
+      /demo.ping: policy "demo.view" is not a composed permission/,
+    ))
+})
+
+describe('composeServer accepts', () => {
+  test('protected endpoints with a composed or signedIn policy, ordering modules by dependsOn', () => {
+    const server = composeServer({
+      modules: [
+        module('cms', {
+          dependsOn: ['media'],
+          permissions: ['cms.view'],
+          group: protectedGroup('cms', authed.annotate(Policy, 'cms.view')),
+        }),
+        module('media', { group: protectedGroup('media', authed.annotate(Policy, 'signedIn')) }),
+        module('demo'),
+      ],
+    })
+    expect(server.modules.map((m) => m.id)).toEqual(['media', 'cms', 'demo'])
+  })
+})

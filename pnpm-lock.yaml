@@ -56,6 +56,9 @@ importers:
 
   fixtures/host:
     dependencies:
+      '@effect/sql-pg':
+        specifier: 4.0.3
+        version: 4.0.3(effect@4.0.3)
       '@opulonjs/admin':
         specifier: workspace:*
         version: link:../../packages/admin
@@ -77,6 +80,9 @@ importers:
       '@opulonjs/users':
         specifier: workspace:*
         version: link:../../packages/users
+      effect:
+        specifier: 4.0.3
+        version: 4.0.3
 
   packages/admin:
     dependencies:
@@ -96,7 +102,14 @@ importers:
         specifier: workspace:*
         version: link:../media
 
-  packages/core: {}
+  packages/core:
+    devDependencies:
+      '@effect/sql-pg':
+        specifier: 4.0.3
+        version: 4.0.3(effect@4.0.3)
+      effect:
+        specifier: 4.0.3
+        version: 4.0.3
 
   packages/emails:
     dependencies:
@@ -218,6 +231,11 @@ packages:
   '@clack/prompts@1.8.1':
     resolution: {integrity: sha512-dlT1m5e/0yUL0kRNcQn7yGLVThkgbB0Ga/1AmfDDC/8ik6AIiSf2QLQO2zPYvefsHP0aFgxO93cVLCCfDp7kzQ==}
     engines: {node: '>= 20.12.0'}
+
+  '@effect/sql-pg@4.0.3':
+    resolution: {integrity: sha512-pHrR3FGUIoqwkn/0X1yB5Gr1HkPMwzDt/9+cFv2e3eLlpVJwkgYUDeL+IRaO9fXTrKGwQw+y3948lv3x1nLOaQ==}
+    peerDependencies:
+      effect: ^4.0.3
 
   '@eslint-community/eslint-utils@4.10.1':
     resolution: {integrity: sha512-cuadcxVFE8sDK6iWJbs8Sn0av2Nrh2QSGQhVlBW9AaAHqHwjWsZHT8LJ4hFGPh7ASBV2deFdM7H/DPjulmh8rg==}
@@ -745,6 +763,9 @@ packages:
     peerDependenciesMeta:
       oxc-resolver:
         optional: true
+
+  effect@4.0.3:
+    resolution: {integrity: sha512-LoWn/Uwwx0JjHSDmBAAahx8sB+klzM6vsZovnbYowBNw6B4QScJLRLBByO61plvNiycx7HPN8FnsWUCu0eXW5w==}
 
   empathic@2.1.0:
     resolution: {integrity: sha512-AnfC1ATldl49/cvZdLPDjBfrRNwbDO05aibiOtzQu3qtlbJtomNLhF30HEtn/7iBz50dlMECqATo3fG0LrdEgw==}
@@ -1591,6 +1612,10 @@ snapshots:
       fast-wrap-ansi: 0.2.2
       sisteransi: 1.0.5
 
+  '@effect/sql-pg@4.0.3(effect@4.0.3)':
+    dependencies:
+      effect: 4.0.3
+
   '@eslint-community/eslint-utils@4.10.1(eslint@10.12.0)':
     dependencies:
       eslint: 10.12.0
@@ -2054,6 +2079,8 @@ snapshots:
   detect-libc@2.1.2: {}
 
   dts-resolver@3.0.0: {}
+
+  effect@4.0.3: {}
 
   empathic@2.1.0: {}
 

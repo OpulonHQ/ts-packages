@@ -1,0 +1,132 @@
+import { Context, Layer, Option } from 'effect'
+import * as HttpApi from 'effect/http-api/HttpApi'
+import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
+import type * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
+import { Authorization, Policy, Public } from './authz.ts'
+import { apiId, type Module } from './module.ts'
+
+export class CompositionError extends Error {
+  override name = 'CompositionError'
+}
+
+type Provides<M> = M extends Module<string, infer P, unknown, unknown> ? P : never
+type Requires<M> = M extends Module<string, unknown, infer R, unknown> ? R : never
+type HandlerRequires<M> = M extends Module<string, unknown, unknown, infer R> ? R : never
+
+// Mirrors the runtime provideMerge chain: a module's layer sees only modules listed before it.
+type LayerFold<Ms, Provided = never, Required = never> = Ms extends readonly [infer H, ...infer T]
+  ? LayerFold<T, Provided | Provides<H>, Required | Exclude<Requires<H>, Provided>>
+  : Required
+
+/**
+ * Services the host infra must provide: what a module's layer needs from modules not listed
+ * before it, plus what handlers need that no module provides.
+ */
+export type Unprovided<Ms extends ReadonlyArray<Module>> =
+  LayerFold<Ms> | Exclude<HandlerRequires<Ms[number]>, Provides<Ms[number]>>
+
+/** The composed server. `R` is what the host's infra must still provide. */
+export interface ComposedServer<R = unknown> {
+  /** In topological order (dependencies first, ties by list order). */
+  readonly modules: ReadonlyArray<Module>
+  readonly apiPrefix: string
+  readonly api: HttpApi.Top
+  /** The routed API with every module's handlers and layer; still needs `R` (host infra). */
+  readonly layer: Layer.Layer<never, unknown, unknown>
+  readonly '~requires'?: R
+}
+
+const idPattern = /^[a-z][a-z0-9_]*$/
+
+/**
+ * Composes modules into one server: checks ids, dependencies, key prefixes and endpoint auth
+ * (throwing CompositionError at startup), then wires each module's layer with provideMerge in
+ * dependency order, so every module sees everything upstream plus the host infra.
+ */
+export const composeServer = <const Ms extends ReadonlyArray<Module>>(options: {
+  readonly modules: Ms
+  /** Where the API is mounted; groups live under `<apiPrefix>/<module id>`. Default `/api`. */
+  readonly apiPrefix?: `/${string}`
+}): ComposedServer<Unprovided<Ms>> => {
+  const apiPrefix = options.apiPrefix ?? '/api'
+  const modules = sortModules(options.modules)
+  const errors: Array<string> = []
+
+  for (const m of modules) {
+    const inPrefix = (key: string) => key === m.id || key.startsWith(`${m.id}.`)
+    for (const g of m.groups)
+      if (!inPrefix(g.identifier))
+        errors.push(`${m.id}: API group "${g.identifier}" is outside the module prefix`)
+    for (const key of m.permissions)
+      if (!inPrefix(key)) errors.push(`${m.id}: permission "${key}" is outside the module prefix`)
+    for (const { key } of m.auditActions)
+      if (!inPrefix(key)) errors.push(`${m.id}: audit action "${key}" is outside the module prefix`)
+  }
+
+  const api = makeApi(
+    modules.flatMap((m) => m.groups.map((g) => prefixGroup(g, `${apiPrefix}/${m.id}`))),
+  )
+
+  const catalog = new Set(modules.flatMap((m) => m.permissions))
+  for (const group of Object.values(api.groups)) {
+    if (Option.isSome(Context.getOption(group.annotations, Public))) continue
+    for (const endpoint of Object.values(group.endpoints)) {
+      const where = `${group.identifier}.${endpoint.identifier}`
+      if (!endpoint.middlewares.has(Authorization))
+        errors.push(`${where}: non-public endpoint without the Authorization middleware`)
+      const policy = Context.getOption(endpoint.annotations, Policy)
+      if (Option.isNone(policy)) errors.push(`${where}: non-public endpoint without a Policy`)
+      else if (policy.value !== 'signedIn' && !catalog.has(policy.value))
+        errors.push(`${where}: policy "${policy.value}" is not a composed permission`)
+    }
+  }
+  if (errors.length > 0) throw new CompositionError(errors.join('\n'))
+
+  let services: Layer.Layer<never, unknown, unknown> = Layer.empty
+  for (const m of modules) if (m.layer) services = Layer.provideMerge(m.layer, services)
+
+  const handlers = modules.map((m) => {
+    const own = new Set(m.groups.map((g) => g.identifier))
+    return m.handlers(makeApi(Object.values(api.groups).filter((g) => own.has(g.identifier))))
+  })
+  const layer = HttpApiBuilder.layer(api).pipe(
+    Layer.provide(Layer.provide(Layer.mergeAll(Layer.empty, ...handlers), services)),
+  )
+
+  return { modules, apiPrefix, api, layer }
+}
+
+// HttpApi and HttpApiGroup are invariant in their group/endpoint types, and composition only knows
+// groups as Top at runtime. The casts below erase the precise types only; values are unchanged.
+const makeApi = (groups: ReadonlyArray<HttpApiGroup.Top>): HttpApi.Top =>
+  groups.reduce((api, g) => api.add(g), HttpApi.make(apiId) as unknown as HttpApi.Top)
+
+const prefixGroup = (group: HttpApiGroup.Constraint, prefix: `/${string}`): HttpApiGroup.Top =>
+  (group as HttpApiGroup.Top).prefix(prefix) as unknown as HttpApiGroup.Top
+
+function sortModules(input: ReadonlyArray<Module>): ReadonlyArray<Module> {
+  const ids = new Set<string>()
+  const errors: Array<string> = []
+  for (const m of input) {
+    if (!idPattern.test(m.id)) errors.push(`module id "${m.id}" must match ${idPattern}`)
+    if (ids.has(m.id)) errors.push(`duplicate module id "${m.id}"`)
+    ids.add(m.id)
+  }
+  for (const m of input)
+    for (const d of m.dependsOn)
+      if (!ids.has(d)) errors.push(`${m.id}: dependsOn unknown module "${d}"`)
+  if (errors.length > 0) throw new CompositionError(errors.join('\n'))
+
+  const sorted: Array<Module> = []
+  const placed = new Set<string>()
+  while (sorted.length < input.length) {
+    const next = input.find((m) => !placed.has(m.id) && m.dependsOn.every((d) => placed.has(d)))
+    if (!next) {
+      const rest = input.filter((m) => !placed.has(m.id)).map((m) => m.id)
+      throw new CompositionError(`dependency cycle among modules: ${rest.join(', ')}`)
+    }
+    sorted.push(next)
+    placed.add(next.id)
+  }
+  return sorted
+}
