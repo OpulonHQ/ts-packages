@@ -5,7 +5,7 @@ Shared building blocks for Opulon websites: the admin, users, CMS, emails and me
 ## Language
 
 **Package**:
-A published `@opulon/*` unit of TSPACK that a project depends on by version.
+A published `@opulonhq/*` unit of TSPACK that a project depends on by version.
 _Avoid_: library, lib, plugin
 
 **Module**:
