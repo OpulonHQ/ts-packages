@@ -26,6 +26,18 @@ test('rejects a request without a user', async () => {
   expect((await request('/api/demo/notes')).status).toBe(401)
 })
 
+test('the cron runs the demo task as the system actor, and its afterCommit work lands', async () => {
+  const env = { HYPERDRIVE: { connectionString: db.url }, DEMO_TOKEN: 'test-token' }
+  await worker.scheduled(
+    { scheduledTime: Date.parse('2026-10-13T10:05:00Z'), cron: '*/5 * * * *' },
+    env,
+  )
+  expect(await request('/api/demo/ticks', { authorization: 'Bearer test-token' })).toEqual({
+    status: 200,
+    body: [{ actor: 'system', confirmed: true }],
+  })
+})
+
 test('serves nothing outside the API prefix', async () => {
   expect((await request('/demo/notes', { authorization: 'Bearer test-token' })).status).toBe(404)
 })

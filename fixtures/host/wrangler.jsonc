@@ -9,5 +9,6 @@
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
   "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "<hyperdrive-id>" }],
+  "triggers": { "crons": ["*/5 * * * *"] },
   "observability": { "enabled": true },
 }
