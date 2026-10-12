@@ -1,10 +1,10 @@
-import { Context, Layer, Option } from 'effect'
+import { Context, Effect, Layer, Option } from 'effect'
 import type * as HttpRouter from 'effect/http/HttpRouter'
 import * as HttpApi from 'effect/http-api/HttpApi'
 import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import type * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
 import { Authorization, Policy, Public } from './authz.ts'
-import { apiId, type Module } from './module.ts'
+import { apiId, type Contribution, type Module } from './module.ts'
 
 export class CompositionError extends Error {
   override name = 'CompositionError'
@@ -15,8 +15,42 @@ export const Composed = Context.Reference<{
   readonly modules: ReadonlyArray<string>
   readonly permissions: ReadonlyArray<string>
   readonly auditActions: ReadonlySet<string>
+  /** Every module's contributions, frozen, in module order. */
+  readonly contributions: ReadonlyArray<Contribution>
 }>('@opulonjs/core/Composed', {
-  defaultValue: () => ({ modules: [], permissions: [], auditActions: new Set() }),
+  defaultValue: () => ({
+    modules: [],
+    permissions: [],
+    auditActions: new Set(),
+    contributions: [],
+  }),
+})
+
+/**
+ * Declares an extension point owned by module `owner`. The owner exports a helper built on
+ * `contribute` (e.g. `emailTemplate`) and reads what the composed modules contributed with
+ * `collect`. Composition checks every contribution: its owner is composed, the contributor lists
+ * the owner in `dependsOn` (or is the owner), its key is unique and inside the contributor's
+ * prefix.
+ */
+export const defineExtensionPoint = <Value extends { readonly key: string }>(
+  owner: string,
+  kind: string,
+) => ({
+  owner,
+  kind,
+  contribute: (value: Value): Contribution<Value> =>
+    Object.freeze({ owner, kind, key: value.key, value: Object.freeze(value) }),
+  /** The composed contributions to this extension point, in module order. */
+  collect: Effect.gen(function* () {
+    const composed = yield* Composed
+    return Object.freeze(
+      composed.contributions
+        .filter((c) => c.owner === owner && c.kind === kind)
+        // Safe: only `contribute` of this owner and kind makes such values.
+        .map((c) => c.value as Value),
+    )
+  }),
 })
 
 /** The build id createWorker reports in `/me`. */
@@ -87,7 +121,25 @@ export const composeServer = <const Ms extends ReadonlyArray<Module>>(options: {
       if (tasks.has(name)) errors.push(`${m.id}: duplicate task name "${name}"`)
       tasks.add(name)
     }
+    for (const c of m.contributes ?? []) {
+      const what = `contributes ${c.kind} "${c.key}"`
+      if (!modules.some((o) => o.id === c.owner))
+        errors.push(`${m.id}: ${what}, but its owner "${c.owner}" is not composed`)
+      else if (c.owner !== m.id && !m.dependsOn.includes(c.owner))
+        errors.push(`${m.id}: ${what}, so it must list "${c.owner}" in dependsOn`)
+      if (!inPrefix(c.key))
+        errors.push(`${m.id}: ${c.kind} "${c.key}" is outside the module prefix`)
+    }
   }
+
+  const contributions = modules.flatMap((m) => m.contributes ?? [])
+  const contributed = new Set<string>()
+  for (const m of modules)
+    for (const c of m.contributes ?? []) {
+      const id = `${c.owner}\0${c.kind}\0${c.key}`
+      if (contributed.has(id)) errors.push(`${m.id}: duplicate ${c.kind} "${c.key}"`)
+      contributed.add(id)
+    }
 
   const auditActions = new Set(modules.flatMap((m) => m.auditActions.map((a) => a.key)))
   if (auditActions.size > 0 && !modules.some((m) => m.id === 'core'))
@@ -119,6 +171,7 @@ export const composeServer = <const Ms extends ReadonlyArray<Module>>(options: {
     modules: modules.map((m) => m.id),
     permissions: [...catalog],
     auditActions,
+    contributions: Object.freeze(contributions),
   })
   for (const m of modules) if (m.layer) services = Layer.provideMerge(m.layer, services)
 
