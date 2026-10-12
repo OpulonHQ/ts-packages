@@ -9,8 +9,12 @@ A published `@opulonjs/*` unit of TSPACK that a project depends on by version.
 _Avoid_: library, lib, plugin
 
 **Module**:
-A package that plugs into the Admin shell and the composed API, contributing its own data, API, permissions and admin screens.
+A unit that plugs into the Admin shell and the composed API, contributing its own data, API, permissions and admin screens; it is either a package or a host module.
 _Avoid_: plugin, extension, feature
+
+**Host module**:
+A module that a host app writes for its own needs and that plugs in exactly like a package's module.
+_Avoid_: custom module, project plugin, local extension
 
 **Host app**:
 The project's own application (SLM, ICF, ...) that installs packages, mounts their API, serves the admin and renders the public website.
