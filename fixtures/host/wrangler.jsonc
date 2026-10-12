@@ -1,0 +1,13 @@
+// Deploy smoke for the fixture host (TSPACK-22). Public repo: no account or Hyperdrive ids here.
+// Deploy with CLOUDFLARE_ACCOUNT_ID set, from an ignored copy (wrangler.deploy.jsonc) with the
+// Hyperdrive id filled in, after `pnpm build` (packages resolve to dist) and `opulon migrate`
+// against the direct URL. Pass the stub token with `--var DEMO_TOKEN:<random>`.
+{
+  "name": "tspack-fixture-host",
+  "main": "worker.ts",
+  "compatibility_date": "2026-10-12",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "<hyperdrive-id>" }],
+  "observability": { "enabled": true },
+}

@@ -3,3 +3,6 @@ dist/
 .packed/
 *.tsbuildinfo
 .env*
+.wrangler/
+# Deploy copy of a wrangler config with real ids (public repo).
+wrangler.deploy.jsonc
