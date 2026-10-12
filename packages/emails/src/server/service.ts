@@ -1,17 +1,35 @@
-import { Background, type Contribution, requirePermission } from '@opulonjs/core'
+import {
+  Audit,
+  Background,
+  type Contribution,
+  diffFields,
+  requirePermission,
+  withTransaction,
+} from '@opulonjs/core'
 import { Cause, Context, Effect, Exit, Layer, Schema } from 'effect'
-import type { Forbidden } from 'effect/http-api/HttpApiError'
+import { type Forbidden, NotFound } from 'effect/http-api/HttpApiError'
 import { SqlClient } from 'effect/sql/SqlClient'
 import type { SqlError } from 'effect/sql/SqlError'
-import { type EmailLogEntry, type EmailStatus } from '../api.ts'
+import {
+  type EmailComponentInfo,
+  type EmailLogEntry,
+  type EmailStatus,
+  type EmailTemplateInfo,
+  TemplateInvalid,
+} from '../api.ts'
+import type { EmailComponent } from './components.ts'
 import { Mailer, type OutgoingEmail } from './mailer.ts'
 import {
+  contentError,
   type EmailBrand,
+  type EmailContent,
   type EmailLayout,
   type EmailTemplate,
   EmailTemplates,
+  type RenderedEmail,
   renderEmail,
   resolveLocale,
+  sanitizeBody,
 } from './template.ts'
 
 export interface SendInput<P extends string> {
@@ -36,7 +54,19 @@ export interface ResolvedEmailsOptions {
   readonly layout: EmailLayout
   readonly adminLocales: ReadonlyArray<string>
   readonly contentLocales: ReadonlyArray<string>
+  readonly components: ReadonlyMap<string, EmailComponent>
 }
+
+const OverrideRow = Schema.Struct({
+  templateKey: Schema.String,
+  locale: Schema.String,
+  subject: Schema.String,
+  body: Schema.String,
+})
+
+const manage = 'emails.templates.manage'
+type ManageError = SqlError | Forbidden | NotFound | TemplateInvalid
+const auditSubject = (key: string) => ({ type: 'email_template', id: key, label: key })
 
 /** Delivery attempts per email, the first (after commit) included. */
 export const maxAttempts = 3
@@ -100,6 +130,39 @@ export class EmailService extends Context.Service<
       { readonly rows: ReadonlyArray<EmailLogEntry>; readonly total: number },
       SqlError | Forbidden
     >
+    /** Every contributed template with its overrides, and the components. Needs `emails.templates.manage` (so do the rest). */
+    readonly templates: () => Effect.Effect<
+      {
+        readonly templates: ReadonlyArray<EmailTemplateInfo>
+        readonly components: ReadonlyArray<EmailComponentInfo>
+      },
+      SqlError | Forbidden
+    >
+    /** Stores the sanitized wording as `key`'s override in `locale`; audited. */
+    readonly saveOverride: (
+      key: string,
+      locale: string,
+      content: EmailContent,
+    ) => Effect.Effect<EmailContent, ManageError>
+    /** Deletes the override, so the default applies again; audited when there was one. */
+    readonly resetOverride: (key: string, locale: string) => Effect.Effect<void, ManageError>
+    /** A disabled template's sends are logged as `skipped` and never delivered; audited. */
+    readonly setEnabled: (key: string, enabled: boolean) => Effect.Effect<void, ManageError>
+    /** Renders unsaved wording with the template's sample values. */
+    readonly preview: (
+      key: string,
+      locale: string,
+      content: EmailContent,
+    ) => Effect.Effect<RenderedEmail, ManageError>
+    /**
+     * Queues the template's current wording in `locale` with sample values to `to` through the
+     * outbox, even when it is disabled; audited.
+     */
+    readonly testSend: (
+      key: string,
+      locale: string,
+      to: string,
+    ) => Effect.Effect<{ readonly id: string }, ManageError>
   }
 >()('@opulonjs/emails/EmailService') {
   static readonly make = (options: ResolvedEmailsOptions) =>
@@ -110,6 +173,102 @@ export class EmailService extends Context.Service<
         const mailer = yield* Mailer
         const background = yield* Background
         const templates = new Map((yield* EmailTemplates.collect).map((t) => [t.key, t]))
+        // ponytail: re-checked on every layer build (per request); a few dozen small strings, so
+        // well under a millisecond. Cache per template object if hosts grow large catalogs.
+        for (const t of templates.values())
+          for (const [locale, content] of Object.entries(t.defaults)) {
+            const error = contentError(
+              t,
+              { subject: content.subject, body: sanitizeBody(content.body) },
+              options.components,
+            )
+            if (error)
+              return yield* Effect.die(
+                new Error(`email template "${t.key}" (${locale}) default: ${error}`),
+              )
+          }
+        const localesOf = (t: EmailTemplate) =>
+          t.audience === 'staff' ? options.adminLocales : options.contentLocales
+        const render = (content: EmailContent, locale: string, vars: Record<string, string>) =>
+          renderEmail({
+            content,
+            locale,
+            vars,
+            brand: options.brand,
+            layout: options.layout,
+            components: options.components,
+          })
+        const tx = <A, E>(effect: Effect.Effect<A, E, SqlClient>) =>
+          withTransaction(effect).pipe(Effect.provideService(SqlClient, sql))
+        const audit = (
+          action: string,
+          key: string,
+          extra: Partial<Parameters<typeof Audit.record>[0]>,
+        ) =>
+          Audit.record({ action, subject: auditSubject(key), ...extra }).pipe(
+            Effect.provideService(SqlClient, sql),
+          )
+
+        /** The template behind an admin request, checked against the permission and locale. */
+        const managed = Effect.fn('EmailService.managed')(function* (key: string, locale?: string) {
+          yield* requirePermission(manage)
+          const template = templates.get(key)
+          if (!template) return yield* new NotFound()
+          if (locale !== undefined && !localesOf(template).includes(locale))
+            return yield* new TemplateInvalid({
+              message: `"${locale}" is not one of the template's locales (${localesOf(template).join(', ')})`,
+            })
+          return template
+        })
+
+        /** Sanitizes and checks wording an editor sent. */
+        const checked = (template: EmailTemplate, content: EmailContent) => {
+          const clean = { subject: content.subject.trim(), body: sanitizeBody(content.body) }
+          const error = contentError(template, clean, options.components)
+          return error
+            ? Effect.fail(new TemplateInvalid({ message: error }))
+            : Effect.succeed(clean)
+        }
+
+        const overridesOf = (key: string, locales: ReadonlyArray<string>) =>
+          Effect.flatMap(
+            sql`select template_key as "templateKey", locale, subject, body
+              from emails.template_override
+              where template_key = ${key} and locale in ${sql.in(locales)}`,
+            (rows) =>
+              Schema.decodeUnknownEffect(Schema.Array(OverrideRow))(rows).pipe(Effect.orDie),
+          )
+
+        /** Writes an email log row; queued rows are delivered after commit. */
+        const queue = Effect.fn('EmailService.queue')(function* (o: {
+          readonly key: string
+          readonly locale: string
+          readonly to: ReadonlyArray<string>
+          readonly rendered: RenderedEmail
+          readonly about: SendInput<string>['about']
+          readonly skipped: boolean
+        }) {
+          const message: OutgoingEmail = {
+            from: options.from,
+            to: o.to,
+            replyTo: options.replyTo,
+            ...o.rendered,
+          }
+          const [row] = yield* sql<{ id: string }>`
+            insert into emails.email_log
+              (template_key, locale, recipients, subject, status, message, about_type, about_id)
+            values (${o.key}, ${o.locale}, ${JSON.stringify(o.to)}::jsonb,
+              ${o.rendered.subject}, ${o.skipped ? 'skipped' : 'queued'},
+              ${o.skipped ? null : JSON.stringify(message)}::jsonb,
+              ${o.about?.type ?? null}, ${o.about?.id ?? null})
+            returning id`
+          const id = row!.id
+          if (!o.skipped)
+            yield* Background.afterCommit(deliver(id)).pipe(
+              Effect.provideService(Background, background),
+            )
+          return { id }
+        })
 
         /** Claims a due queued row (one attempt), sends it and records the outcome. */
         const deliver = Effect.fn('EmailService.deliver')(function* (id: string) {
@@ -151,36 +310,27 @@ export class EmailService extends Context.Service<
             const to = typeof input.to === 'string' ? [input.to] : [...input.to]
             if (to.length === 0 || !to.every((a) => addressPattern.test(a)))
               return yield* Effect.die(new Error(`invalid email recipients: ${to.join(', ')}`))
-            const locale = resolveLocale(
-              registered,
-              input.locale,
-              registered.audience === 'staff' ? options.adminLocales : options.contentLocales,
-            )
-            const rendered = renderEmail({
-              content: registered.defaults[locale]!,
+            const locales = localesOf(registered)
+            const fallback = resolveLocale(registered, input.locale, locales)
+            // An override in the requested locale wins, even where the code ships no wording.
+            const requested =
+              input.locale && locales.includes(input.locale) ? input.locale : fallback
+            const [overrides, [disabled]] = yield* Effect.all([
+              overridesOf(registered.key, [requested, fallback]),
+              sql`select 1 from emails.disabled_template where template_key = ${registered.key}`,
+            ])
+            const override =
+              overrides.find((o) => o.locale === requested) ??
+              overrides.find((o) => o.locale === fallback)
+            const locale = override?.locale ?? fallback
+            return yield* queue({
+              key: registered.key,
               locale,
-              vars: input.vars,
-              brand: options.brand,
-              layout: options.layout,
-            })
-            const message: OutgoingEmail = {
-              from: options.from,
               to,
-              replyTo: options.replyTo,
-              ...rendered,
-            }
-            const [row] = yield* sql<{ id: string }>`
-              insert into emails.email_log
-                (template_key, locale, recipients, subject, message, about_type, about_id)
-              values (${registered.key}, ${locale}, ${JSON.stringify(to)}::jsonb,
-                ${rendered.subject}, ${JSON.stringify(message)}::jsonb,
-                ${input.about?.type ?? null}, ${input.about?.id ?? null})
-              returning id`
-            const id = row!.id
-            yield* Background.afterCommit(deliver(id)).pipe(
-              Effect.provideService(Background, background),
-            )
-            return { id }
+              rendered: render(override ?? registered.defaults[locale]!, locale, input.vars),
+              about: input.about,
+              skipped: disabled !== undefined,
+            })
           }),
 
           sweep: Effect.fn('EmailService.sweep')(function* () {
@@ -235,6 +385,129 @@ export class EmailService extends Context.Service<
                 about: aboutType && aboutId ? { type: aboutType, id: aboutId } : null,
               })),
             }
+          }),
+
+          templates: Effect.fn('EmailService.templates')(function* () {
+            yield* requirePermission(manage)
+            const [rows, disabledRows] = yield* Effect.all([
+              sql`select template_key as "templateKey", locale, subject, body
+                from emails.template_override`,
+              sql<{ templateKey: string }>`select template_key as "templateKey"
+                from emails.disabled_template`,
+            ])
+            const overrides = yield* Schema.decodeUnknownEffect(Schema.Array(OverrideRow))(
+              rows,
+            ).pipe(Effect.orDie)
+            const disabled = new Set(disabledRows.map((r) => r.templateKey))
+            const content = (c: EmailContent | undefined) =>
+              c ? { subject: c.subject, body: c.body } : null
+            return {
+              templates: [...templates.values()]
+                .sort((a, b) => a.key.localeCompare(b.key))
+                .map((t) => ({
+                  key: t.key,
+                  audience: t.audience,
+                  placeholders: Object.entries<string>(t.placeholders).map(([name, sample]) => ({
+                    name,
+                    sample,
+                  })),
+                  enabled: !disabled.has(t.key),
+                  locales: localesOf(t).map((locale) => ({
+                    locale,
+                    default: content(t.defaults[locale]),
+                    override: content(
+                      overrides.find((o) => o.templateKey === t.key && o.locale === locale),
+                    ),
+                  })),
+                })),
+              components: [...options.components.values()].map((c) => ({
+                name: c.name,
+                props: Object.entries(c.props).map(([name, kind]) => ({ name, kind })),
+              })),
+            }
+          }),
+
+          saveOverride: Effect.fn('EmailService.saveOverride')(function* (key, locale, content) {
+            const template = yield* managed(key, locale)
+            const next = yield* checked(template, content)
+            return yield* tx(
+              Effect.gen(function* () {
+                const [previous] = yield* overridesOf(key, [locale])
+                yield* sql`insert into emails.template_override (template_key, locale, subject, body)
+                  values (${key}, ${locale}, ${next.subject}, ${next.body})
+                  on conflict (template_key, locale) do update
+                  set subject = excluded.subject, body = excluded.body, updated_at = now()`
+                const before = previous ?? template.defaults[locale] ?? { subject: '', body: '' }
+                yield* audit('emails.template.overridden', key, {
+                  changes: diffFields(before, next, ['subject', 'body']),
+                  context: { locale },
+                })
+                return next
+              }),
+            )
+          }),
+
+          resetOverride: Effect.fn('EmailService.resetOverride')(function* (key, locale) {
+            yield* managed(key, locale)
+            yield* tx(
+              Effect.gen(function* () {
+                const deleted = yield* sql`delete from emails.template_override
+                  where template_key = ${key} and locale = ${locale} returning locale`
+                if (deleted.length > 0)
+                  yield* audit('emails.template.reset', key, { context: { locale } })
+              }),
+            )
+          }),
+
+          setEnabled: Effect.fn('EmailService.setEnabled')(function* (key, enabled) {
+            yield* managed(key)
+            yield* tx(
+              Effect.gen(function* () {
+                const changed = enabled
+                  ? yield* sql`delete from emails.disabled_template
+                      where template_key = ${key} returning template_key`
+                  : yield* sql`insert into emails.disabled_template (template_key)
+                      values (${key}) on conflict do nothing returning template_key`
+                if (changed.length > 0)
+                  yield* audit(
+                    enabled ? 'emails.template.enabled' : 'emails.template.disabled',
+                    key,
+                    {},
+                  )
+              }),
+            )
+          }),
+
+          preview: Effect.fn('EmailService.preview')(function* (key, locale, content) {
+            const template = yield* managed(key, locale)
+            const clean = yield* checked(template, content)
+            return render(clean, locale, template.placeholders)
+          }),
+
+          testSend: Effect.fn('EmailService.testSend')(function* (key, locale, to) {
+            const template = yield* managed(key, locale)
+            const [override] = yield* overridesOf(key, [locale])
+            const fallback = resolveLocale(template, locale, localesOf(template))
+            const used = override ? locale : fallback
+            const rendered = render(
+              override ?? template.defaults[used]!,
+              used,
+              template.placeholders,
+            )
+            return yield* tx(
+              Effect.gen(function* () {
+                const sent = yield* queue({
+                  key,
+                  locale: used,
+                  to: [to],
+                  rendered,
+                  about: { type: 'email_template', id: key },
+                  skipped: false,
+                })
+                yield* audit('emails.template.test_sent', key, { context: { locale } })
+                return sent
+              }),
+            )
           }),
         })
       }),

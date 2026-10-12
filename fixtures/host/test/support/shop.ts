@@ -12,7 +12,14 @@ import {
 } from '@opulonjs/core'
 import { createWorker, PgFromHyperdrive } from '@opulonjs/core/workers'
 import { EmailLogPage } from '@opulonjs/emails/api'
-import { captureMailer, emails, EmailService, emailTemplate } from '@opulonjs/emails/server'
+import {
+  captureMailer,
+  emailComponent,
+  emails,
+  EmailService,
+  emailTemplate,
+  escapeHtml,
+} from '@opulonjs/emails/server'
 import { Effect, Layer, Schema } from 'effect'
 import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import * as HttpApiEndpoint from 'effect/http-api/HttpApiEndpoint'
@@ -93,6 +100,13 @@ const shop = defineModule({
     ),
 })
 
+/** A host email component: a coupon code box. */
+export const coupon = emailComponent({
+  name: 'coupon',
+  props: { code: 'text' },
+  render: ({ code }) => `<div class="coupon">${escapeHtml(code ?? '')}</div>`,
+})
+
 export const shopServer = composeServer({
   modules: [
     core(),
@@ -100,6 +114,7 @@ export const shopServer = composeServer({
       from: 'Shop <noreply@example.test>',
       brand: { name: 'Shop', footer: { en: 'Shop footer', sk: 'Pätička obchodu' } },
       contentLocales: ['en', 'it'],
+      components: [coupon],
     }),
     shop,
   ],
@@ -109,6 +124,8 @@ export interface ShopEnv {
   readonly url: string
   /** The signed-in user's admin locale. */
   readonly locale: string | null
+  /** The signed-in user's permissions; default: every emails permission. */
+  readonly permissions?: ReadonlyArray<string>
 }
 
 export function makeShop(databaseUrl: () => string) {
@@ -124,7 +141,7 @@ export function makeShop(databaseUrl: () => string) {
             name: 'Eva',
             email: 'eva@example.test',
             locale: env.locale,
-            permissions: ['emails.log.view'],
+            permissions: env.permissions ?? ['emails.log.view', 'emails.templates.manage'],
           }),
         ),
       ),
@@ -137,6 +154,7 @@ export function makeShop(databaseUrl: () => string) {
     path: string,
     body?: unknown,
     locale: string | null = null,
+    permissions?: ReadonlyArray<string>,
   ) {
     const pending: Array<Promise<unknown>> = []
     const response = await worker.fetch(
@@ -146,7 +164,7 @@ export function makeShop(databaseUrl: () => string) {
           ? {}
           : { body: JSON.stringify(body), headers: { 'content-type': 'application/json' } }),
       }),
-      { url: databaseUrl(), locale },
+      { url: databaseUrl(), locale, ...(permissions ? { permissions } : {}) },
       { waitUntil: (p) => pending.push(p) },
     )
     const text = await response.text()
@@ -154,9 +172,14 @@ export function makeShop(databaseUrl: () => string) {
     return { status: response.status, body: text ? JSON.parse(text) : undefined }
   }
 
+  /** The raw worker fetch, for admin tests routing their fetch into it. */
+  const fetch = (request: Request, waitUntil: (p: Promise<unknown>) => void) =>
+    worker.fetch(request, { url: databaseUrl(), locale: 'sk' }, { waitUntil })
+
   return {
     mailer,
     request,
+    fetch,
     order: (o: { email?: string; name?: string; locale?: string | null; rollback?: boolean }) =>
       request('POST', '/shop/orders', {
         email: o.email ?? 'visitor@example.test',

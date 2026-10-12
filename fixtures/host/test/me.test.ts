@@ -51,6 +51,7 @@ test('/me returns the user, locale, permissions, modules, catalog and build id, 
       permissionCatalog: [
         'core.audit.view',
         'emails.log.view',
+        'emails.templates.manage',
         'media.view',
         'media.upload',
         'media.archive',

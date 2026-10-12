@@ -47,7 +47,8 @@
   "dependencies": {
     "@opulonjs/admin": "workspace:*",
     "@opulonjs/core": "workspace:*",
-    "@opulonjs/ui": "workspace:*"
+    "@opulonjs/ui": "workspace:*",
+    "xss": "1.0.15"
   },
   "peerDependencies": {
     "effect": "4.0.3",

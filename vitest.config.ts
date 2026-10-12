@@ -11,7 +11,7 @@ const globalSetup = ['test/postgres/global-setup.ts']
 // Nuxt UI and the offline icons as `opulonAdmin()` adds them. The preset is assembled from
 // source here because a bare package import in this config would load the package's dist.
 const adminTests = [
-  'fixtures/host/test/{shell,packages,email-log}.test.ts',
+  'fixtures/host/test/{shell,packages,email-log,email-templates}.test.ts',
   'packages/{ui,admin}/test/**/*.test.ts',
   'fixtures/host/test/media/admin.test.ts',
   'fixtures/host/test/cms/admin.test.ts',
