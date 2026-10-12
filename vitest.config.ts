@@ -14,6 +14,7 @@ const adminTests = [
   'fixtures/host/test/{shell,packages,email-log}.test.ts',
   'packages/{ui,admin}/test/**/*.test.ts',
   'fixtures/host/test/media/admin.test.ts',
+  'fixtures/host/test/cms/admin.test.ts',
 ]
 
 export default defineConfig({
@@ -34,7 +35,12 @@ export default defineConfig({
         plugins: [
           vue(),
           ...opulonUi({
-            sources: ['packages/admin/src', 'packages/emails/src', 'packages/media/src/admin'],
+            sources: [
+              'packages/admin/src',
+              'packages/emails/src',
+              'packages/media/src/admin',
+              'packages/cms/src/admin',
+            ],
           }),
         ],
         resolve,
