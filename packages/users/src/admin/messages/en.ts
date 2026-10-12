@@ -1,0 +1,51 @@
+export default {
+  fields: {
+    email: 'Email',
+    password: 'Password',
+    newPassword: 'New password',
+    confirmPassword: 'Repeat the password',
+    name: 'Your name',
+  },
+  signIn: {
+    title: 'Sign in',
+    submit: 'Sign in',
+    invalid: 'The email or password is wrong.',
+    forgot: 'Forgot your password?',
+  },
+  forgot: {
+    title: 'Reset your password',
+    description: 'Enter your email and we send you a link to set a new password.',
+    submit: 'Send the link',
+    sent: 'If the address belongs to a user, an email with the link is on its way.',
+    back: 'Back to sign-in',
+  },
+  reset: {
+    title: 'Set a new password',
+    submit: 'Set the password',
+    done: 'Your password is set. Sign in with it.',
+    invalid: 'This link is invalid or expired. Ask for a new one.',
+  },
+  invitation: {
+    title: 'Accept the invitation',
+    description: 'You are invited as {email}. Choose your name and password.',
+    submit: 'Accept and sign in',
+    invalid: 'This invitation is invalid, used or expired. Ask for a new one.',
+    taken: 'A user with this email already exists. Sign in instead.',
+  },
+  errors: {
+    mismatch: 'The passwords do not match.',
+    short: 'Use at least 8 characters.',
+    tooMany: 'Too many attempts. Wait a minute and try again.',
+    failed: 'Something went wrong. Try again.',
+  },
+  permissions: { 'users.manage': 'Invite and manage users' },
+  audit: {
+    'users.signed_in': 'Signed in',
+    'users.sign_in_failed': 'Failed sign-in',
+    'users.signed_out': 'Signed out',
+    'users.invited': 'Invited a user',
+    'users.invitation_accepted': 'Accepted an invitation',
+    'users.password_reset_requested': 'Requested a password reset',
+    'users.password_reset': 'Reset the password',
+  },
+}
