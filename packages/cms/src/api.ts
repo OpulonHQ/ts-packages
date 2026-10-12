@@ -14,6 +14,9 @@ export const cmsPermissions = [
   'cms.pages.edit',
   /** Publish and unpublish. */
   'cms.pages.publish',
+  'cms.redirects.view',
+  /** Create, edit, delete and import redirects. */
+  'cms.redirects.edit',
 ] as const
 
 /** The publish family (TSPACK-11); drafts are not audited. */
@@ -21,6 +24,11 @@ export const cmsAuditActions = [
   { key: 'cms.page.published', subject: 'page' },
   { key: 'cms.page.unpublished', subject: 'page' },
   { key: 'cms.page.deleted', subject: 'page' },
+  { key: 'cms.redirect.created', subject: 'redirect' },
+  { key: 'cms.redirect.updated', subject: 'redirect' },
+  { key: 'cms.redirect.deleted', subject: 'redirect' },
+  /** One event per CSV import, with the counts in `context`. */
+  { key: 'cms.redirect.imported', subject: 'redirect' },
 ] as const
 
 /** A page in one content locale. `path` is locale-relative (`/`, `/about`); the public URL
@@ -103,12 +111,50 @@ export class CmsNotFound extends Schema.TaggedError<CmsNotFound>()(
   { httpApiStatus: 404 },
 ) {}
 
-/** A path taken by another page, or deleting a system page. */
+/** A path taken by another page, deleting a system page, or a redirect that would repeat a
+ *  path or loop. */
 export class CmsConflict extends Schema.TaggedError<CmsConflict>()(
   'CmsConflict',
-  { reason: Schema.Literals(['path_taken', 'system_page']), message: Schema.String },
+  {
+    reason: Schema.Literals(['path_taken', 'system_page', 'redirect_taken', 'redirect_loop']),
+    message: Schema.String,
+  },
   { httpApiStatus: 409 },
 ) {}
+
+export const RedirectStatus = Schema.Literals([301, 302])
+export type RedirectStatus = typeof RedirectStatus.Type
+
+/** A redirect as an editor writes it. Paths are locale-relative like page paths (`/old`), but
+ *  any characters a URL path allows; a trailing slash is dropped. */
+export const RedirectInput = Schema.Struct({
+  locale: Schema.String,
+  from: Schema.String,
+  to: Schema.String,
+  status: RedirectStatus,
+})
+export type RedirectInput = typeof RedirectInput.Type
+
+/** An exact-path redirect in one content locale. `auto`: created by a path change on publish. */
+export const Redirect = Schema.Struct({
+  id: Schema.String,
+  ...RedirectInput.fields,
+  auto: Schema.Boolean,
+  createdAt: Schema.String,
+  updatedAt: Schema.String,
+})
+export type Redirect = typeof Redirect.Type
+
+/** Upper bounds of a CSV import: characters of the file and data rows. */
+export const redirectImportLimits = { maxChars: 1_000_000, maxRows: 5000 } as const
+
+/** What a CSV import did. `row` counts the header as row 1, like a spreadsheet. */
+export const RedirectImportResult = Schema.Struct({
+  created: Schema.Number,
+  skipped: Schema.Number,
+  errors: Schema.Array(Schema.Struct({ row: Schema.Number, message: Schema.String })),
+})
+export type RedirectImportResult = typeof RedirectImportResult.Type
 
 const id = { id: Schema.String }
 
@@ -168,5 +214,41 @@ export const CmsGroup = HttpApiGroup.make('cms')
       success: PagePreview,
       error: CmsNotFound,
     }).annotate(Policy, 'cms.pages.view'),
+  )
+  .add(
+    HttpApiEndpoint.get('listRedirects', '/redirects', {
+      success: Schema.Struct({ rows: Schema.Array(Redirect), total: Schema.Number }),
+    }).annotate(Policy, 'cms.redirects.view'),
+  )
+  .add(
+    HttpApiEndpoint.post('createRedirect', '/redirects', {
+      payload: RedirectInput,
+      success: Redirect,
+      error: [CmsInvalid, CmsConflict],
+    }).annotate(Policy, 'cms.redirects.edit'),
+  )
+  .add(
+    HttpApiEndpoint.put('updateRedirect', '/redirects/:id', {
+      params: id,
+      payload: RedirectInput,
+      success: Redirect,
+      error: [CmsInvalid, CmsConflict, CmsNotFound],
+    }).annotate(Policy, 'cms.redirects.edit'),
+  )
+  .add(
+    HttpApiEndpoint.delete('deleteRedirect', '/redirects/:id', {
+      params: id,
+      error: CmsNotFound,
+    }).annotate(Policy, 'cms.redirects.edit'),
+  )
+  .add(
+    // The file's text, read by the admin; rows are validated one by one.
+    HttpApiEndpoint.post('importRedirects', '/redirects/import', {
+      payload: Schema.Struct({
+        csv: Schema.String.check(Schema.isMaxLength(redirectImportLimits.maxChars)),
+      }),
+      success: RedirectImportResult,
+      error: CmsInvalid,
+    }).annotate(Policy, 'cms.redirects.edit'),
   )
   .middleware(Authorization)

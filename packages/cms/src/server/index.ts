@@ -1,4 +1,5 @@
 export { cms } from './module.ts'
 export type { CmsOptions } from './module.ts'
 export { CachePurge, Pages, pageTags } from './pages.ts'
+export { redirectPath, Redirects } from './redirects.ts'
 export { sanitizeRichText } from './sanitize.ts'

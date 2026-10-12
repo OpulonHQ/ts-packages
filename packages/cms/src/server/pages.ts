@@ -21,6 +21,7 @@ import {
   type PageSummary,
 } from '../api.ts'
 import { checkRequired, emptyLocale, localizeSection, normalizeDocument, uuid } from './document.ts'
+import { Redirects } from './redirects.ts'
 
 /**
  * Purges edge-cached public responses by Cache-Tag after a publish family write commits. The
@@ -84,6 +85,7 @@ export class Pages extends Context.Service<
         const defaultLocale = locales[0]!
         const cache = yield* CachePurge
         const background = yield* Background
+        const redirects = yield* Redirects
 
         const title = (row: Row) => {
           const own = row.draft.locales[defaultLocale]
@@ -280,11 +282,17 @@ export class Pages extends Context.Service<
                       published_revision_id = ${revisionId}
                       where id = ${id} returning ${sql.literal(columns)}`,
                   )
+                  const before = yield* sql<{ locale: string; path: string }>`
+                    select locale, path from cms.path where document_id = ${id}`
+                  const after = Object.entries(draft.locales)
+                    .filter(([, l]) => l.available && l.path !== '')
+                    .map(([locale, l]) => ({ locale, path: l.path }))
                   yield* sql`delete from cms.path where document_id = ${id}`
-                  for (const [locale, l] of Object.entries(draft.locales))
-                    if (l.available && l.path !== '')
-                      yield* sql`insert into cms.path (locale, path, document_id)
-                        values (${locale}, ${l.path}, ${id})`
+                  for (const { locale, path } of after)
+                    yield* sql`insert into cms.path (locale, path, document_id)
+                      values (${locale}, ${path}, ${id})`
+                  // Old paths redirect to the new ones (TSPACK-34).
+                  yield* redirects.pathsChanged(id, before, after)
                   yield* Audit.record({
                     action: 'cms.page.published',
                     subject: subject(published!),

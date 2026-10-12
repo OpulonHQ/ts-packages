@@ -14,6 +14,8 @@ const editor = [
   'cms.pages.view',
   'cms.pages.edit',
   'cms.pages.publish',
+  'cms.redirects.view',
+  'cms.redirects.edit',
   'media.view',
   'media.upload',
 ]

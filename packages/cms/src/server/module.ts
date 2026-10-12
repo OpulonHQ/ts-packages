@@ -1,11 +1,13 @@
 import { defineModule } from '@opulonjs/core'
-import { Effect } from 'effect'
+import { Effect, Layer } from 'effect'
 import * as HttpEffect from 'effect/http/HttpEffect'
 import * as HttpServerResponse from 'effect/http/HttpServerResponse'
 import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import { cmsAuditActions, type CmsDefinitions, CmsGroup, cmsPermissions } from '../api.ts'
 import createDocument from './migrations/0001_create_document.ts'
+import createRedirect from './migrations/0002_create_redirect.ts'
 import { Pages } from './pages.ts'
+import { Redirects } from './redirects.ts'
 
 export interface CmsOptions {
   /** The host's definitions file (`defineCms`), shared with `cmsAdmin({ definitions })`. */
@@ -19,7 +21,7 @@ const noStore = HttpEffect.appendPreResponseHandler((_request, response) =>
 /**
  * The cms module (TSPACK-11): pages built from the host's section types, with drafts,
  * publishing, revisions and preview under `/api/cms`. Depends on media (media fields hold media
- * ids). Provides `Pages` to later modules.
+ * ids). Provides `Pages` and `Redirects` (with `lookup` for the Read API) to later modules.
  */
 export const cms = (options: CmsOptions) =>
   defineModule({
@@ -30,6 +32,7 @@ export const cms = (options: CmsOptions) =>
       HttpApiBuilder.group(api, 'cms', (h) =>
         Effect.gen(function* () {
           const pages = yield* Pages
+          const redirects = yield* Redirects
           return h
             .handle('listPages', () => pages.list())
             .handle('getPage', ({ params }) => pages.get(params.id))
@@ -41,10 +44,18 @@ export const cms = (options: CmsOptions) =>
             .handle('previewPage', ({ params, query }) =>
               noStore.pipe(Effect.andThen(pages.preview(params.id, query.locale))),
             )
+            .handle('listRedirects', () => redirects.list())
+            .handle('createRedirect', ({ payload }) => redirects.create(payload))
+            .handle('updateRedirect', ({ params, payload }) => redirects.update(params.id, payload))
+            .handle('deleteRedirect', ({ params }) => redirects.remove(params.id))
+            .handle('importRedirects', ({ payload }) => redirects.importCsv(payload.csv))
         }),
       ),
-    layer: Pages.layer(options.definitions),
-    migrations: { '0001_create_document': createDocument },
+    layer: Pages.layer(options.definitions).pipe(Layer.provideMerge(Redirects.layer)),
+    migrations: {
+      '0001_create_document': createDocument,
+      '0002_create_redirect': createRedirect,
+    },
     permissions: cmsPermissions,
     auditActions: cmsAuditActions,
   })
