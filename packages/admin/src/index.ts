@@ -23,3 +23,5 @@ export type { AdminState, Me } from './state.ts'
 export type { Brand } from '@opulonjs/ui'
 // Module screens use the shell's i18n instance through this, so they never pin vue-i18n.
 export { useI18n } from 'vue-i18n'
+// Module screens read route params and link through the shell's router, so they never pin vue-router.
+export { RouterLink, useRoute } from 'vue-router'
