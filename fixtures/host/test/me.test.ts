@@ -35,9 +35,9 @@ test('/me returns the user, locale, permissions, modules, catalog and build id, 
       buildId: 'build-1',
       user: { id: 'demo-user', name: 'Demo User', email: 'demo@example.test' },
       locale: 'sk',
-      permissions: ['demo.notes.view'],
-      modules: ['core', 'demo'],
-      permissionCatalog: ['core.audit.view', 'demo.notes.view'],
+      permissions: ['demo.notes.view', 'emails.log.view'],
+      modules: ['core', 'emails', 'demo'],
+      permissionCatalog: ['core.audit.view', 'emails.log.view', 'demo.notes.view'],
     },
   })
 })
