@@ -16,6 +16,18 @@ _Avoid_: plugin, extension, feature
 A module that a host app writes for its own needs and that plugs in exactly like a package's module.
 _Avoid_: custom module, project plugin, local extension
 
+**Module id**:
+The short name that identifies a module everywhere: its data, its API, and the names of its permissions, audit actions and admin screens.
+_Avoid_: slug, key, namespace
+
+**Contribution**:
+Something a module adds to an extension point that another package owns, such as an email template for emails or a sitemap source for the CMS.
+_Avoid_: plugin, hook, registration
+
+**Scheduled task**:
+Recurring work a module declares to run at a fixed interval (every few minutes, hourly or daily), such as retrying unsent emails.
+_Avoid_: cron job, job, worker
+
 **Host app**:
 The project's own application (SLM, ICF, ...) that installs packages, mounts their API, serves the admin and renders the public website.
 _Avoid_: consumer app, client app, site
