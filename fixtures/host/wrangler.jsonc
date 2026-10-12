@@ -4,7 +4,9 @@
 // against the direct URL. Pass the stub token with `--var DEMO_TOKEN:<random>` and the build id
 // with `--var OPULON_BUILD_ID:$OPULON_BUILD_ID` (the same value the admin build read).
 // The Worker runs first for every path: serveAdmin answers /admin/** from ASSETS (SPA fallback
-// with no-store, immutable hashed assets), everything else goes to the composed API.
+// with no-store, immutable hashed assets), serveMedia answers /media/** from the R2 bucket
+// (immutable originals), everything else goes to the composed API. Resized media URLs
+// (/cdn-cgi/image/...) need Image Transformations enabled on the zone.
 {
   "name": "tspack-fixture-host",
   "main": "worker.ts",
@@ -17,6 +19,7 @@
     "run_worker_first": true,
     "html_handling": "none",
   },
+  "r2_buckets": [{ "binding": "MEDIA_BUCKET", "bucket_name": "tspack-fixture-media" }],
   "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "<hyperdrive-id>" }],
   "triggers": { "crons": ["*/5 * * * *"] },
   "observability": { "enabled": true },
