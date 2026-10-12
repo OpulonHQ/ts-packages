@@ -37,7 +37,12 @@ test('/me returns the user, locale, permissions, modules, catalog and build id, 
       locale: 'sk',
       permissions: ['demo.notes.view', 'emails.log.view'],
       modules: ['core', 'emails', 'demo'],
-      permissionCatalog: ['core.audit.view', 'emails.log.view', 'demo.notes.view'],
+      permissionCatalog: [
+        'core.audit.view',
+        'emails.log.view',
+        'emails.templates.manage',
+        'demo.notes.view',
+      ],
     },
   })
 })
