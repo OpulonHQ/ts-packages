@@ -8,10 +8,5 @@ export default {
     failed: 'Poznámky sa nepodarilo načítať.',
     count: 'Poznámky',
   },
-  signIn: {
-    title: 'Prihlásenie',
-    token: 'Prístupový token',
-    submit: 'Prihlásiť sa',
-  },
   permissions: { 'demo.notes.view': 'Zobraziť poznámky' },
 }

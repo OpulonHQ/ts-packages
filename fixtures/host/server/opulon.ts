@@ -1,5 +1,6 @@
 import { composeServer, core } from '@opulonjs/core'
 import { emails } from '@opulonjs/emails/server'
+import { users } from '@opulonjs/users/server'
 import { demo } from '../modules/demo/server.ts'
 
 // Must import cleanly in Node: `opulon migrate --server server/opulon.ts` loads it.
@@ -8,6 +9,7 @@ export const server = composeServer({
   modules: [
     core(),
     emails({ from: 'Fixture host <noreply@example.test>', brand: { name: 'Fixture host' } }),
+    users(),
     demo,
   ],
 })

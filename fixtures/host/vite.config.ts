@@ -10,7 +10,10 @@ export default defineConfig({
     opulonAdmin({
       brand,
       // Package admin screens outside the root, scanned for Tailwind classes and icons.
-      sources: [fileURLToPath(new URL('../../packages/emails/src', import.meta.url))],
+      sources: [
+        fileURLToPath(new URL('../../packages/emails/src', import.meta.url)),
+        fileURLToPath(new URL('../../packages/users/src', import.meta.url)),
+      ],
     }),
   ],
   build: { outDir: '../public/admin', emptyOutDir: true },
