@@ -8,5 +8,6 @@ export default defineConfig({
   ssr: { resolve: { conditions: [source, 'module', 'node', 'development|production'] } },
   test: {
     include: ['{packages,fixtures}/*/test/**/*.test.ts', 'test/**/*.test.ts'],
+    globalSetup: ['test/postgres/global-setup.ts'],
   },
 })

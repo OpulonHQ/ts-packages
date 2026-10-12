@@ -9,7 +9,7 @@
   "scripts": {
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",
-    "typecheck": "pnpm -r --workspace-concurrency=6 typecheck",
+    "typecheck": "tsgo --noEmit && pnpm -r --workspace-concurrency=6 typecheck",
     "test": "vitest run",
     "build": "pnpm -r --workspace-concurrency=6 build",
     "pack:check": "node scripts/pack-check.ts",
