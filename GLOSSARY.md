@@ -36,6 +36,14 @@ _Avoid_: fork, eject, vendoring
 A recorded fact that an actor performed an action on a subject, kept in the Audit log.
 _Avoid_: activity, history entry, log line
 
+**Actor**:
+Who performed the action of an Audit event: a staff user, the system (a scheduled job or an incoming webhook), or an anonymous visitor such as a failed sign-in.
+_Avoid_: author, editor, by
+
+**Audit timeline**:
+The Audit events of one subject, shown on that subject's admin screen.
+_Avoid_: history, activity feed
+
 **Pilot**:
 The first host app built on TSPACK (SLM), whose needs decide the v1 scope.
 _Avoid_: test project, guinea pig
