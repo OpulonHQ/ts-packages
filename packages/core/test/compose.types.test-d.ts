@@ -59,10 +59,10 @@ expectTypeOf<Unprovided<[typeof cms, typeof media]>>().toEqualTypeOf<Db | Clock 
 const server = composeServer({ modules: [media, cms] })
 
 // Infra providing everything left compiles.
-createWorker(server, { infra: () => Layer.mergeAll(dbLive, clockLive) })
+createWorker(server, { infra: () => Layer.mergeAll(dbLive, clockLive), buildId: () => 'b' })
 
 // @ts-expect-error Clock (needed by media's handler) is provided by nobody.
-createWorker(server, { infra: () => dbLive })
+createWorker(server, { infra: () => dbLive, buildId: () => 'b' })
 
 // @ts-expect-error Db (needed by media's layer) is provided by nobody.
-createWorker(server, { infra: () => clockLive })
+createWorker(server, { infra: () => clockLive, buildId: () => 'b' })
