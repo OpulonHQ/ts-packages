@@ -41,6 +41,22 @@ export interface Contribution<Value = unknown> {
   readonly value: Value
 }
 
+/**
+ * A command of the `opulon` CLI: `opulon <module id> <name> --server <file> [--option value]`.
+ * It runs in Node against `DATABASE_URL_DIRECT` as the system actor, with Effect Config read
+ * from the process env. Host infra (Worker bindings) is not available.
+ */
+export interface Command {
+  /** One line for the usage text. */
+  readonly description: string
+  /** Its `--options` (`node:util` parseArgs style); `server` is reserved. */
+  readonly options: Readonly<Record<string, { readonly type: 'string' | 'boolean' }>>
+  /** Resolves with the text the CLI prints. */
+  readonly run: (
+    values: Readonly<Record<string, string | boolean | undefined>>,
+  ) => Effect.Effect<string, unknown, SqlClient>
+}
+
 export interface ModuleDefinition<
   Id extends string,
   Groups extends HttpApiGroup.Constraint,
@@ -66,6 +82,8 @@ export interface ModuleDefinition<
   readonly tasks?: ReadonlyArray<Task<RTasks>>
   /** What the module adds to other modules' extension points; it must depend on each owner. */
   readonly contributes?: ReadonlyArray<Contribution>
+  /** Its `opulon <id> <name>` CLI commands, e.g. users' `invite-super-admin`. */
+  readonly commands?: Readonly<Record<string, Command>>
 }
 
 /**
@@ -88,6 +106,7 @@ export interface Module<
   readonly auditActions: ReadonlyArray<{ readonly key: string; readonly subject: string }>
   readonly tasks: ReadonlyArray<Task<unknown>>
   readonly contributes?: ReadonlyArray<Contribution>
+  readonly commands?: Readonly<Record<string, Command>>
   readonly '~provides'?: Provides
   readonly '~requires'?: Requires
   readonly '~handlerRequires'?: HandlerRequires
@@ -116,4 +135,5 @@ export const defineModule = <
   auditActions: m.auditActions ?? [],
   tasks: m.tasks ?? [],
   contributes: m.contributes ?? [],
+  commands: m.commands ?? {},
 })

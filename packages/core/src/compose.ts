@@ -88,6 +88,8 @@ export interface ComposedServer<R = unknown> {
   readonly layer: Layer.Layer<never, unknown, unknown>
   /** Every module's layer, merged; what scheduled tasks run against. Still needs `R`. */
   readonly services: Layer.Layer<never, unknown, unknown>
+  /** What composition knows (the Composed service), for code run outside a Worker (the CLI). */
+  readonly composed: typeof Composed.Service
   readonly '~requires'?: R
 }
 
@@ -167,12 +169,13 @@ export const composeServer = <const Ms extends ReadonlyArray<Module>>(options: {
   }
   if (errors.length > 0) throw new CompositionError(errors.join('\n'))
 
-  let services: Layer.Layer<never, unknown, unknown> = Layer.succeed(Composed, {
+  const composed = {
     modules: modules.map((m) => m.id),
     permissions: [...catalog],
     auditActions,
     contributions: Object.freeze(contributions),
-  })
+  }
+  let services: Layer.Layer<never, unknown, unknown> = Layer.succeed(Composed, composed)
   for (const m of modules) if (m.layer) services = Layer.provideMerge(m.layer, services)
 
   const handlers = modules.map((m) => {
@@ -183,7 +186,7 @@ export const composeServer = <const Ms extends ReadonlyArray<Module>>(options: {
     Layer.provide(Layer.provide(Layer.mergeAll(Layer.empty, ...handlers), services)),
   )
 
-  return { modules, apiPrefix, api, layer, services }
+  return { modules, apiPrefix, api, layer, services, composed }
 }
 
 // HttpApi and HttpApiGroup are invariant in their group/endpoint types, and composition only knows
