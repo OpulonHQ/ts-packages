@@ -48,7 +48,8 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
-      - run: pnpm pack:check
+      - name: Packed checks (exports, browser /api build, module id lists)
+        run: pnpm pack:check
       - name: Changeset status
         if: github.event_name == 'pull_request'
         run: pnpm changeset status --since=origin/${{ github.base_ref }}

@@ -66,13 +66,13 @@ expectTypeOf<Unprovided<[typeof cms, typeof media]>>().toEqualTypeOf<Db | Clock 
 const server = composeServer({ modules: [media, cms] })
 
 // Infra providing everything left compiles.
-createWorker(server, { infra: () => Layer.mergeAll(dbLive, clockLive) })
+createWorker(server, { infra: () => Layer.mergeAll(dbLive, clockLive), buildId: () => 'b' })
 
 // @ts-expect-error Clock (needed by media's handler) is provided by nobody.
-createWorker(server, { infra: () => dbLive })
+createWorker(server, { infra: () => dbLive, buildId: () => 'b' })
 
 // @ts-expect-error Db (needed by media's layer) is provided by nobody.
-createWorker(server, { infra: () => clockLive })
+createWorker(server, { infra: () => clockLive, buildId: () => 'b' })
 
 // Request-time handler needs and task needs count too; Background and the task actor come from
 // createWorker itself.
@@ -102,6 +102,9 @@ expectTypeOf<Unprovided<[typeof media, typeof outbox]>>().toEqualTypeOf<
 >()
 const withOutbox = composeServer({ modules: [media, outbox] })
 const mailerLive = Layer.succeed(Mailer, { send: Effect.void })
-createWorker(withOutbox, { infra: () => Layer.mergeAll(dbLive, clockLive, mailerLive) })
+createWorker(withOutbox, {
+  infra: () => Layer.mergeAll(dbLive, clockLive, mailerLive),
+  buildId: () => 'b',
+})
 // @ts-expect-error Mailer (needed by outbox's task) is provided by nobody.
-createWorker(withOutbox, { infra: () => Layer.mergeAll(dbLive, clockLive) })
+createWorker(withOutbox, { infra: () => Layer.mergeAll(dbLive, clockLive), buildId: () => 'b' })

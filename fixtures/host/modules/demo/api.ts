@@ -1,4 +1,4 @@
-import { Authorization, Policy } from '@opulonjs/core'
+import { Authorization, Policy } from '@opulonjs/core/api'
 import { Schema } from 'effect'
 import * as HttpApiEndpoint from 'effect/http-api/HttpApiEndpoint'
 import * as HttpApiGroup from 'effect/http-api/HttpApiGroup'

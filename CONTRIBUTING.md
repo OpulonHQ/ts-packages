@@ -12,20 +12,20 @@ export DATABASE_URL_TEST=postgres://postgres:postgres@127.0.0.1:54317/postgres
 
 ## Commands
 
-| Command           | What it does                                                                                                   |
-| ----------------- | -------------------------------------------------------------------------------------------------------------- |
-| `pnpm lint`       | ESLint (including the package graph rules) and Prettier check                                                  |
-| `pnpm format`     | Prettier write                                                                                                 |
-| `pnpm typecheck`  | `tsgo` per package, `vue-tsc` in `ui` and `admin`                                                              |
-| `pnpm test`       | Vitest against Postgres 17 (needs `DATABASE_URL_TEST`)                                                         |
-| `pnpm build`      | tsdown, ESM only, into each package's `dist`                                                                   |
-| `pnpm pack:check` | Packs every package, installs the tarballs into a scratch project and imports every export (run `build` first) |
-| `pnpm changeset`  | Records a change for the next release                                                                          |
+| Command           | What it does                                                                                                                                                                                                  |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm lint`       | ESLint (including the package graph rules) and Prettier check                                                                                                                                                 |
+| `pnpm format`     | Prettier write                                                                                                                                                                                                |
+| `pnpm typecheck`  | `tsgo` per package, `vue-tsc` in `ui`, `admin` and `fixtures/host`                                                                                                                                            |
+| `pnpm test`       | Vitest against Postgres 17 (needs `DATABASE_URL_TEST`)                                                                                                                                                        |
+| `pnpm build`      | tsdown, ESM only, into each package's `dist`; then the fixture host's admin (`vite build` into `fixtures/host/public/admin`)                                                                                  |
+| `pnpm pack:check` | Packs every package into a scratch project: imports every export, bundles every `/api` entry for the browser (no server-only imports), compares the fixture's server and admin module ids (run `build` first) |
+| `pnpm changeset`  | Records a change for the next release                                                                                                                                                                         |
 
 ## Layout
 
 - `packages/*`: the published `@opulonjs/*` packages. Inside the repo they resolve each other to `src` through the `@opulonjs/source` export condition, so no build is needed for typecheck or tests.
-- `fixtures/host`: an unpublished host app composing the packages; the main test seam.
+- `fixtures/host`: an unpublished host app composing the packages; the main test seam. Its `admin/` builds with the `@opulonjs/admin/vite` preset into `public/admin`, which `worker.ts` serves through `serveAdmin` (Workers static assets). Admin tests mount `createAdmin` in happy-dom with `fetch` routed into the Worker.
 - `test/`: repo-level tests and helpers.
 
 ## Package graph

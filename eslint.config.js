@@ -34,7 +34,7 @@ function restrict(self, allowed, { allowNuxtUi = false } = {}) {
 }
 
 export default defineConfig(
-  { ignores: ['**/dist/', '**/node_modules/', '.packed/'] },
+  { ignores: ['**/dist/', '**/node_modules/', '.packed/', 'fixtures/host/public/'] },
   js.configs.recommended,
   tseslint.configs.recommended,
   { rules: { 'no-restricted-imports': ['error', { patterns: [nuxtUi] }] } },
