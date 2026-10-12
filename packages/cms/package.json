@@ -1,0 +1,36 @@
+{
+  "name": "@opulonjs/cms",
+  "version": "0.0.0",
+  "private": true,
+  "description": "@opulonjs/cms (placeholder)",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OpulonHQ/ts-packages.git",
+    "directory": "packages/cms"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "@opulonjs/source": "./src/index.ts",
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsgo --noEmit"
+  },
+  "dependencies": {
+    "@opulonjs/core": "workspace:*",
+    "@opulonjs/media": "workspace:*"
+  }
+}

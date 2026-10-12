@@ -1,0 +1,38 @@
+{
+  "name": "@opulonjs/admin",
+  "version": "0.0.0",
+  "private": true,
+  "description": "@opulonjs/admin (placeholder)",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OpulonHQ/ts-packages.git",
+    "directory": "packages/admin"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "@opulonjs/source": "./src/index.ts",
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "@opulonjs/ui": "workspace:*"
+  },
+  "peerDependencies": {
+    "vue": "^3.5.0"
+  }
+}
