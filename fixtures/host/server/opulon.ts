@@ -1,6 +1,8 @@
+import { cms } from '@opulonjs/cms/server'
 import { composeServer, core } from '@opulonjs/core'
 import { emails } from '@opulonjs/emails/server'
 import { media } from '@opulonjs/media/server'
+import { definitions } from '../cms/definitions.ts'
 import { demo } from '../modules/demo/server.ts'
 
 // Must import cleanly in Node: `opulon migrate --server server/opulon.ts` loads it.
@@ -10,6 +12,7 @@ export const server = composeServer({
     core(),
     emails({ from: 'Fixture host <noreply@example.test>', brand: { name: 'Fixture host' } }),
     media({ widths: [320, 640, 1280] }),
+    cms({ definitions }),
     demo,
   ],
   contentLocales: ['en', 'it'],

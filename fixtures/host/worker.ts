@@ -34,6 +34,9 @@ const demoPermissions = [
   'media.view',
   'media.upload',
   'media.archive',
+  'cms.pages.view',
+  'cms.pages.edit',
+  'cms.pages.publish',
 ]
 
 // Stub until users ships: one bearer token signs in a demo staff user. Tests may narrow the
