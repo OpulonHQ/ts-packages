@@ -51,3 +51,23 @@ _Avoid_: UI language, interface locale
 **Content locale**:
 A language the host app's public content is published in, chosen per host app.
 _Avoid_: site language, translation
+
+**User**:
+A person who signs into the Admin shell (staff). Customers of the host app are not users.
+_Avoid_: account, member, admin user, customer
+
+**Role**:
+A named set of permissions, edited in the admin, that is assigned to users; a user may hold several.
+_Avoid_: group, profile
+
+**Super admin**:
+The built-in role that holds every permission, including ones modules add later; it cannot be edited or removed from its last holder.
+_Avoid_: root, owner
+
+**Invitation**:
+The only way to become a user: an emailed link through which the invitee sets a password.
+_Avoid_: sign-up, registration
+
+**Deactivation**:
+Blocking a user from signing in while keeping them on record; it can be reversed.
+_Avoid_: deletion, ban, soft delete
