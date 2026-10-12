@@ -43,7 +43,9 @@ const vault = defineModule({
   groups: [VaultGroup, LeakGroup],
   handlers: (api) =>
     Layer.mergeAll(
-      HttpApiBuilder.group(api, 'vault', (h) => Effect.succeed(h.handle('secret', () => readSecret))),
+      HttpApiBuilder.group(api, 'vault', (h) =>
+        Effect.succeed(h.handle('secret', () => readSecret)),
+      ),
       HttpApiBuilder.group(api, 'vault.public', (h) =>
         Effect.succeed(h.handle('secret', () => readSecret)),
       ),

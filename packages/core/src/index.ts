@@ -11,7 +11,11 @@ export {
   systemActor,
 } from './authz.ts'
 export type { Actor, User } from './authz.ts'
+export { Audit, diffFields } from './audit.ts'
+export type { AuditChange, AuditInput } from './audit.ts'
 export { Background, withTransaction } from './background.ts'
+export { core } from './core.ts'
+export type { CoreOptions } from './core.ts'
 export { composeServer, CompositionError } from './compose.ts'
 export type { ComposedServer, Unprovided } from './compose.ts'
 export { migrate } from './migrate.ts'

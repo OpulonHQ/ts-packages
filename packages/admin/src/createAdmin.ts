@@ -18,10 +18,18 @@ export interface Brand {
   readonly name: string
 }
 
-/** What the shell reads from `<apiPrefix>/me`. TSPACK-25 adds user, locale and permissions. */
+/**
+ * What the shell reads from `<apiPrefix>/me` (staff-only; mirrors `Me` in @opulonjs/core/api,
+ * which the admin may not import).
+ */
 export interface Me {
   readonly buildId: string
+  readonly user: { readonly id: string; readonly name: string; readonly email: string }
+  /** The user's admin locale; null means the admin default. */
+  readonly locale: string | null
+  readonly permissions: ReadonlyArray<string>
   readonly modules: ReadonlyArray<string>
+  readonly permissionCatalog: ReadonlyArray<string>
 }
 
 export interface AdminOptions {

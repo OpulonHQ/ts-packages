@@ -10,6 +10,20 @@ export class CompositionError extends Error {
   override name = 'CompositionError'
 }
 
+/** What composition knows about the server, for `/me` and the audit catalog. */
+export const Composed = Context.Reference<{
+  readonly modules: ReadonlyArray<string>
+  readonly permissions: ReadonlyArray<string>
+  readonly auditActions: ReadonlySet<string>
+}>('@opulonjs/core/Composed', {
+  defaultValue: () => ({ modules: [], permissions: [], auditActions: new Set() }),
+})
+
+/** The build id createWorker reports in `/me`. */
+export const BuildId = Context.Reference<string>('@opulonjs/core/BuildId', {
+  defaultValue: () => 'dev',
+})
+
 type Provides<M> = M extends Module<string, infer P, unknown, unknown> ? P : never
 type Requires<M> = M extends Module<string, unknown, infer R, unknown> ? R : never
 // Handlers declare request-time needs as HttpRouter request markers; unwrap them to services.
@@ -75,8 +89,15 @@ export const composeServer = <const Ms extends ReadonlyArray<Module>>(options: {
     }
   }
 
+  const auditActions = new Set(modules.flatMap((m) => m.auditActions.map((a) => a.key)))
+  if (auditActions.size > 0 && !modules.some((m) => m.id === 'core'))
+    errors.push('modules declare audit actions, but core() is not composed (it owns the audit log)')
+
+  // Core is the framework itself: its group (`/me`) sits at the API prefix, not under `/core`.
   const api = makeApi(
-    modules.flatMap((m) => m.groups.map((g) => prefixGroup(g, `${apiPrefix}/${m.id}`))),
+    modules.flatMap((m) =>
+      m.groups.map((g) => prefixGroup(g, m.id === 'core' ? apiPrefix : `${apiPrefix}/${m.id}`)),
+    ),
   )
 
   const catalog = new Set(modules.flatMap((m) => m.permissions))
@@ -94,7 +115,11 @@ export const composeServer = <const Ms extends ReadonlyArray<Module>>(options: {
   }
   if (errors.length > 0) throw new CompositionError(errors.join('\n'))
 
-  let services: Layer.Layer<never, unknown, unknown> = Layer.empty
+  let services: Layer.Layer<never, unknown, unknown> = Layer.succeed(Composed, {
+    modules: modules.map((m) => m.id),
+    permissions: [...catalog],
+    auditActions,
+  })
   for (const m of modules) if (m.layer) services = Layer.provideMerge(m.layer, services)
 
   const handlers = modules.map((m) => {

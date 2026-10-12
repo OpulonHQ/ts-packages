@@ -65,14 +65,6 @@ test('serves nothing outside the API prefix and /admin', async () => {
   expect((await request('/demo/notes', { authorization: 'Bearer test-token' })).status).toBe(404)
 })
 
-test('/me returns the build id and the enabled module ids, never cached', async () => {
-  expect(await request('/api/me')).toEqual({
-    status: 200,
-    cacheControl: 'private, no-store',
-    body: { buildId: 'build-1', modules: ['demo'] },
-  })
-})
-
 test('/admin/** falls back to index.html with no-store', async () => {
   for (const path of ['/admin', '/admin/', '/admin/demo/notes', '/admin/index.html']) {
     expect(await request(path)).toEqual({

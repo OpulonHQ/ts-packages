@@ -1,9 +1,9 @@
 import * as PgClient from '@effect/sql-pg/PgClient'
-import { Effect, Layer, ManagedRuntime, Redacted } from 'effect'
+import { ConfigProvider, Effect, Layer, ManagedRuntime, Redacted } from 'effect'
 import * as HttpRouter from 'effect/http/HttpRouter'
 import * as HttpServer from 'effect/http/HttpServer'
 import { Background } from './background.ts'
-import type { ComposedServer } from './compose.ts'
+import { BuildId, type ComposedServer } from './compose.ts'
 import { runDueTasks } from './tasks.ts'
 
 export { serveAdmin } from './admin-assets.ts'
@@ -48,62 +48,63 @@ const makeBackground = () => {
  * layers (Workers forbid sharing I/O between requests) and disposes it only after its Background
  * work settled. `infra` must provide every service the modules need and do not provide.
  */
-export const createWorker = <R, Env, I, E>(
+export const createWorker = <R, Env extends object, I, E>(
   server: ComposedServer<R>,
   options: {
     readonly infra: (env: Env) => Layer.Layer<I, E>
     /** The build id (commit SHA) the admin build carries too; `/me` reports it. */
     readonly buildId: (env: Env) => string
   } & MissingServices<Exclude<R, I | Background>>,
-) => ({
-  async fetch(request: Request, env: Env, ctx: WorkerContext): Promise<Response> {
-    if (new URL(request.url).pathname === `${server.apiPrefix}/me`) {
-      return me(server, options.buildId(env))
-    }
-    const background = makeBackground()
-    // Safe: MissingServices<Exclude<R, I | Background>> proved at the call site that infra and
-    // Background cover what the composed layers still need; ComposedServer erases those types.
-    const app = server.layer.pipe(
-      Layer.provide(Layer.mergeAll(options.infra(env), background.layer)),
-      Layer.provide(HttpServer.layerServices),
-    ) as Layer.Layer<never, unknown, HttpRouter.HttpRouter>
-    const web = HttpRouter.toWebHandler(app, { disableLogger: true })
-    try {
-      return await web.handler(request)
-    } finally {
-      ctx.waitUntil(background.drain().finally(() => web.dispose()))
-    }
-  },
-
-  async scheduled(event: ScheduledEvent, env: Env): Promise<void> {
-    const background = makeBackground()
-    // Safe for the same reason as in fetch; tasks need what handlers may need, minus CurrentActor
-    // (provided by runDueTasks).
-    const runtime = ManagedRuntime.make(
-      server.services.pipe(
-        Layer.provideMerge(Layer.mergeAll(options.infra(env), background.layer)),
-      ) as unknown as Layer.Layer<never, unknown>,
+) => {
+  /**
+   * Per invocation: the build id, and Effect Config read from the env's string values (vars and
+   * secrets) only. Bindings are objects and reach modules solely through the host's infra(env).
+   */
+  const envLayer = (env: Env) =>
+    Layer.mergeAll(
+      Layer.succeed(BuildId, options.buildId(env)),
+      ConfigProvider.layer(
+        ConfigProvider.fromEnvRecord(
+          Object.fromEntries(Object.entries(env).filter(([, v]) => typeof v === 'string')),
+        ),
+      ),
     )
-    try {
-      await runtime.runPromise(
-        runDueTasks(server.modules, event.scheduledTime) as Effect.Effect<void>,
-      )
-    } finally {
-      await background.drain()
-      await runtime.dispose()
-    }
-  },
-})
+  return {
+    async fetch(request: Request, env: Env, ctx: WorkerContext): Promise<Response> {
+      const background = makeBackground()
+      // Safe: MissingServices<Exclude<R, I | Background>> proved at the call site that infra and
+      // Background cover what the composed layers still need; ComposedServer erases those types.
+      const app = server.layer.pipe(
+        Layer.provide(Layer.mergeAll(options.infra(env), background.layer, envLayer(env))),
+        Layer.provide(HttpServer.layerServices),
+      ) as Layer.Layer<never, unknown, HttpRouter.HttpRouter>
+      const web = HttpRouter.toWebHandler(app, { disableLogger: true })
+      try {
+        return await web.handler(request)
+      } finally {
+        ctx.waitUntil(background.drain().finally(() => web.dispose()))
+      }
+    },
 
-/**
- * Minimal `/me` for the admin shell: build id and enabled module ids. TSPACK-25 turns it into the
- * staff-only endpoint with user, locale and permissions.
- */
-const me = (server: ComposedServer<unknown>, buildId: string) =>
-  Response.json(
-    { buildId, modules: server.modules.map((m) => m.id) },
-    { headers: { 'cache-control': 'private, no-store' } },
-  )
+    async scheduled(event: ScheduledEvent, env: Env): Promise<void> {
+      const background = makeBackground()
+      // Safe for the same reason as in fetch; tasks need what handlers may need.
+      const runtime = ManagedRuntime.make(
+        server.services.pipe(
+          Layer.provideMerge(Layer.mergeAll(options.infra(env), background.layer, envLayer(env))),
+        ) as unknown as Layer.Layer<never, unknown>,
+      )
+      try {
+        await runtime.runPromise(
+          runDueTasks(server.modules, event.scheduledTime) as Effect.Effect<void>,
+        )
+      } finally {
+        await background.drain()
+        await runtime.dispose()
+      }
+    },
+  }
+}
 
 /** SqlClient over a Hyperdrive binding: pool max 5, min 0, prepared statements on (TSPACK-18). */
 export const PgFromHyperdrive = (binding: { readonly connectionString: string }) =>
