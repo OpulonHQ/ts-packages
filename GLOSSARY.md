@@ -136,6 +136,10 @@ _Avoid_: version, history entry, backup
 The public interface through which a website reads published CMS content, and the only one: the host app's own public site uses it too.
 _Avoid_: headless API, content API, frontend API
 
+**Public site**:
+The visitor-facing pages of a host app, rendered from published CMS content that it reads through the Read API.
+_Avoid_: frontend, website, storefront
+
 **Email template**:
 A named email a module can send (such as an invitation), with its placeholders and default wording in each locale.
 _Avoid_: mail, notification, message type
