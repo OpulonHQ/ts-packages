@@ -3,21 +3,58 @@ import { HttpServerRequest } from 'effect/http/HttpServerRequest'
 import { Forbidden, Unauthorized } from 'effect/http-api/HttpApiError'
 import * as HttpApiMiddleware from 'effect/http-api/HttpApiMiddleware'
 
+/** A signed-in staff user, as the auth implementation (users) resolves it per request. */
+export interface User {
+  readonly id: string
+  readonly name: string
+  readonly email: string
+  /** The user's admin locale; null means the admin default. */
+  readonly locale: string | null
+  /** Permission keys the user holds (Super admin: the whole composed catalog). */
+  readonly permissions: ReadonlyArray<string>
+}
+
 /** The signed-in staff user of the current request, provided by the Authorization middleware. */
-export class CurrentUser extends Context.Service<
-  CurrentUser,
-  { readonly id: string; readonly permissions: ReadonlyArray<string> }
->()('@opulonjs/core/CurrentUser') {}
-
-/** Who performs the current work: a staff user, or the system (scheduled tasks). */
-export type Actor = { readonly kind: 'user'; readonly id: string } | { readonly kind: 'system' }
-
-/** The system actor scheduled tasks run as. It bypasses permission checks explicitly. */
-export const systemActor: Actor = { kind: 'system' }
-
-export class CurrentActor extends Context.Service<CurrentActor, Actor>()(
-  '@opulonjs/core/CurrentActor',
+export class CurrentUser extends Context.Service<CurrentUser, User>()(
+  '@opulonjs/core/CurrentUser',
 ) {}
+
+/**
+ * Who performs the current work: a signed-in staff user, the system (scheduled tasks, webhooks)
+ * or nobody known (public requests). `name` is snapshotted into audit events.
+ */
+export type Actor =
+  | {
+      readonly kind: 'user'
+      readonly id: string
+      readonly name: string
+      readonly permissions: ReadonlyArray<string>
+    }
+  | { readonly kind: 'system'; readonly name: string }
+  | { readonly kind: 'anonymous'; readonly name?: string }
+
+/** The system actor. It bypasses permission checks, so provide it only on purpose. */
+export const systemActor = (name = 'System'): Actor => ({ kind: 'system', name })
+
+/**
+ * The actor of the current work. Defaults to anonymous, so anything not run behind the
+ * Authorization middleware or as a task fails `requirePermission` (fail closed).
+ */
+export const CurrentActor = Context.Reference<Actor>('@opulonjs/core/CurrentActor', {
+  defaultValue: () => ({ kind: 'anonymous' }),
+})
+
+/**
+ * Checks a permission inside a privileged service, whoever calls it: a user must hold `key`,
+ * the system actor passes, anonymous callers (public handlers) are refused.
+ */
+export const requirePermission = (key: string): Effect.Effect<void, Forbidden> =>
+  Effect.gen(function* () {
+    const actor = yield* CurrentActor
+    if (actor.kind === 'system') return
+    if (actor.kind === 'user' && actor.permissions.includes(key)) return
+    return yield* new Forbidden()
+  })
 
 /**
  * The auth middleware every non-public group carries. users implements it; until then a host
@@ -36,12 +73,11 @@ export class Public extends Context.Service<Public, true>()('@opulonjs/core/Publ
 
 /**
  * Builds the Authorization middleware from a session lookup. A request without a user gets 401;
- * a user without the endpoint's policy permission gets 403. A missing policy fails closed.
+ * a user without the endpoint's policy permission gets 403. A missing policy fails closed. The
+ * handler runs with the user as CurrentUser and as CurrentActor.
  */
 export const authorization = <R>(
-  authenticate: (
-    request: HttpServerRequest,
-  ) => Effect.Effect<CurrentUser['Service'] | undefined, never, R>,
+  authenticate: (request: HttpServerRequest) => Effect.Effect<User | undefined, never, R>,
 ) =>
   Layer.effect(
     Authorization,
@@ -56,7 +92,16 @@ export const authorization = <R>(
           if (policy.value !== 'signedIn' && !user.permissions.includes(policy.value)) {
             return yield* new Forbidden()
           }
-          return yield* Effect.provideService(httpEffect, CurrentUser, user)
+          const actor: Actor = {
+            kind: 'user',
+            id: user.id,
+            name: user.name,
+            permissions: user.permissions,
+          }
+          return yield* httpEffect.pipe(
+            Effect.provideService(CurrentUser, user),
+            Effect.provideService(CurrentActor, actor),
+          )
         }),
       ),
     ),

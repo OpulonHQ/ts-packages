@@ -19,12 +19,18 @@ export interface Env {
   readonly DEMO_TOKEN: string
 }
 
-// Stub until users ships: one bearer token grants the demo permission.
+// Stub until users ships: one bearer token signs in a demo staff user.
 const stubAuthorization = (token: string) =>
   authorization((request) =>
     Effect.succeed(
       token && request.headers.authorization === `Bearer ${token}`
-        ? { id: 'demo-user', permissions: ['demo.notes.view'] }
+        ? {
+            id: 'demo-user',
+            name: 'Demo User',
+            email: 'demo@example.test',
+            locale: 'sk',
+            permissions: ['demo.notes.view'],
+          }
         : undefined,
     ),
   )

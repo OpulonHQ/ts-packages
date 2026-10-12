@@ -28,7 +28,7 @@ export const runDueTasks = (modules: ReadonlyArray<Module>, scheduledTime: numbe
         if (slot % periods[task.every] !== 0) continue
         const key = `${m.id}.${task.name}`
         yield* task.run.pipe(
-          Effect.provideService(CurrentActor, systemActor),
+          Effect.provideService(CurrentActor, systemActor(`Task: ${key}`)),
           Effect.withSpan(`task ${key}`),
           Effect.catchCause((cause) => {
             failed.push(key)

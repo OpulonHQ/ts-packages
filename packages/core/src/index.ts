@@ -7,9 +7,10 @@ export {
   CurrentUser,
   Policy,
   Public,
+  requirePermission,
   systemActor,
 } from './authz.ts'
-export type { Actor } from './authz.ts'
+export type { Actor, User } from './authz.ts'
 export { Background, withTransaction } from './background.ts'
 export { composeServer, CompositionError } from './compose.ts'
 export type { ComposedServer, Unprovided } from './compose.ts'

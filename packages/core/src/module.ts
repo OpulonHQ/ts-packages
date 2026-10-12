@@ -2,7 +2,6 @@ import type { Effect, Layer } from 'effect'
 import type * as HttpApi from 'effect/http-api/HttpApi'
 import type * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
 import type { SqlClient } from 'effect/sql/SqlClient'
-import type { CurrentActor } from './authz.ts'
 
 /** Identifier of the composed HttpApi. Group services carry it in their type. */
 export const apiId = 'opulon'
@@ -87,7 +86,7 @@ export const defineModule = <
   RTasks = never,
 >(
   m: ModuleDefinition<Id, Groups, ROut, RIn, RHandlers, RTasks>,
-): Module<Id, ROut, RIn, RHandlers | Exclude<RTasks, CurrentActor>> => ({
+): Module<Id, ROut, RIn, RHandlers | RTasks> => ({
   id: m.id,
   dependsOn: m.dependsOn ?? [],
   groups: m.groups,
