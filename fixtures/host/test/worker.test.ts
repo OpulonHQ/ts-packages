@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest'
 import { useTestDatabase } from '../../../test/postgres/index.ts'
 import worker, { type Env } from '../worker.ts'
+import { memoryBucket } from './memory-bucket.ts'
 
 const db = useTestDatabase()
 
@@ -22,6 +23,7 @@ const env = (): Env => ({
   DEMO_TOKEN: 'test-token',
   OPULON_BUILD_ID: 'build-1',
   ASSETS: assets,
+  MEDIA_BUCKET: memoryBucket(),
 })
 
 async function request(path: string, headers: Record<string, string> = {}) {

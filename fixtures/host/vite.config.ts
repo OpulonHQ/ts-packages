@@ -3,6 +3,8 @@ import { opulonAdmin } from '@opulonjs/admin/vite'
 import { defineConfig } from 'vite'
 import { brand } from './admin/brand.ts'
 
+const repo = (path: string) => fileURLToPath(new URL(`../../${path}`, import.meta.url))
+
 // The admin SPA: admin/ builds into public/admin, which the Worker serves as static assets.
 export default defineConfig({
   root: 'admin',
@@ -10,7 +12,7 @@ export default defineConfig({
     opulonAdmin({
       brand,
       // Package admin screens outside the root, scanned for Tailwind classes and icons.
-      sources: [fileURLToPath(new URL('../../packages/emails/src', import.meta.url))],
+      sources: [repo('packages/emails/src'), repo('packages/media/src/admin')],
     }),
   ],
   build: { outDir: '../public/admin', emptyOutDir: true },

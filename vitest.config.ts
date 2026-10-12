@@ -13,6 +13,7 @@ const globalSetup = ['test/postgres/global-setup.ts']
 const adminTests = [
   'fixtures/host/test/{shell,packages,email-log,email-templates}.test.ts',
   'packages/{ui,admin}/test/**/*.test.ts',
+  'fixtures/host/test/media/admin.test.ts',
 ]
 
 export default defineConfig({
@@ -30,7 +31,12 @@ export default defineConfig({
         },
       },
       {
-        plugins: [vue(), ...opulonUi({ sources: ['packages/admin/src', 'packages/emails/src'] })],
+        plugins: [
+          vue(),
+          ...opulonUi({
+            sources: ['packages/admin/src', 'packages/emails/src', 'packages/media/src/admin'],
+          }),
+        ],
         resolve,
         ssr,
         test: { name: 'admin', include: adminTests, environment: 'happy-dom', globalSetup },

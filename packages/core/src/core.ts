@@ -5,7 +5,7 @@ import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import { CoreGroup, corePermissions } from './api.ts'
 import { purgeAudit } from './audit.ts'
 import { CurrentUser } from './authz.ts'
-import { BuildId, Composed } from './compose.ts'
+import { BuildId, Composed, ContentLocales } from './compose.ts'
 import createAuditEvent from './migrations/0001_create_audit_event.ts'
 import { defineModule } from './module.ts'
 
@@ -27,6 +27,7 @@ export const core = (options: CoreOptions = {}) =>
       HttpApiBuilder.group(api, 'core', (h) =>
         Effect.gen(function* () {
           const composed = yield* Composed
+          const contentLocales = yield* ContentLocales
           return h.handle('me', () =>
             Effect.gen(function* () {
               const user = yield* CurrentUser
@@ -42,6 +43,7 @@ export const core = (options: CoreOptions = {}) =>
                 permissions: user.permissions,
                 modules: composed.modules,
                 permissionCatalog: composed.permissions,
+                contentLocales,
               }
             }),
           )

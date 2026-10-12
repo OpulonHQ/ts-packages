@@ -4,6 +4,7 @@ import { useTestDatabase } from '../../../test/postgres/index.ts'
 import { brand } from '../admin/brand.ts'
 import { adminModules } from '../admin/modules.ts'
 import worker, { type Env } from '../worker.ts'
+import { memoryBucket } from './memory-bucket.ts'
 import { makeShop } from './support/shop.ts'
 
 // Runs in the `admin` vitest project: happy-dom, built by the opulonUi() preset.
@@ -26,6 +27,7 @@ const hostFetch: typeof fetch = async (input, init) => {
     DEMO_TOKEN: 'test-token',
     OPULON_BUILD_ID: 'b1',
     ASSETS: { fetch: async () => new Response('not found', { status: 404 }) },
+    MEDIA_BUCKET: memoryBucket(),
   }
   const pending: Array<Promise<unknown>> = []
   const response = await worker.fetch(request, env, { waitUntil: (p) => pending.push(p) })

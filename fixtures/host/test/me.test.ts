@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest'
 import { useTestDatabase } from '../../../test/postgres/index.ts'
 import worker, { type Env } from '../worker.ts'
+import { memoryBucket } from './memory-bucket.ts'
 
 const db = useTestDatabase()
 
@@ -10,6 +11,7 @@ async function me(headers: Record<string, string> = {}) {
     DEMO_TOKEN: 'test-token',
     OPULON_BUILD_ID: 'build-1',
     ASSETS: { fetch: async () => new Response('not found', { status: 404 }) },
+    MEDIA_BUCKET: memoryBucket(),
   }
   const response = await worker.fetch(new Request('https://host.test/api/me', { headers }), env, {
     waitUntil: () => {},
@@ -35,14 +37,24 @@ test('/me returns the user, locale, permissions, modules, catalog and build id, 
       buildId: 'build-1',
       user: { id: 'demo-user', name: 'Demo User', email: 'demo@example.test' },
       locale: 'sk',
-      permissions: ['demo.notes.view', 'emails.log.view'],
-      modules: ['core', 'emails', 'demo'],
+      permissions: [
+        'demo.notes.view',
+        'emails.log.view',
+        'media.view',
+        'media.upload',
+        'media.archive',
+      ],
+      modules: ['core', 'emails', 'media', 'demo'],
       permissionCatalog: [
         'core.audit.view',
         'emails.log.view',
         'emails.templates.manage',
+        'media.view',
+        'media.upload',
+        'media.archive',
         'demo.notes.view',
       ],
+      contentLocales: ['en', 'it'],
     },
   })
 })

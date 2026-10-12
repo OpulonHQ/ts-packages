@@ -1,0 +1,67 @@
+export default {
+  nav: { library: 'Media' },
+  library: {
+    title: 'Media',
+    description:
+      'Images and PDFs for the website. Archived items keep working where they are used.',
+    upload: 'Upload',
+    empty: 'No media yet.',
+    caption: 'Media library',
+  },
+  columns: {
+    preview: 'Preview',
+    filename: 'File',
+    type: 'Type',
+    size: 'Size',
+    updatedAt: 'Updated',
+  },
+  filters: {
+    type: 'Type',
+    image: 'Images',
+    pdf: 'PDFs',
+    status: 'Status',
+    active: 'Active',
+    archived: 'Archived',
+  },
+  details: {
+    title: 'Media details',
+    alt: 'Alt text',
+    altHelp: 'Describes the image for screen readers and search engines.',
+    caption: 'Caption',
+    save: 'Save',
+    saved: 'Saved.',
+    replace: 'Replace file',
+    replaced: 'File replaced. Pages using this item now show the new version.',
+    archive: 'Archive',
+    archiveTitle: 'Archive this item?',
+    archiveWarning:
+      'It disappears from the library and the picker, but pages that already use it keep showing it.',
+    archived: 'Archived.',
+    restore: 'Restore',
+    restored: 'Restored.',
+    open: 'Open original',
+    archivedBadge: 'Archived',
+  },
+  picker: {
+    choose: 'Choose media',
+    change: 'Change',
+    clear: 'Remove',
+    none: 'No media selected.',
+    title: 'Choose media',
+  },
+  errors: {
+    failed: 'The action failed. Try again.',
+  },
+  permissions: {
+    'media.view': 'View media',
+    'media.upload': 'Upload and edit media',
+    'media.archive': 'Archive media',
+  },
+  audit: {
+    'media.item.uploaded': 'Media uploaded',
+    'media.item.replaced': 'Media file replaced',
+    'media.item.updated': 'Media details edited',
+    'media.item.archived': 'Media archived',
+    'media.item.restored': 'Media restored',
+  },
+}

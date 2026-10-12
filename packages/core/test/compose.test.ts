@@ -118,6 +118,14 @@ describe('composeServer fails at startup on', () => {
       [module('demo', { group: protectedGroup('demo', authed.annotate(Policy, 'demo.view')) })],
       /demo.ping: policy "demo.view" is not a composed permission/,
     ))
+
+  test.each([
+    [[], /contentLocales must list at least one locale/],
+    [['en', 'English'], /content locale "English" must be a language tag/],
+    [['en', 'it', 'en'], /contentLocales lists a locale twice/],
+  ])('content locales %j', (contentLocales, message) =>
+    expect(() => composeServer({ modules: [module('demo')], contentLocales })).toThrow(message),
+  )
 })
 
 describe('composeServer rejects contributions', () => {
