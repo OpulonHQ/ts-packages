@@ -139,3 +139,15 @@ _Avoid_: snippet, partial, widget
 **Email log**:
 The record of every email the system decided to send, with its delivery outcome.
 _Avoid_: mail queue, sent items, outbox
+
+**Media item**:
+A public file (image or PDF) in the media library, referenced by a stable id that survives replacing its file.
+_Avoid_: asset, attachment, upload, file
+
+**Media library**:
+The flat, searchable collection of media items that editors pick from.
+_Avoid_: gallery, file manager
+
+**Archiving (media)**:
+Hiding a media item from the library and picker while its URLs keep working; media items are never deleted in v1.
+_Avoid_: deleting, trashing
