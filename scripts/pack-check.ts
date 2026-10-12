@@ -91,7 +91,7 @@ const vite = await createServer({
   ...config,
   server: { middlewareMode: true },
   appType: 'custom',
-  ssr: { noExternal: ['@opulonjs/admin', '@opulonjs/ui', '@nuxt/ui'] },
+  ssr: { noExternal: [/^@opulonjs[/]/, '@nuxt/ui'] },
 })
 const { adminModules } = await vite.ssrLoadModule('/modules.ts').finally(() => vite.close())
 const { server } = await import('./host/server/opulon.ts')
@@ -173,6 +173,8 @@ for (const name of names) {
   for (const key of Object.keys(pkg.exports)) {
     if (key.endsWith('.json') || key.includes('*')) continue
     if (browserOnly.includes(name) && key !== './vite') continue
+    // Module admin entries are browser code (Vue SFCs); the admin build below covers them.
+    if (key === './admin') continue
     const specifier = name + key.slice(1)
     await import(specifier)
     console.log('ok', specifier)

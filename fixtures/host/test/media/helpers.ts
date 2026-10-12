@@ -170,14 +170,26 @@ export const useHost = () => {
 
   const form = (bytes: Uint8Array, name: string, type: string) => {
     const data = new FormData()
-    data.append('file', new Blob([bytes.slice()], { type }), name)
+    data.append('file', new File([bytes.slice()], name, { type }))
     return data
+  }
+
+  /** A `fetch` routed into the Worker as the demo user, for admin screens (no mocked API). */
+  const hostFetch: typeof fetch = async (input, init) => {
+    const request = new Request(input, init)
+    request.headers.set('authorization', 'Bearer test-token')
+    const pending: Array<Promise<unknown>> = []
+    const response = await worker.fetch(request, env(), { waitUntil: (p) => pending.push(p) })
+    const body = await response.arrayBuffer()
+    await Promise.all(pending)
+    return new Response(body, response)
   }
 
   return {
     db,
     bucket,
     call,
+    fetch: hostFetch,
     upload: (bytes: Uint8Array, name: string, type: string, as?: ReadonlyArray<string>) =>
       call<MediaItem>('POST', '/api/media/items', {
         body: form(bytes, name, type),
