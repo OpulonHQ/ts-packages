@@ -2,6 +2,7 @@ import js from '@eslint/js'
 import { defineConfig } from 'eslint/config'
 import prettier from 'eslint-config-prettier'
 import tseslint from 'typescript-eslint'
+import vue from 'eslint-plugin-vue'
 
 const packages = ['core', 'ui', 'admin', 'users', 'emails', 'media', 'cms']
 
@@ -37,6 +38,18 @@ export default defineConfig(
   { ignores: ['**/dist/', '**/node_modules/', '.packed/', 'fixtures/host/public/', '.claude/'] },
   js.configs.recommended,
   tseslint.configs.recommended,
+  vue.configs['flat/recommended'],
+  {
+    files: ['**/*.vue'],
+    languageOptions: { parserOptions: { parser: tseslint.parser } },
+    rules: {
+      // Screens are named by their route; kit components by their canonical specifier.
+      'vue/multi-word-component-names': 'off',
+      // Type-based props: `undefined` is the default of an optional prop; TypeScript checks names.
+      'vue/require-default-prop': 'off',
+      'no-undef': 'off',
+    },
+  },
   { rules: { 'no-restricted-imports': ['error', { patterns: [nuxtUi] }] } },
   ...packages.flatMap((p) => [
     {

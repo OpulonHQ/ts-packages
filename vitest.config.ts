@@ -1,15 +1,40 @@
 import vue from '@vitejs/plugin-vue'
 import { defineConfig } from 'vitest/config'
+import { opulonUi } from './packages/ui/src/vite.ts'
 
 // In-repo, packages resolve each other to src through the @opulonjs/source export condition.
 const source = '@opulonjs/source'
+const resolve = { conditions: [source, 'module', 'browser', 'development|production'] }
+const ssr = { resolve: { conditions: [source, 'module', 'node', 'development|production'] } }
+const globalSetup = ['test/postgres/global-setup.ts']
+// Browser-side tests (the admin shell mounted in happy-dom, anything importing ui/admin) get
+// Nuxt UI and the offline icons as `opulonAdmin()` adds them. The preset is assembled from
+// source here because a bare package import in this config would load the package's dist.
+const adminTests = [
+  'fixtures/host/test/{shell,packages}.test.ts',
+  'packages/{ui,admin}/test/**/*.test.ts',
+]
 
 export default defineConfig({
-  plugins: [vue()],
-  resolve: { conditions: [source, 'module', 'browser', 'development|production'] },
-  ssr: { resolve: { conditions: [source, 'module', 'node', 'development|production'] } },
   test: {
-    include: ['{packages,fixtures}/*/test/**/*.test.ts', 'test/**/*.test.ts'],
-    globalSetup: ['test/postgres/global-setup.ts'],
+    projects: [
+      {
+        plugins: [vue()],
+        resolve,
+        ssr,
+        test: {
+          name: 'server',
+          include: ['{packages,fixtures}/*/test/**/*.test.ts', 'test/**/*.test.ts'],
+          exclude: adminTests,
+          globalSetup,
+        },
+      },
+      {
+        plugins: [vue(), ...opulonUi({ sources: ['packages/admin/src'] })],
+        resolve,
+        ssr,
+        test: { name: 'admin', include: adminTests, environment: 'happy-dom', globalSetup },
+      },
+    ],
   },
 })

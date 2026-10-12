@@ -16,7 +16,8 @@
     "@opulonjs/media": "workspace:*",
     "@opulonjs/ui": "workspace:*",
     "@opulonjs/users": "workspace:*",
-    "effect": "4.0.3"
+    "effect": "4.0.3",
+    "vue-router": "5.4.0"
   },
   "devDependencies": {
     "vite": "8.3.4",

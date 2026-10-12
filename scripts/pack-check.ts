@@ -47,7 +47,8 @@ async function checkBrowserApi(scratch: string, packages: Record<string, string>
       .filter((file) => existsSync(join(scratch, file))),
   ]
   // Stops the transform's tsconfig lookup at the scratch dir (a stray /tmp/tsconfig.json breaks it).
-  writeFileSync(join(scratch, 'tsconfig.json'), '{}')
+  // It must include .vue files too, or the lookup for them continues upwards.
+  writeFileSync(join(scratch, 'tsconfig.json'), '{ "include": ["**/*.ts", "**/*.vue"] }')
   writeFileSync(
     join(scratch, 'browser-api.ts'),
     entries.map((e, i) => `import * as e${i} from '${e}'\nconsole.log(e${i})\n`).join(''),
@@ -75,10 +76,25 @@ async function checkBrowserApi(scratch: string, packages: Record<string, string>
   console.log('ok browser /api build:', entries.join(', '))
 }
 
-// Every admin module must have a server module of the same id; server-only modules are fine.
-const moduleIdCheck = `
+// The fixture admin, built from the tarballs with the opulonAdmin() preset as a host builds it
+// (Nuxt UI, brand, icons, kit components). Then, loading the admin module list through Vite (it
+// imports .vue files): every admin module must have a server module of the same id;
+// server-only modules are fine.
+const adminCheck = `
+import { build, createServer } from 'vite'
+import { opulonAdmin } from '@opulonjs/admin/vite'
+const { brand } = await import('./host/admin/brand.ts')
+const config = { root: 'host/admin', configFile: false, logLevel: 'warn', plugins: opulonAdmin({ brand }) }
+await build({ ...config, build: { outDir: '../../admin-dist', emptyOutDir: true } })
+console.log('ok admin build from the packed tarballs')
+const vite = await createServer({
+  ...config,
+  server: { middlewareMode: true },
+  appType: 'custom',
+  ssr: { noExternal: ['@opulonjs/admin', '@opulonjs/ui', '@nuxt/ui'] },
+})
+const { adminModules } = await vite.ssrLoadModule('/modules.ts').finally(() => vite.close())
 const { server } = await import('./host/server/opulon.ts')
-const { adminModules } = await import('./host/admin/modules.ts')
 const serverIds = new Set(server.modules.map((m) => m.id))
 const missing = adminModules.map((m) => m.id).filter((id) => !serverIds.has(id))
 if (missing.length > 0) throw new Error('admin modules without a server module: ' + missing.join(', '))
@@ -89,11 +105,19 @@ const root = resolve(import.meta.dirname, '..')
 const hostDependencies = () => {
   const pkg = JSON.parse(readFileSync(join(root, 'fixtures/host/package.json'), 'utf8')) as {
     dependencies: Record<string, string>
+    devDependencies: Record<string, string>
   }
   return Object.fromEntries(
-    Object.entries(pkg.dependencies).filter(([, spec]) => !spec.startsWith('workspace:')),
+    Object.entries({ ...pkg.dependencies, ...pkg.devDependencies }).filter(
+      ([, spec]) => !spec.startsWith('workspace:'),
+    ),
   )
 }
+// The repo's install-script decisions, so the scratch install does not stop on them.
+const allowBuilds =
+  readFileSync(join(root, 'pnpm-workspace.yaml'), 'utf8').match(/^allowBuilds:[\s\S]*/m)?.[0] ?? ''
+// Browser packages need a Vite build (Nuxt UI, .vue components); the admin check covers them.
+const browserOnly = ['@opulonjs/ui', '@opulonjs/admin']
 const packed = join(root, '.packed')
 const run = (cmd: string, args: string[], cwd: string) =>
   execFileSync(cmd, args, { cwd, stdio: 'inherit' })
@@ -126,7 +150,7 @@ try {
     JSON.stringify({
       private: true,
       type: 'module',
-      // The fixture host's own third-party dependencies (effect, ...) plus the tarballs.
+      // The fixture host's own third-party dependencies (effect, vite, ...) plus the tarballs.
       dependencies: { ...hostDependencies(), ...tarballs },
     }),
   )
@@ -135,18 +159,20 @@ try {
     join(scratch, 'pnpm-workspace.yaml'),
     `overrides:\n${Object.entries(tarballs)
       .map(([name, spec]) => `  '${name}': '${spec}'`)
-      .join('\n')}\n`,
+      .join('\n')}\n${allowBuilds}`,
   )
   run('pnpm', ['install'], scratch)
   writeFileSync(
     join(scratch, 'check.mjs'),
     `import { readFileSync } from 'node:fs'
 const names = ${JSON.stringify(Object.keys(tarballs))}
+const browserOnly = ${JSON.stringify(browserOnly)}
 for (const name of names) {
   const pkg = JSON.parse(readFileSync(new URL(\`./node_modules/\${name}/package.json\`, import.meta.url)))
   if (JSON.stringify(pkg).includes('workspace:')) throw new Error(\`\${name}: workspace: protocol leaked\`)
   for (const key of Object.keys(pkg.exports)) {
-    if (key.endsWith('.json')) continue
+    if (key.endsWith('.json') || key.includes('*')) continue
+    if (browserOnly.includes(name) && key !== './vite') continue
     const specifier = name + key.slice(1)
     await import(specifier)
     console.log('ok', specifier)
@@ -161,7 +187,7 @@ for (const name of names) {
     cpSync(join(root, 'fixtures/host', dir), join(scratch, 'host', dir), { recursive: true })
   }
   await checkBrowserApi(scratch, tarballs)
-  run('node', ['--input-type=module', '-e', moduleIdCheck], scratch)
+  run('node', ['--input-type=module', '-e', adminCheck], scratch)
   console.log('ok server and admin module id lists match')
 } finally {
   rmSync(scratch, { recursive: true, force: true })
