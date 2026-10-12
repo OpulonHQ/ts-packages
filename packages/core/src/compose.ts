@@ -1,4 +1,5 @@
 import { Context, Layer, Option } from 'effect'
+import type * as HttpRouter from 'effect/http/HttpRouter'
 import * as HttpApi from 'effect/http-api/HttpApi'
 import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import type * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
@@ -11,7 +12,11 @@ export class CompositionError extends Error {
 
 type Provides<M> = M extends Module<string, infer P, unknown, unknown> ? P : never
 type Requires<M> = M extends Module<string, unknown, infer R, unknown> ? R : never
-type HandlerRequires<M> = M extends Module<string, unknown, unknown, infer R> ? R : never
+// Handlers declare request-time needs as HttpRouter request markers; unwrap them to services.
+type HandlerRequires<M> =
+  M extends Module<string, unknown, unknown, infer R>
+    ? HttpRouter.Request.Without<R> | HttpRouter.Request.Only<'Requires', R>
+    : never
 
 // Mirrors the runtime provideMerge chain: a module's layer sees only modules listed before it.
 type LayerFold<Ms, Provided = never, Required = never> = Ms extends readonly [infer H, ...infer T]
@@ -33,6 +38,8 @@ export interface ComposedServer<R = unknown> {
   readonly api: HttpApi.Top
   /** The routed API with every module's handlers and layer; still needs `R` (host infra). */
   readonly layer: Layer.Layer<never, unknown, unknown>
+  /** Every module's layer, merged; what scheduled tasks run against. Still needs `R`. */
+  readonly services: Layer.Layer<never, unknown, unknown>
   readonly '~requires'?: R
 }
 
@@ -61,6 +68,11 @@ export const composeServer = <const Ms extends ReadonlyArray<Module>>(options: {
       if (!inPrefix(key)) errors.push(`${m.id}: permission "${key}" is outside the module prefix`)
     for (const { key } of m.auditActions)
       if (!inPrefix(key)) errors.push(`${m.id}: audit action "${key}" is outside the module prefix`)
+    const tasks = new Set<string>()
+    for (const { name } of m.tasks) {
+      if (tasks.has(name)) errors.push(`${m.id}: duplicate task name "${name}"`)
+      tasks.add(name)
+    }
   }
 
   const api = makeApi(
@@ -93,7 +105,7 @@ export const composeServer = <const Ms extends ReadonlyArray<Module>>(options: {
     Layer.provide(Layer.provide(Layer.mergeAll(Layer.empty, ...handlers), services)),
   )
 
-  return { modules, apiPrefix, api, layer }
+  return { modules, apiPrefix, api, layer, services }
 }
 
 // HttpApi and HttpApiGroup are invariant in their group/endpoint types, and composition only knows

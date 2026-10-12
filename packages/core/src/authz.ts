@@ -9,6 +9,16 @@ export class CurrentUser extends Context.Service<
   { readonly id: string; readonly permissions: ReadonlyArray<string> }
 >()('@opulonjs/core/CurrentUser') {}
 
+/** Who performs the current work: a staff user, or the system (scheduled tasks). */
+export type Actor = { readonly kind: 'user'; readonly id: string } | { readonly kind: 'system' }
+
+/** The system actor scheduled tasks run as. It bypasses permission checks explicitly. */
+export const systemActor: Actor = { kind: 'system' }
+
+export class CurrentActor extends Context.Service<CurrentActor, Actor>()(
+  '@opulonjs/core/CurrentActor',
+) {}
+
 /**
  * The auth middleware every non-public group carries. users implements it; until then a host
  * (or a test) provides it with `authorization(authenticate)`.

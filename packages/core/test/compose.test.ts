@@ -1,4 +1,4 @@
-import { Layer, Schema } from 'effect'
+import { Effect, Layer, Schema } from 'effect'
 import * as HttpApiEndpoint from 'effect/http-api/HttpApiEndpoint'
 import * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
 import { describe, expect, test } from 'vitest'
@@ -23,6 +23,7 @@ const module = (
     group?: HttpApiGroup.Constraint
     permissions?: ReadonlyArray<string>
     auditActions?: ReadonlyArray<string>
+    tasks?: ReadonlyArray<string>
   } = {},
 ): Module => ({
   id,
@@ -33,6 +34,7 @@ const module = (
   migrations: {},
   permissions: options.permissions ?? [],
   auditActions: (options.auditActions ?? []).map((key) => ({ key, subject: 'thing' })),
+  tasks: (options.tasks ?? []).map((name) => ({ name, every: '5m', run: Effect.void })),
 })
 
 const protectedGroup = (id: string, endpoint: HttpApiEndpoint.Constraint) =>
@@ -72,6 +74,12 @@ describe('composeServer fails at startup on', () => {
       /demo: audit action "auth.signed_in" is outside/,
     ))
 
+  test('a duplicate task name within a module', () =>
+    fails(
+      [module('demo', { tasks: ['sweep', 'purge', 'sweep'] })],
+      /demo: duplicate task name "sweep"/,
+    ))
+
   test('an API group outside the module prefix', () =>
     fails(
       [module('demo', { group: HttpApiGroup.make('other').add(ping).annotate(Public, true) })],
@@ -103,7 +111,7 @@ describe('composeServer fails at startup on', () => {
 })
 
 describe('composeServer accepts', () => {
-  test('protected endpoints with a composed or signedIn policy, ordering modules by dependsOn', () => {
+  test('protected endpoints with a composed or signedIn policy, ordering modules by dependsOn and allowing one task name in different modules', () => {
     const server = composeServer({
       modules: [
         module('cms', {
@@ -112,9 +120,10 @@ describe('composeServer accepts', () => {
           group: protectedGroup('cms', authed.annotate(Policy, 'cms.view')),
         }),
         module('media', { group: protectedGroup('media', authed.annotate(Policy, 'signedIn')) }),
-        module('demo'),
+        module('demo', { tasks: ['sweep'] }),
+        module('other', { tasks: ['sweep'] }),
       ],
     })
-    expect(server.modules.map((m) => m.id)).toEqual(['media', 'cms', 'demo'])
+    expect(server.modules.map((m) => m.id)).toEqual(['media', 'cms', 'demo', 'other'])
   })
 })

@@ -48,5 +48,18 @@ export default defineConfig(
       rules: restrict(p, [...serverDeps[p], ...adminEntryDeps]),
     },
   ]),
+  {
+    // Core's withTransaction owns the afterCommit queue, so it is the only way to open one.
+    ignores: ['packages/core/src/background.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "CallExpression > MemberExpression.callee[property.name='withTransaction']",
+          message: 'Open transactions with withTransaction from @opulonjs/core (afterCommit).',
+        },
+      ],
+    },
+  },
   prettier,
 )

@@ -6,7 +6,14 @@ import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import * as HttpApiEndpoint from 'effect/http-api/HttpApiEndpoint'
 import * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
 import { expectTypeOf } from 'vitest'
-import { composeServer, defineModule, Public, type Unprovided } from '../src/index.ts'
+import {
+  Background,
+  composeServer,
+  CurrentActor,
+  defineModule,
+  Public,
+  type Unprovided,
+} from '../src/index.ts'
 import { createWorker } from '../src/workers.ts'
 
 class Db extends Context.Service<Db, { readonly query: Effect.Effect<number> }>()('Db') {}
@@ -66,3 +73,35 @@ createWorker(server, { infra: () => dbLive })
 
 // @ts-expect-error Db (needed by media's layer) is provided by nobody.
 createWorker(server, { infra: () => clockLive })
+
+// Request-time handler needs and task needs count too; Background and the task actor come from
+// createWorker itself.
+class Mailer extends Context.Service<Mailer, { readonly send: Effect.Effect<void> }>()('Mailer') {}
+const outbox = defineModule({
+  id: 'outbox',
+  groups: [group('outbox')],
+  handlers: (api) =>
+    HttpApiBuilder.group(api, 'outbox', (h) =>
+      h.handle('ping', () =>
+        Effect.as(Effect.andThen(Clock, Background.afterCommit(Media.use((m) => m.url))), 'ok'),
+      ),
+    ),
+  tasks: [
+    {
+      name: 'sweep',
+      every: '5m',
+      run: Effect.andThen(
+        CurrentActor,
+        Mailer.use((m) => m.send),
+      ),
+    },
+  ],
+})
+expectTypeOf<Unprovided<[typeof media, typeof outbox]>>().toEqualTypeOf<
+  Db | Clock | Background | Mailer
+>()
+const withOutbox = composeServer({ modules: [media, outbox] })
+const mailerLive = Layer.succeed(Mailer, { send: Effect.void })
+createWorker(withOutbox, { infra: () => Layer.mergeAll(dbLive, clockLive, mailerLive) })
+// @ts-expect-error Mailer (needed by outbox's task) is provided by nobody.
+createWorker(withOutbox, { infra: () => Layer.mergeAll(dbLive, clockLive) })
