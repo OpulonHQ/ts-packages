@@ -2,6 +2,13 @@ import { randomBytes } from 'node:crypto'
 import { afterAll, beforeAll, inject } from 'vitest'
 import { adminQuery, databaseUrl } from './admin.ts'
 
+declare module 'vitest' {
+  export interface ProvidedContext {
+    pgAdminUrl: string
+    pgPrefix: string
+  }
+}
+
 export interface TestDatabase {
   name: string
   url: string

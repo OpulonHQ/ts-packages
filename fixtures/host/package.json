@@ -7,12 +7,14 @@
     "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
+    "@effect/sql-pg": "4.0.3",
     "@opulonjs/admin": "workspace:*",
     "@opulonjs/cms": "workspace:*",
     "@opulonjs/core": "workspace:*",
     "@opulonjs/emails": "workspace:*",
     "@opulonjs/media": "workspace:*",
     "@opulonjs/ui": "workspace:*",
-    "@opulonjs/users": "workspace:*"
+    "@opulonjs/users": "workspace:*",
+    "effect": "4.0.3"
   }
 }

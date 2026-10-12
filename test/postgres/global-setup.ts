@@ -1,13 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import type { TestProject } from 'vitest/node'
-import { adminQuery } from './admin.ts'
-
-declare module 'vitest' {
-  export interface ProvidedContext {
-    pgAdminUrl: string
-    pgPrefix: string
-  }
-}
+import { runOpulon } from '../opulon.ts'
+import { adminQuery, databaseUrl } from './admin.ts'
 
 // Creates one template database per test run; every test file clones it (see ./index.ts).
 export default async function setup(project: TestProject) {
@@ -27,7 +21,10 @@ export default async function setup(project: TestProject) {
   // Unique per run, so parallel runs (other worktrees, CI) can share one server.
   const prefix = `tspack_${randomBytes(4).toString('hex')}`
   await adminQuery(adminUrl, `create database "${prefix}_template"`)
-  // Package migrations will be applied to the template here, through the core migrator.
+  // The fixture host's migrations (every composed package) through the real `opulon migrate`.
+  await runOpulon(['migrate', '--server', 'fixtures/host/server/opulon.ts'], {
+    DATABASE_URL_DIRECT: databaseUrl(adminUrl, `${prefix}_template`),
+  })
 
   project.provide('pgAdminUrl', adminUrl)
   project.provide('pgPrefix', prefix)
