@@ -35,3 +35,19 @@ _Avoid_: activity, history entry, log line
 **Pilot**:
 The first host app built on TSPACK (SLM), whose needs decide the v1 scope.
 _Avoid_: test project, guinea pig
+
+**UI kit**:
+The shared set of admin components and tokens that the Admin shell and every module's admin screens build on.
+_Avoid_: design system, component library, admin kit
+
+**Permission**:
+A named right a module declares (such as editing CMS pages) and that roles grant to users.
+_Avoid_: ability, capability, scope
+
+**Admin locale**:
+A language the admin itself is shown in, chosen per user.
+_Avoid_: UI language, interface locale
+
+**Content locale**:
+A language the host app's public content is published in, chosen per host app.
+_Avoid_: site language, translation
