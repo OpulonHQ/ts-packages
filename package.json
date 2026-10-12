@@ -15,7 +15,8 @@
     "pack:check": "node scripts/pack-check.ts",
     "changeset": "changeset",
     "version-packages": "changeset version && pnpm install --lockfile-only",
-    "release": "pnpm build && changeset publish"
+    "release": "pnpm build && changeset publish",
+    "snapshot": "changeset version --snapshot next && pnpm build && changeset publish --tag next --no-git-tag"
   },
   "devDependencies": {
     "@changesets/cli": "3.0.3",
