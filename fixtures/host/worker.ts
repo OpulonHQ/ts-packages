@@ -6,6 +6,7 @@ import {
   serveAdmin,
   type WorkerContext,
 } from '@opulonjs/core/workers'
+import { Mailer } from '@opulonjs/emails/server'
 import {
   type R2BucketLike,
   R2MediaStorage,
@@ -27,7 +28,13 @@ export interface Env {
   readonly DEMO_TOKEN: string
 }
 
-const demoPermissions = ['demo.notes.view', 'media.view', 'media.upload', 'media.archive']
+const demoPermissions = [
+  'demo.notes.view',
+  'emails.log.view',
+  'media.view',
+  'media.upload',
+  'media.archive',
+]
 
 // Stub until users ships: one bearer token signs in a demo staff user. Tests may narrow the
 // user's permissions with `Bearer <token>:<permission>,<permission>`.
@@ -56,6 +63,8 @@ const opulon = createWorker(server, {
       PgFromHyperdrive(env.HYPERDRIVE),
       stubAuthorization(env.DEMO_TOKEN),
       R2MediaStorage(env.MEDIA_BUCKET),
+      // The fixture logs emails instead of sending them; a real host uses Mailer.resend().
+      Mailer.log,
     ),
   buildId: (env) => env.OPULON_BUILD_ID,
 })

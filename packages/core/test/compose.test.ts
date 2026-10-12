@@ -6,6 +6,8 @@ import {
   Authorization,
   composeServer,
   CompositionError,
+  type Contribution,
+  defineExtensionPoint,
   type Module,
   Policy,
   Public,
@@ -24,6 +26,7 @@ const module = (
     permissions?: ReadonlyArray<string>
     auditActions?: ReadonlyArray<string>
     tasks?: ReadonlyArray<string>
+    contributes?: ReadonlyArray<Contribution>
   } = {},
 ): Module => ({
   id,
@@ -35,7 +38,14 @@ const module = (
   permissions: options.permissions ?? [],
   auditActions: (options.auditActions ?? []).map((key) => ({ key, subject: 'thing' })),
   tasks: (options.tasks ?? []).map((name) => ({ name, every: '5m', run: Effect.void })),
+  contributes: options.contributes ?? [],
 })
+
+// An extension point owned by `shop`; other modules contribute discounts to it.
+const discounts = defineExtensionPoint<{ readonly key: string; readonly percent: number }>(
+  'shop',
+  'discount',
+)
 
 const protectedGroup = (id: string, endpoint: HttpApiEndpoint.Constraint) =>
   HttpApiGroup.make(id).add(endpoint)
@@ -118,7 +128,72 @@ describe('composeServer fails at startup on', () => {
   )
 })
 
+describe('composeServer rejects contributions', () => {
+  test('with a duplicate key', () =>
+    fails(
+      [
+        module('shop'),
+        module('promo', {
+          dependsOn: ['shop'],
+          contributes: [
+            discounts.contribute({ key: 'promo.summer', percent: 10 }),
+            discounts.contribute({ key: 'promo.summer', percent: 20 }),
+          ],
+        }),
+      ],
+      /promo: duplicate discount "promo.summer"/,
+    ))
+
+  test('to an owner that is not composed', () =>
+    fails(
+      [module('promo', { contributes: [discounts.contribute({ key: 'promo.x', percent: 1 })] })],
+      /promo: contributes discount "promo.x", but its owner "shop" is not composed/,
+    ))
+
+  test('from a module that does not depend on the owner', () =>
+    fails(
+      [
+        module('shop'),
+        module('promo', { contributes: [discounts.contribute({ key: 'promo.x', percent: 1 })] }),
+      ],
+      /promo: contributes discount "promo.x", so it must list "shop" in dependsOn/,
+    ))
+
+  test('with a key outside the contributor prefix', () =>
+    fails(
+      [
+        module('shop'),
+        module('promo', {
+          dependsOn: ['shop'],
+          contributes: [discounts.contribute({ key: 'shop.x', percent: 1 })],
+        }),
+      ],
+      /promo: discount "shop.x" is outside the module prefix/,
+    ))
+})
+
 describe('composeServer accepts', () => {
+  test('contributions, which the owner collects frozen in module order', async () => {
+    const server = composeServer({
+      modules: [
+        module('promo', {
+          dependsOn: ['shop'],
+          contributes: [discounts.contribute({ key: 'promo.summer', percent: 10 })],
+        }),
+        module('shop', { contributes: [discounts.contribute({ key: 'shop.staff', percent: 5 })] }),
+      ],
+    })
+    const collected = await Effect.runPromise(
+      discounts.collect.pipe(Effect.provide(server.services as Layer.Layer<never>)),
+    )
+    expect(collected).toEqual([
+      { key: 'shop.staff', percent: 5 },
+      { key: 'promo.summer', percent: 10 },
+    ])
+    expect(Object.isFrozen(collected)).toBe(true)
+    expect(Object.isFrozen(collected[0])).toBe(true)
+  })
+
   test('protected endpoints with a composed or signedIn policy, ordering modules by dependsOn and allowing one task name in different modules', () => {
     const server = composeServer({
       modules: [

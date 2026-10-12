@@ -157,9 +157,22 @@ importers:
 
   packages/emails:
     dependencies:
+      '@opulonjs/admin':
+        specifier: workspace:*
+        version: link:../admin
       '@opulonjs/core':
         specifier: workspace:*
         version: link:../core
+      '@opulonjs/ui':
+        specifier: workspace:*
+        version: link:../ui
+    devDependencies:
+      effect:
+        specifier: 4.0.3
+        version: 4.0.3
+      vue:
+        specifier: 3.5.43
+        version: 3.5.43(typescript@6.0.3)
 
   packages/media:
     dependencies:

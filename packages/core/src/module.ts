@@ -27,6 +27,20 @@ export interface Task<R = never> {
   readonly run: Effect.Effect<void, unknown, R>
 }
 
+/**
+ * A value a module adds to an extension point another module owns (an email template for
+ * emails, a sitemap source for cms). Made only by the owner's helper (see defineExtensionPoint).
+ */
+export interface Contribution<Value = unknown> {
+  /** Id of the module that owns the extension point. */
+  readonly owner: string
+  /** The extension point, e.g. `emailTemplate`. */
+  readonly kind: string
+  /** Unique per extension point; inside the contributing module's prefix. */
+  readonly key: string
+  readonly value: Value
+}
+
 export interface ModuleDefinition<
   Id extends string,
   Groups extends HttpApiGroup.Constraint,
@@ -50,6 +64,8 @@ export interface ModuleDefinition<
   readonly permissions?: ReadonlyArray<`${Id}.${string}`>
   readonly auditActions?: ReadonlyArray<AuditAction<Id>>
   readonly tasks?: ReadonlyArray<Task<RTasks>>
+  /** What the module adds to other modules' extension points; it must depend on each owner. */
+  readonly contributes?: ReadonlyArray<Contribution>
 }
 
 /**
@@ -71,6 +87,7 @@ export interface Module<
   readonly permissions: ReadonlyArray<string>
   readonly auditActions: ReadonlyArray<{ readonly key: string; readonly subject: string }>
   readonly tasks: ReadonlyArray<Task<unknown>>
+  readonly contributes?: ReadonlyArray<Contribution>
   readonly '~provides'?: Provides
   readonly '~requires'?: Requires
   readonly '~handlerRequires'?: HandlerRequires
@@ -98,4 +115,5 @@ export const defineModule = <
   permissions: m.permissions ?? [],
   auditActions: m.auditActions ?? [],
   tasks: m.tasks ?? [],
+  contributes: m.contributes ?? [],
 })

@@ -1,8 +1,8 @@
+import { ContentLocales } from '@opulonjs/core'
 import { PgFromHyperdrive } from '@opulonjs/core/workers'
 import { ImageUrl, MediaLibrary, R2MediaStorage, srcset } from '@opulonjs/media/server'
 import { Effect, Layer } from 'effect'
 import { expect, test } from 'vitest'
-import { server } from '../../server/opulon.ts'
 import { files, useHost } from './helpers.ts'
 
 const host = useHost()
@@ -24,22 +24,18 @@ test('srcset lists the host widths below the original plus the original, never u
   expect(srcset(ImageUrl.cloudflare, '/a.pdf', null, [320])).toBe('')
 })
 
-/** What cms runs server-side: MediaLibrary from the composed services, over the host's infra. */
+/** What cms runs server-side (composition provides MediaLibrary and the content locales). */
 const resolve = (ids: ReadonlyArray<string>, locale: string) =>
   Effect.runPromise(
     Effect.flatMap(MediaLibrary, (library) => library.resolve(ids, locale)).pipe(
       Effect.provide(
-        // Safe: server.services erases its types; the fixture composes media, so it provides
-        // MediaLibrary once given the infra below.
-        server.services.pipe(
-          Layer.provide(
-            Layer.mergeAll(
-              PgFromHyperdrive({ connectionString: host.db.url }),
-              R2MediaStorage(host.bucket),
-            ),
-          ),
-        ) as Layer.Layer<MediaLibrary>,
+        MediaLibrary.layer({ maxBytes: 1024, widths: [320, 640, 1280] }).pipe(
+          Layer.provide(ImageUrl.layer()),
+          Layer.provide(R2MediaStorage(host.bucket)),
+          Layer.provide(PgFromHyperdrive({ connectionString: host.db.url })),
+        ),
       ),
+      Effect.provideService(ContentLocales, ['en', 'it']),
       Effect.scoped,
     ),
   )
