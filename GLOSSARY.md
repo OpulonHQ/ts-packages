@@ -75,3 +75,59 @@ _Avoid_: sign-up, registration
 **Deactivation**:
 Blocking a user from signing in while keeping them on record; it can be reversed.
 _Avoid_: deletion, ban, soft delete
+
+**Page**:
+A piece of public content that editors create and that is reachable at its own path in each content locale where it is available, built from an ordered list of sections.
+_Avoid_: post, screen, route
+
+**System page**:
+A page the host app declares by key (such as the homepage) so its code can rely on it; editors change its content but cannot delete it.
+_Avoid_: fixed page, static page, core page
+
+**Section**:
+One block of a page's content, of a single section type, placed in the page's order.
+_Avoid_: block, component, widget
+
+**Section type**:
+A kind of section the host app defines, with its fields and its own rendering on the public website.
+_Avoid_: block type, template, layout
+
+**Collection**:
+A kind of structured content the host app defines (posts, team members, testimonials, categories), whose items editors manage in the admin.
+_Avoid_: post type, content type, model
+
+**Item**:
+One entry of a collection, optionally reachable at its own public path.
+_Avoid_: entry, record, post
+
+**Draft**:
+The editable state of a page, item or site setting, never shown to the public; editors see it only through preview.
+_Avoid_: working copy, unsaved changes
+
+**Publishing**:
+Making the current draft the version the public sees; unpublishing withdraws it from the public.
+_Avoid_: activating, going live, deploying
+
+**Revision**:
+A recorded snapshot of what was published, by whom and when, which an editor can restore into the draft.
+_Avoid_: version, history entry, backup
+
+**Email template**:
+A named email a module can send (such as an invitation), with its placeholders and default wording in each locale.
+_Avoid_: mail, notification, message type
+
+**Email audience**:
+Who an email template is written for: staff (users, in their admin locale) or public (visitors, in a content locale).
+_Avoid_: recipient type, channel
+
+**Template override**:
+An editor's replacement for an email template's default subject and body in one locale, which can be reset to the default.
+_Avoid_: custom template, edited template
+
+**Email component**:
+A reusable building block of an email body (such as a button) that follows the host's branding; the emails package ships the defaults and hosts may add their own.
+_Avoid_: snippet, partial, widget
+
+**Email log**:
+The record of every email the system decided to send, with its delivery outcome.
+_Avoid_: mail queue, sent items, outbox
