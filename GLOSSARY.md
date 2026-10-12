@@ -132,6 +132,10 @@ _Avoid_: activating, going live, deploying
 A recorded snapshot of what was published, by whom and when, which an editor can restore into the draft.
 _Avoid_: version, history entry, backup
 
+**Read API**:
+The public interface through which a website reads published CMS content, and the only one: the host app's own public site uses it too.
+_Avoid_: headless API, content API, frontend API
+
 **Email template**:
 A named email a module can send (such as an invitation), with its placeholders and default wording in each locale.
 _Avoid_: mail, notification, message type
