@@ -19,6 +19,16 @@ export const Composed = Context.Reference<{
   defaultValue: () => ({ modules: [], permissions: [], auditActions: new Set() }),
 })
 
+/**
+ * The host's content locales (the languages public content is published in), first = default.
+ * Set once through `composeServer({ contentLocales })`; modules with localized content (media
+ * alt text, cms fields) read it here, and the admin reads it from `/me`.
+ */
+export const ContentLocales = Context.Reference<ReadonlyArray<string>>(
+  '@opulonjs/core/ContentLocales',
+  { defaultValue: () => ['en'] },
+)
+
 /** The build id createWorker reports in `/me`. */
 export const BuildId = Context.Reference<string>('@opulonjs/core/BuildId', {
   defaultValue: () => 'dev',
@@ -58,6 +68,7 @@ export interface ComposedServer<R = unknown> {
 }
 
 const idPattern = /^[a-z][a-z0-9_]*$/
+const localePattern = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/
 
 /**
  * Composes modules into one server: checks ids, dependencies, key prefixes and endpoint auth
@@ -68,10 +79,20 @@ export const composeServer = <const Ms extends ReadonlyArray<Module>>(options: {
   readonly modules: Ms
   /** Where the API is mounted; groups live under `<apiPrefix>/<module id>`. Default `/api`. */
   readonly apiPrefix?: `/${string}`
+  /** Content locales (e.g. `['en', 'it']`), the first is the default. Default `['en']`. */
+  readonly contentLocales?: ReadonlyArray<string>
 }): ComposedServer<Unprovided<Ms>> => {
   const apiPrefix = options.apiPrefix ?? '/api'
+  const contentLocales = options.contentLocales ?? ['en']
   const modules = sortModules(options.modules)
   const errors: Array<string> = []
+
+  if (contentLocales.length === 0) errors.push('contentLocales must list at least one locale')
+  for (const locale of contentLocales)
+    if (!localePattern.test(locale))
+      errors.push(`content locale "${locale}" must be a language tag like "en" or "pt-BR"`)
+  if (new Set(contentLocales).size !== contentLocales.length)
+    errors.push('contentLocales lists a locale twice')
 
   for (const m of modules) {
     const inPrefix = (key: string) => key === m.id || key.startsWith(`${m.id}.`)
@@ -115,11 +136,14 @@ export const composeServer = <const Ms extends ReadonlyArray<Module>>(options: {
   }
   if (errors.length > 0) throw new CompositionError(errors.join('\n'))
 
-  let services: Layer.Layer<never, unknown, unknown> = Layer.succeed(Composed, {
-    modules: modules.map((m) => m.id),
-    permissions: [...catalog],
-    auditActions,
-  })
+  let services: Layer.Layer<never, unknown, unknown> = Layer.mergeAll(
+    Layer.succeed(Composed, {
+      modules: modules.map((m) => m.id),
+      permissions: [...catalog],
+      auditActions,
+    }),
+    Layer.succeed(ContentLocales, contentLocales),
+  )
   for (const m of modules) if (m.layer) services = Layer.provideMerge(m.layer, services)
 
   const handlers = modules.map((m) => {

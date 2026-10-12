@@ -22,6 +22,8 @@ export const Me = Schema.Struct({
   modules: Schema.Array(Schema.String),
   /** Every permission key the composed modules declare; labels live in admin messages. */
   permissionCatalog: Schema.Array(Schema.String),
+  /** The host's content locales, first = default (`composeServer({ contentLocales })`). */
+  contentLocales: Schema.Array(Schema.String),
 })
 export type Me = typeof Me.Type
 
