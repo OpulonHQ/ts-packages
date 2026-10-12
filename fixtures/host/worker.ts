@@ -6,6 +6,7 @@ import {
   serveAdmin,
   type WorkerContext,
 } from '@opulonjs/core/workers'
+import { Mailer } from '@opulonjs/emails/server'
 import { Effect, Layer } from 'effect'
 import { server } from './server/opulon.ts'
 
@@ -29,7 +30,7 @@ const stubAuthorization = (token: string) =>
             name: 'Demo User',
             email: 'demo@example.test',
             locale: 'sk',
-            permissions: ['demo.notes.view'],
+            permissions: ['demo.notes.view', 'emails.log.view'],
           }
         : undefined,
     ),
@@ -37,7 +38,12 @@ const stubAuthorization = (token: string) =>
 
 const opulon = createWorker(server, {
   infra: (env: Env) =>
-    Layer.mergeAll(PgFromHyperdrive(env.HYPERDRIVE), stubAuthorization(env.DEMO_TOKEN)),
+    Layer.mergeAll(
+      PgFromHyperdrive(env.HYPERDRIVE),
+      stubAuthorization(env.DEMO_TOKEN),
+      // The fixture logs emails instead of sending them; a real host uses Mailer.resend().
+      Mailer.log,
+    ),
   buildId: (env) => env.OPULON_BUILD_ID,
 })
 
