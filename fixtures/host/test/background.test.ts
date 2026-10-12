@@ -93,6 +93,7 @@ const bg = defineModule({
 const server = composeServer({ modules: [bg] })
 const worker = createWorker(server, {
   infra: (env: { readonly url: string }) => PgFromHyperdrive({ connectionString: env.url }),
+  buildId: () => 'test',
 })
 const db = useTestDatabase()
 

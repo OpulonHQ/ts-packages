@@ -74,7 +74,7 @@ async function sql(statement: string) {
 const runs = () => sql('select task, actor from tk.run order by id')
 
 const tick = (modules: Parameters<typeof composeServer>[0]['modules'], iso: string) =>
-  createWorker(composeServer({ modules }), { infra }).scheduled(
+  createWorker(composeServer({ modules }), { infra, buildId: () => 'test' }).scheduled(
     { scheduledTime: Date.parse(iso), cron: '*/5 * * * *' },
     { url: db.url },
   )
