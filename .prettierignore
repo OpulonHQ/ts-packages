@@ -3,3 +3,4 @@ dist/
 .packed/
 .changeset/*.md
 fixtures/host/public/
+.claude/
