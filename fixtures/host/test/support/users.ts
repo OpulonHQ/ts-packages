@@ -241,6 +241,20 @@ export const tokenFrom = (html: string) => {
   return decodeURIComponent(match[1]!)
 }
 
+/** Resolves once `count` queries of the database wait for a lock (a barrier or a row lock). */
+export async function lockWaits(databaseUrl: string, count: number) {
+  for (let i = 0; i < 250; i++) {
+    const [row] = await sqlQuery<{ n: number }>(
+      databaseUrl,
+      `select count(*)::int as n from pg_stat_activity
+        where datname = current_database() and wait_event_type = 'Lock'`,
+    )
+    if (row!.n >= count) return
+    await new Promise((r) => setTimeout(r, 20))
+  }
+  throw new Error(`${count} lock wait(s) never happened`)
+}
+
 /**
  * Holds every `before insert` on `table` whose row matches `when` (a plpgsql condition on `new`)
  * at a barrier, so a test can run another request while that insert is in flight. `release`
@@ -267,20 +281,8 @@ export async function pauseInserts(databaseUrl: string, table: string, when = 't
     held = false
   }
   return {
-    /** Resolves once `count` inserts wait at the barrier. */
-    async reached(count = 1) {
-      for (let i = 0; i < 250; i++) {
-        const [row] = await sqlQuery<{ n: number }>(
-          databaseUrl,
-          `select count(*)::int as n from pg_locks
-            where locktype = 'advisory' and not granted and objid = $1::bigint::oid`,
-          [key],
-        )
-        if (row!.n >= count) return
-        await new Promise((r) => setTimeout(r, 20))
-      }
-      throw new Error(`${count} insert(s) on ${table} never reached the barrier`)
-    },
+    /** Resolves once an insert waits at the barrier. */
+    reached: () => lockWaits(databaseUrl, 1),
     release,
     async [Symbol.asyncDispose]() {
       await release()

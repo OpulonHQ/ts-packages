@@ -25,7 +25,8 @@ export const adminLink = (route: 'accept-invitation' | 'reset-password', token: 
 
 /**
  * Creates an invitation for `email` (lowercase) with the given roles, replacing that address's
- * pending invitations, and records `users.invited`. Run it in the caller's transaction.
+ * pending invitation, and records `users.invited`. Run it in the caller's transaction, after
+ * `lockAccessWrites` and the caller's checks.
  * Returns the one-time token; only its hash is stored.
  */
 export const createInvitation = Effect.fn('Users.createInvitation')(function* (o: {

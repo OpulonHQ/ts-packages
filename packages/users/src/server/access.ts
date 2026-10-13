@@ -53,6 +53,17 @@ export const loadAccess = Effect.fn('Users.loadAccess')(function* (id: string) {
   } satisfies Access
 })
 
+/**
+ * The lock every users, roles and invitation write takes first in its transaction: their checks
+ * (the actor's access, role permissions, Super admin count) and writes never interleave, so each
+ * sees the outcome of the one before.
+ */
+// ponytail: one lock serializes all users/roles writes; they are rare admin actions.
+export const lockAccessWrites = Effect.gen(function* () {
+  const sql = yield* SqlClient
+  yield* sql`select id from users.role where id = ${superAdminRole} for update`
+})
+
 // The escalation guard (TSPACK-10), shared by invitations, role edits and role assignment.
 
 /** Whether `actor` may grant (or take away) `role`: Super admin only by a Super admin, any other

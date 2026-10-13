@@ -13,6 +13,7 @@ import {
   UsersGroup,
   usersPermissions,
 } from '../api.ts'
+import { lockAccessWrites } from './access.ts'
 import { BetterAuth } from './auth.ts'
 import { createInvitation } from './invitations.ts'
 import createUsers from './migrations/0001_create_users.ts'
@@ -51,15 +52,22 @@ const inviteSuperAdmin = (email: string) =>
     const address = email.trim().toLowerCase()
     if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(address))
       return yield* Effect.fail(new Error(`not an email address: ${email}`))
-    const [holder] = yield* sql`select 1 from users.user_role ur
-      join users."user" u on u.id = ur.user_id
-      where ur.role_id = ${superAdminRole} and u.deactivated_at is null limit 1`
-    if (holder)
-      return yield* Effect.fail(
-        new Error('a Super admin already exists; invite further users from the admin'),
-      )
     const invitation = yield* withTransaction(
-      createInvitation({ email: address, roleIds: [superAdminRole], invitedBy: null }),
+      Effect.gen(function* () {
+        yield* lockAccessWrites
+        const [holder] = yield* sql`select 1 from users.user_role ur
+          join users."user" u on u.id = ur.user_id
+          where ur.role_id = ${superAdminRole} and u.deactivated_at is null limit 1`
+        if (holder)
+          return yield* Effect.fail(
+            new Error('a Super admin already exists; invite further users from the admin'),
+          )
+        return yield* createInvitation({
+          email: address,
+          roleIds: [superAdminRole],
+          invitedBy: null,
+        })
+      }),
     )
     return `Super admin invitation for ${address} (valid 7 days, shown once):\n${invitation.link}`
   })
