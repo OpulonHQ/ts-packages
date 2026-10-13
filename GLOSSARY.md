@@ -29,7 +29,7 @@ Recurring work a module declares to run at a fixed interval (every few minutes, 
 _Avoid_: cron job, job, worker
 
 **Host app**:
-The project's own application (SLM, ICF, ...) that installs packages, mounts their API, serves the admin and renders the public website.
+A project's own application that installs packages, mounts their API, serves the admin and renders the public website.
 _Avoid_: consumer app, client app, site
 
 **Admin shell**:
@@ -57,7 +57,7 @@ The Audit events of one subject, shown on that subject's admin screen.
 _Avoid_: history, activity feed
 
 **Pilot**:
-The first host app built on TSPACK (SLM), whose needs decide the v1 scope.
+The first host app built on TSPACK, whose needs decide the v1 scope.
 _Avoid_: test project, guinea pig
 
 **UI kit**:
