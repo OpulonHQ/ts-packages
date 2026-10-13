@@ -3,6 +3,7 @@ import { Effect } from 'effect'
 import { SqlClient } from 'effect/sql/SqlClient'
 import { type Alternate, CmsNotFound, publicPath } from '../api.ts'
 import { cacheTags } from './cache.ts'
+import { sitemapXml } from './sitemap-xml.ts'
 
 /** One URL of a sitemap. */
 export interface SitemapEntry {
@@ -19,7 +20,7 @@ export interface SitemapEntry {
 export interface SitemapSource {
   /** Inside the contributing module's prefix, e.g. `shop.products`. */
   readonly key: string
-  /** Every URL; only public, indexable content. Runs with the request's SqlClient. */
+  /** Every public, indexable URL in deterministic order. Runs with the request's SqlClient. */
   readonly list: Effect.Effect<ReadonlyArray<SitemapEntry>, unknown, SqlClient>
 }
 
@@ -67,13 +68,8 @@ export const documentsSource = (key: string, kind: 'page' | 'item', collection?:
   })
 
 /** URLs per child file (the sitemaps protocol's limit). */
-export const maxUrls = 50_000
+export { maxUrls } from './sitemap-xml.ts'
 
-const escape = (text: string) =>
-  text.replace(
-    /[&<>"']/g,
-    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[c]!,
-  )
 const latest = (entries: ReadonlyArray<SitemapEntry>) =>
   entries.reduce<string | undefined>(
     (max, e) =>
@@ -88,38 +84,26 @@ export const makeSitemaps = Effect.gen(function* () {
   const locales = yield* ContentLocales
   const tags = [cacheTags.all, cacheTags.routes]
 
-  /** A source's files: `<key>.xml`, or `<key>-1.xml`, `<key>-2.xml`... above `maxUrls`. */
-  const files = (source: SitemapSource) =>
+  const files = (origin: string, source: SitemapSource) =>
     source.list.pipe(
       Effect.provideService(SqlClient, sql),
       Effect.orDie,
-      Effect.map((entries) => {
-        const chunks = Math.ceil(entries.length / maxUrls)
-        return chunks <= 1
-          ? [{ name: `${source.key}.xml`, entries }]
-          : Array.from({ length: chunks }, (_, i) => ({
-              name: `${source.key}-${i + 1}.xml`,
-              entries: entries.slice(i * maxUrls, (i + 1) * maxUrls),
-            }))
-      }),
+      Effect.flatMap((entries) => sitemapXml(origin, locales).files(source.key, entries)),
     )
-
-  const url = (origin: string, path: string) => escape(encodeURI(`${origin}${path}`))
-  const lastmod = (value: string | undefined) =>
-    value === undefined ? '' : `<lastmod>${escape(value)}</lastmod>`
 
   return {
     /** `children` is the path the child files are served under (ends with `/`). */
     index: (origin: string, children: string) =>
       Effect.gen(function* () {
-        const all = (yield* Effect.forEach(sources, files)).flat()
+        const xml = sitemapXml(origin, locales)
+        const all = (yield* Effect.forEach(sources, (source) => files(origin, source))).flat()
         const body =
           '<?xml version="1.0" encoding="UTF-8"?>\n' +
           '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' +
           all
             .map(
               (f) =>
-                `<sitemap><loc>${url(origin, `${children}${f.name}`)}</loc>${lastmod(latest(f.entries))}</sitemap>`,
+                `<sitemap><loc>${xml.url(`${children}${f.name}`)}</loc>${xml.lastmod(latest(f.entries))}</sitemap>`,
             )
             .join('') +
           '</sitemapindex>\n'
@@ -130,32 +114,9 @@ export const makeSitemaps = Effect.gen(function* () {
       Effect.gen(function* () {
         for (const source of sources) {
           if (!name.startsWith(source.key)) continue
-          const file = (yield* files(source)).find((f) => f.name === name)
+          const file = (yield* files(origin, source)).find((f) => f.name === name)
           if (!file) continue
-          const urls = file.entries.map((e) => {
-            const alternates = e.alternates ?? []
-            const fallback = alternates.find((a) => a.locale === locales[0])
-            const links = [
-              ...alternates.map((a) => [a.locale, a.path] as const),
-              ...(fallback ? [['x-default', fallback.path] as const] : []),
-            ]
-            return (
-              `<url><loc>${url(origin, e.path)}</loc>${lastmod(e.lastmod)}` +
-              links
-                .map(
-                  ([hreflang, path]) =>
-                    `<xhtml:link rel="alternate" hreflang="${escape(hreflang)}" href="${url(origin, path)}"/>`,
-                )
-                .join('') +
-              '</url>'
-            )
-          })
-          const body =
-            '<?xml version="1.0" encoding="UTF-8"?>\n' +
-            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" ' +
-            'xmlns:xhtml="http://www.w3.org/1999/xhtml">' +
-            urls.join('') +
-            '</urlset>\n'
+          const body = sitemapXml(origin, locales).body(file.entries)
           return { body, tags }
         }
         return yield* new CmsNotFound({ id: name })
