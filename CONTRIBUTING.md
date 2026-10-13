@@ -49,6 +49,14 @@ const db = useTestDatabase() // fresh clone per file, dropped afterwards; use db
 
 Copy the source file from the package's Git tag matching your installed version. Preserve its props and slots, and change private relative imports to public package imports. Put a source header on the first line:
 
+For example, from a checkout of `OpulonHQ/ts-packages`, copy version `0.1.0` to a host file:
+
+```sh
+mkdir -p /path/to/host/admin/overrides
+printf '%s\n' '<!-- @opulonjs/source @opulonjs/ui@0.1.0 src/components/EmptyState.vue -->' > /path/to/host/admin/overrides/EmptyState.vue
+git show '@opulonjs/ui@0.1.0:packages/ui/src/components/EmptyState.vue' >> /path/to/host/admin/overrides/EmptyState.vue
+```
+
 ```vue
 <!-- @opulonjs/source @opulonjs/ui@0.1.0 src/components/EmptyState.vue -->
 ```
