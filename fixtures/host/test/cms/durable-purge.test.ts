@@ -31,6 +31,10 @@ const inFlight = useCmsHost(undefined, () => {
   entered.resolve()
   return completed.promise
 })
+const missingCache = useCmsHost(undefined, async () => ({
+  success: false,
+  errors: [{ code: 1, message: 'refused' }],
+}))
 
 const status = async (
   fixture: typeof host,
@@ -57,6 +61,24 @@ test('an immediate purge in flight does not report a retry warning for a success
     expect((await publishing).status).toBe(200)
   }
   expect((await status(inFlight)).body.summary.total).toBe(0)
+})
+
+test('a scheduled invocation without cache retains the failed purge for editors', async () => {
+  const created = await missingCache.create(page({ en: '/missing-scheduled-cache' }))
+  expect((await missingCache.publish(created.body.id)).status).toBe(200)
+  await missingCache.query(
+    "update core.cache_purge set next_attempt_at = now() - interval '1 second'",
+  )
+  await missingCache.worker.scheduled(
+    { scheduledTime: Date.now(), cron: '*/5 * * * *' },
+    missingCache.env(),
+    { waitUntil: () => {} },
+  )
+  const after = await status(missingCache)
+  expect(after.body.summary.total).toBe(1)
+  expect(after.body.rows).toMatchObject([
+    { attempts: 2, state: 'queued', error: 'Cache purge failed.' },
+  ])
 })
 
 test('core exposes safe purge status to media-only staff and rejects anonymous reads', async () => {
