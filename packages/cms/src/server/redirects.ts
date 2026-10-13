@@ -24,21 +24,41 @@ import { parseCsv } from './csv.ts'
 import { uuid } from './document.ts'
 
 const maxPath = 1024
-/** Starts with one `/`; no whitespace, control characters, query or fragment. */
-const pathPattern = /^\/(?!\/)[^\s?#\p{Cc}]*$/u
+/** Starts with one `/` (not `//`); no whitespace, control characters, `\`, query or fragment. */
+const pathPattern = /^\/(?!\/)[^\s?#\\\p{Cc}]*$/u
 
 /**
- * The form redirect paths are stored and looked up in: trimmed, without a trailing slash (so
- * `/old/` and `/old` are one path). Undefined when the input is not a locale-relative path.
+ * The canonical form of a decoded path, as the Read API's `resolve` passes it: dot segments
+ * resolved (never above the root), empty segments (repeated or trailing slashes) dropped.
+ * Undefined when it is not a locale-relative path.
+ */
+const canonicalPath = (path: string) => {
+  if (path.length > maxPath || !pathPattern.test(path)) return undefined
+  const segments: Array<string> = []
+  for (const segment of path.split('/'))
+    if (segment === '..') segments.pop()
+    else if (segment !== '' && segment !== '.') segments.push(segment)
+  return `/${segments.join('/')}`
+}
+
+/**
+ * The form redirect paths are stored and compared in, from what an editor writes (a URL path):
+ * trimmed, percent-escapes decoded once (`/caf%C3%A9` is `/café`, as `resolve` decodes request
+ * paths), then canonical (`/a//b/../c/` is `/a/c`). Undefined when it is not a path.
  */
 export const redirectPath = (raw: string) => {
-  const path = raw.trim().replace(/(.)\/+$/, '$1')
-  return path.length <= maxPath && pathPattern.test(path) ? path : undefined
+  let decoded: string
+  try {
+    decoded = decodeURIComponent(raw.trim())
+  } catch {
+    return undefined
+  }
+  return canonicalPath(decoded)
 }
 
 const notAPath = (raw: string) =>
-  `"${raw.slice(0, 200)}" is not a path: it must start with "/" and have no spaces, "?" or "#" ` +
-  `(at most ${maxPath} characters).`
+  `"${raw.slice(0, 200)}" is not a path: it must start with "/" and have no spaces, "?", "#" ` +
+  `or "\\" (at most ${maxPath} characters).`
 
 interface Rule {
   readonly id: string
@@ -139,7 +159,10 @@ type Failure = Forbidden | CmsInvalid | CmsConflict
 export class Redirects extends Context.Service<
   Redirects,
   {
-    /** The redirect for a locale-relative request path (trailing slash ignored), if any. */
+    /**
+     * The redirect for a decoded, locale-relative request path (compared in canonical form:
+     * dot segments, repeated and trailing slashes ignored), if any.
+     */
     readonly lookup: (
       locale: string,
       path: string,
@@ -247,7 +270,8 @@ export class Redirects extends Context.Service<
       return {
         lookup: Effect.fn('Redirects.lookup')(
           function* (locale: string, path: string) {
-            const from = redirectPath(path)
+            // Already decoded by the caller: canonical only, never decoded twice.
+            const from = canonicalPath(path)
             if (from === undefined) return Option.none()
             const [row] = yield* sql<{ to_path: string; status: RedirectStatus }>`
               select to_path, status from cms.redirect
