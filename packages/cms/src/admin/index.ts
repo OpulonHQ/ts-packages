@@ -1,6 +1,6 @@
 import { defineAdminModule, type Lazy } from '@opulonjs/admin'
 import { defineAsyncComponent, defineComponent, h, provide, type Component } from 'vue'
-import { cmsAuditActions, type CmsDefinitions, cmsPermissions } from '../api.ts'
+import { cmsAuditActions, type CmsDefinitions, cmsPermissions, type FieldGroup } from '../api.ts'
 import { cmsContextKey } from './use-cms.ts'
 
 export type { CmsWidgetProps } from './use-cms.ts'
@@ -14,6 +14,8 @@ export const builtInWidgets = [
   'select',
   'boolean',
   'media',
+  'link',
+  'reference',
 ] as const
 
 export interface CmsAdminOptions {
@@ -24,19 +26,34 @@ export interface CmsAdminOptions {
 }
 
 /**
- * The cms module's admin side: pages under Content, with forms generated from the definitions.
+ * The cms module's admin side: pages, collections, menus, site settings and redirects under
+ * Content, with forms generated from the definitions.
  * Fails at composition when a field names a widget that is neither built in nor registered.
  */
 export const cmsAdmin = (options: CmsAdminOptions) => {
   const registered = options.widgets ?? {}
   const known = new Set<string>([...builtInWidgets, ...Object.keys(registered)])
-  for (const [typeKey, type] of Object.entries(options.definitions.sections))
-    for (const [name, field] of Object.entries(type.fields))
+  const { definitions } = options
+  const groups: Array<[string, FieldGroup]> = [
+    ...Object.entries(definitions.sections).map(([k, g]): [string, FieldGroup] => [
+      `section type "${k}"`,
+      g,
+    ]),
+    ...Object.entries(definitions.collections).map(([k, g]): [string, FieldGroup] => [
+      `collection "${k}"`,
+      g,
+    ]),
+    ['site settings', definitions.settings],
+  ]
+  for (const [owner, group] of groups)
+    for (const [name, field] of Object.entries(group.fields))
       if (!known.has(field.widget))
         throw new Error(
-          `cmsAdmin: field "${name}" of section type "${typeKey}" uses the widget ` +
+          `cmsAdmin: field "${name}" of ${owner} uses the widget ` +
             `"${field.widget}", which is not registered. Add it to cmsAdmin({ widgets }).`,
         )
+  const hasCollections = Object.keys(definitions.collections).length > 0
+  const hasMenus = Object.keys(definitions.menus).length > 0
   const context = {
     definitions: options.definitions,
     widgets: Object.fromEntries(
@@ -79,6 +96,30 @@ export const cmsAdmin = (options: CmsAdminOptions) => {
         component: screen(() => import('./PageScreen.vue')),
       },
       {
+        name: 'cms.collections',
+        path: '/cms/collections/:collection?',
+        permission: 'cms.collections.view',
+        component: screen(() => import('./CollectionsScreen.vue')),
+      },
+      {
+        name: 'cms.item',
+        path: '/cms/items/:id',
+        permission: 'cms.collections.view',
+        component: screen(() => import('./ItemScreen.vue')),
+      },
+      {
+        name: 'cms.settings',
+        path: '/cms/settings',
+        permission: 'cms.site.view',
+        component: screen(() => import('./SettingsScreen.vue')),
+      },
+      {
+        name: 'cms.menus',
+        path: '/cms/menus/:key?',
+        permission: 'cms.site.view',
+        component: screen(() => import('./MenusScreen.vue')),
+      },
+      {
         name: 'cms.redirects',
         path: '/cms/redirects',
         permission: 'cms.redirects.view',
@@ -87,6 +128,32 @@ export const cmsAdmin = (options: CmsAdminOptions) => {
     ],
     nav: [
       { label: 'nav.pages', route: 'cms.pages', icon: 'i-lucide-file-text', group: 'content' },
+      ...(hasCollections
+        ? [
+            {
+              label: 'nav.collections',
+              route: 'cms.collections',
+              icon: 'i-lucide-library',
+              group: 'content',
+            } as const,
+          ]
+        : []),
+      ...(hasMenus
+        ? [
+            {
+              label: 'nav.menus',
+              route: 'cms.menus',
+              icon: 'i-lucide-menu',
+              group: 'content',
+            } as const,
+          ]
+        : []),
+      {
+        label: 'nav.settings',
+        route: 'cms.settings',
+        icon: 'i-lucide-settings-2',
+        group: 'content',
+      },
       {
         label: 'nav.redirects',
         route: 'cms.redirects',

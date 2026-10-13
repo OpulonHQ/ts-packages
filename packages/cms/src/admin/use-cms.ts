@@ -1,13 +1,16 @@
 import { useAdmin, useApiClient } from '@opulonjs/admin'
-import { computed, inject, type Component, type InjectionKey } from 'vue'
+import { computed, inject, ref, type Component, type InjectionKey } from 'vue'
 import {
   CmsConflict,
   type CmsDefinitions,
   CmsGroup,
   CmsInvalid,
   type Field,
+  type ItemDocument,
   labelText,
+  type MenuDocument,
   type PageDocument,
+  type SettingsDocument,
   type PageSummary,
   type RedirectInput,
 } from '../api.ts'
@@ -71,6 +74,58 @@ export const useRedirects = () => {
     can: admin.can,
     contentLocales: computed(() => admin.me.value?.contentLocales ?? []),
   }
+}
+
+/** The collections, site settings and menus API for admin screens. */
+export const useContent = () => {
+  const cms = useApiClient(CmsGroup)
+  const admin = useAdmin()
+  return {
+    listItems: (collection: string) =>
+      cms((client) => client.listItems({ params: { collection } })),
+    getItem: (id: string) => cms((client) => client.getItem({ params: { id } })),
+    createItem: (collection: string, draft: ItemDocument) =>
+      cms((client) => client.createItem({ params: { collection }, payload: draft })),
+    saveItem: (id: string, draft: ItemDocument) =>
+      cms((client) => client.saveItemDraft({ params: { id }, payload: draft })),
+    removeItem: (id: string) => cms((client) => client.deleteItem({ params: { id } })),
+    publishItem: (id: string) => cms((client) => client.publishItem({ params: { id } })),
+    unpublishItem: (id: string) => cms((client) => client.unpublishItem({ params: { id } })),
+    getSettings: () => cms((client) => client.getSettings()),
+    saveSettings: (draft: SettingsDocument) =>
+      cms((client) => client.saveSettingsDraft({ payload: draft })),
+    publishSettings: () => cms((client) => client.publishSettings()),
+    unpublishSettings: () => cms((client) => client.unpublishSettings()),
+    getMenu: (key: string) => cms((client) => client.getMenu({ params: { key } })),
+    saveMenu: (key: string, draft: MenuDocument) =>
+      cms((client) => client.saveMenuDraft({ params: { key }, payload: draft })),
+    publishMenu: (key: string) => cms((client) => client.publishMenu({ params: { key } })),
+    unpublishMenu: (key: string) => cms((client) => client.unpublishMenu({ params: { key } })),
+    listPages: () => cms((client) => client.listPages()),
+    can: admin.can,
+    contentLocales: computed(() => admin.me.value?.contentLocales ?? []),
+  }
+}
+
+/** Runs an editor action: pending flag, then a success or failure message to show. */
+export const useAction = (failed: () => string) => {
+  const pending = ref(false)
+  const status = ref<{ kind: 'ok' | 'error'; message: string }>()
+  const run = async <T>(action: () => Promise<T>, done: string): Promise<T | undefined> => {
+    pending.value = true
+    status.value = undefined
+    try {
+      const result = await action()
+      status.value = { kind: 'ok', message: done }
+      return result
+    } catch (error) {
+      status.value = { kind: 'error', message: failureMessage(error, failed()) }
+      return undefined
+    } finally {
+      pending.value = false
+    }
+  }
+  return { pending, status, run }
 }
 
 /** System pages go by their label in the admin locale, other pages by the server's title. */

@@ -4,20 +4,16 @@
  * generated from the definitions, and save draft / publish / unpublish / delete.
  */
 import { useI18n } from '@opulonjs/admin'
-import { MediaPicker } from '@opulonjs/media/admin'
 import { UButton, UCard } from '@opulonjs/ui'
 import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
 import FieldSelect from '@opulonjs/ui/components/Field/Select'
-import FieldText from '@opulonjs/ui/components/Field/Text'
-import FieldTextarea from '@opulonjs/ui/components/Field/Textarea'
-import FieldToggle from '@opulonjs/ui/components/Field/Toggle'
-import LocaleTabs from '@opulonjs/ui/components/LocaleTabs'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
 import StatusBadge from '@opulonjs/ui/components/StatusBadge'
 import { computed, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { labelText, type Page, type PageDocument, type PageLocale } from '../api.ts'
-import FieldControl from './FieldControl.vue'
+import FieldsForm from './FieldsForm.vue'
+import LocaleDetails from './LocaleDetails.vue'
 import { failureMessage, pageTitle, useCmsContext, usePages } from './use-cms.ts'
 
 /** The draft as edited: plain mutable copies of the document's parts. */
@@ -115,13 +111,6 @@ function move(index: number, by: -1 | 1) {
   const [section] = sections.splice(index, 1)
   sections.splice(index + by, 0, section!)
 }
-
-/** A localized field's `{ [locale]: value }` in a section, created on first use. */
-const localized = (data: Record<string, unknown>, field: string) => {
-  const current = data[field]
-  if (current !== null && typeof current === 'object') return current as Record<string, unknown>
-  return (data[field] = {}) as Record<string, unknown>
-}
 </script>
 
 <template>
@@ -187,48 +176,7 @@ const localized = (data: Record<string, unknown>, field: string) => {
           <template #header>
             <h2 class="font-semibold text-highlighted">{{ t('cms.page.details') }}</h2>
           </template>
-          <LocaleTabs :locales="locales">
-            <template v-for="code in locales" :key="code" #[code]>
-              <FieldText
-                v-model="draft.locales[code]!.path"
-                :name="`locales.${code}.path`"
-                :label="t('cms.page.path')"
-                :help="t('cms.page.pathHelp')"
-                :disabled="!canEdit"
-              />
-              <FieldToggle
-                v-model="draft.locales[code]!.available"
-                :name="`locales.${code}.available`"
-                :label="t('cms.page.available')"
-                :disabled="!canEdit"
-              />
-              <FieldText
-                v-model="draft.locales[code]!.seo.title"
-                :name="`locales.${code}.seo.title`"
-                :label="t('cms.page.seoTitle')"
-                :disabled="!canEdit"
-              />
-              <FieldTextarea
-                v-model="draft.locales[code]!.seo.description"
-                :name="`locales.${code}.seo.description`"
-                :label="t('cms.page.seoDescription')"
-                :rows="2"
-                :disabled="!canEdit"
-              />
-              <MediaPicker
-                v-model="draft.locales[code]!.seo.image"
-                :label="t('cms.page.seoImage')"
-                accept="image"
-                :disabled="!canEdit"
-              />
-              <FieldToggle
-                v-model="draft.locales[code]!.seo.noindex"
-                :name="`locales.${code}.seo.noindex`"
-                :label="t('cms.page.noindex')"
-                :disabled="!canEdit"
-              />
-            </template>
-          </LocaleTabs>
+          <LocaleDetails :value="draft.locales" :locales="locales" :disabled="!canEdit" />
         </UCard>
 
         <div class="space-y-4">
@@ -269,37 +217,14 @@ const localized = (data: Record<string, unknown>, field: string) => {
                 </div>
               </div>
             </template>
-            <div class="space-y-4">
-              <template
-                v-for="(field, key) in definitions.sections[section.type]?.fields ?? {}"
-                :key="key"
-              >
-                <fieldset v-if="field.localized" class="space-y-2">
-                  <legend class="text-sm font-medium text-highlighted">
-                    {{ labelText(field.label, locale) }}
-                  </legend>
-                  <LocaleTabs :locales="locales">
-                    <template v-for="code in locales" :key="code" #[code]>
-                      <FieldControl
-                        v-model="localized(section.data, String(key))[code]"
-                        :field="field"
-                        :name="`sections.${index}.${key}.${code}`"
-                        :label="labelText(field.label, locale)"
-                        :disabled="!canEdit"
-                      />
-                    </template>
-                  </LocaleTabs>
-                </fieldset>
-                <FieldControl
-                  v-else
-                  v-model="section.data[key]"
-                  :field="field"
-                  :name="`sections.${index}.${key}`"
-                  :label="labelText(field.label, locale)"
-                  :disabled="!canEdit"
-                />
-              </template>
-            </div>
+            <FieldsForm
+              v-if="definitions.sections[section.type]"
+              v-model:data="section.data"
+              :group="definitions.sections[section.type]!"
+              :locales="locales"
+              :name="`sections.${index}`"
+              :disabled="!canEdit"
+            />
           </UCard>
           <div v-if="canEdit" class="flex items-end gap-2">
             <FieldSelect

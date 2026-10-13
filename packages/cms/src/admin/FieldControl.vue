@@ -10,6 +10,8 @@ import FieldTextarea from '@opulonjs/ui/components/Field/Textarea'
 import FieldToggle from '@opulonjs/ui/components/Field/Toggle'
 import { computed } from 'vue'
 import { type Field, labelText } from '../api.ts'
+import LinkControl from './LinkControl.vue'
+import ReferenceControl from './ReferenceControl.vue'
 import { useCmsContext } from './use-cms.ts'
 
 const model = defineModel<unknown>()
@@ -99,6 +101,21 @@ const select = computed({
     v-model="text"
     :label="label"
     :accept="field.accept"
+    :disabled="disabled"
+  />
+  <LinkControl
+    v-else-if="field.widget === 'link'"
+    v-model="model"
+    :name="name"
+    :label="label"
+    :disabled="disabled"
+  />
+  <ReferenceControl
+    v-else-if="field.widget === 'reference'"
+    v-model="model"
+    :field="field"
+    :name="name"
+    :label="label"
     :disabled="disabled"
   />
   <component
