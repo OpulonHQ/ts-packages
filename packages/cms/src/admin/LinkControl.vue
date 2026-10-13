@@ -64,7 +64,7 @@ const target = computed({
     const l = link.value
     if (!l) return
     if (value === null) {
-      if (l.type === 'item' || l.type === 'page') model.value = { type: l.type, id: '' }
+      if (l.type === 'item' || l.type === 'page') model.value = null
       return
     }
     if (l.type === 'system') model.value = { type: 'system', key: String(value) }

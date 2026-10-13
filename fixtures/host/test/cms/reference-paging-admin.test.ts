@@ -1,5 +1,5 @@
 import { createAdmin } from '@opulonjs/admin'
-import type { Item } from '@opulonjs/cms/api'
+import type { Item, SiteSettings } from '@opulonjs/cms/api'
 import { expect, onTestFinished, test } from 'vitest'
 import { brand } from '../../admin/brand.ts'
 import { adminModules } from '../../admin/modules.ts'
@@ -70,4 +70,38 @@ test('a reference picker searches beyond page one, retains selections and discar
         (await host.call<Item>('GET', `/items/${post.body.id}`)).body.draft.data.categories,
     )
     .toEqual([ids[30], ids[29]])
+})
+
+test('a single item link resolves a target beyond page one and can be cleared and saved', async () => {
+  let late: Item | undefined
+  for (let n = 1; n <= 31; n++) {
+    late = (
+      await host.call<Item>('POST', '/collections/posts/items', {
+        body: { locales: {}, data: { title: { en: `Link ${String(n).padStart(2, '0')}` } } },
+      })
+    ).body
+  }
+  if (!late) throw new Error('no item was created')
+  expect(
+    (
+      await host.call('PUT', '/settings/draft', {
+        body: { data: { cta: { type: 'item', id: late.id } } },
+      })
+    ).status,
+  ).toBe(200)
+  history.replaceState(null, '', '/admin/cms/settings')
+  document.body.innerHTML = '<div id="app"></div>'
+  const app = createAdmin({ brand, modules: adminModules, buildId: 'build-1', fetch: host.fetch })
+  app.mount('#app')
+  onTestFinished(() => app.unmount())
+  const clear = () => document.querySelector<HTMLButtonElement>('[aria-label="Odstrániť Link 31"]')
+  await expect.poll(clear).toBeTruthy()
+  clear()?.click()
+  const save = [...document.querySelectorAll('button')].find(
+    (button) => button.textContent?.trim() === 'Uložiť koncept',
+  )
+  save?.click()
+  await expect
+    .poll(async () => (await host.call<SiteSettings>('GET', '/settings')).body.draft.data.cta)
+    .toBeUndefined()
 })

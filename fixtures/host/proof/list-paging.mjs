@@ -233,4 +233,24 @@ export default async (ctx) => {
   await shot('reference-persisted')
   await page.setViewportSize({ width: 390, height: 844 })
   await shot('reference-phone')
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await api('PUT', '/cms/settings/draft', {
+    data: { cta: { type: 'item', id: state.posts[599].id } },
+  })
+  await page.goto(`${base}/admin/cms/settings`)
+  const clearLink = page.getByRole('button', { name: 'Remove Paging 600', exact: true })
+  await clearLink.waitFor()
+  await shot('single-reference-beyond-first-page')
+  await clearLink.click()
+  const savedSettings = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/api/cms/settings/draft') && response.request().method() === 'PUT',
+  )
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click()
+  check((await savedSettings).status() === 200, 'single reference clears and saves successfully')
+  check(
+    !Object.hasOwn((await api('GET', '/cms/settings')).draft.data, 'cta'),
+    'cleared single reference is absent from the persisted draft',
+  )
+  await shot('single-reference-cleared')
 }
