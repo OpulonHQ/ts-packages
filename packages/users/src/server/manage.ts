@@ -11,7 +11,7 @@ import { Context, Effect, Layer } from 'effect'
 import { BadRequest, Conflict, Forbidden, NotFound } from 'effect/http-api/HttpApiError'
 import { SqlClient } from 'effect/sql/SqlClient'
 import { Refused, type RoleInfo, superAdminRole, type UserInfo } from '../api.ts'
-import { type Access, canGrant, loadAccess, outranks } from './access.ts'
+import { type Access, canGrant, loadAccess, lockAccessWrites, outranks } from './access.ts'
 
 /** Permissions nobody may take from themselves (no self-lockout). */
 const lockoutKeys = ['users.manage', 'users.roles.manage'] as const
@@ -95,8 +95,7 @@ export class UserManagement extends Context.Service<
           withTransaction(
             Effect.gen(function* () {
               const me = yield* CurrentUser
-              // ponytail: one lock serializes all users/roles writes; they are rare admin actions.
-              yield* sql`select id from users.role where id = ${superAdminRole} for update`
+              yield* lockAccessWrites
               const holdersBefore = yield* superAdmins
               const actor = yield* loadAccess(me.id)
               if (!actor?.active || !actor.user.permissions.includes(required))

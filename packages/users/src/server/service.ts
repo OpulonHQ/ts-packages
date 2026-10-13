@@ -15,7 +15,7 @@ import { Context, Effect, Layer } from 'effect'
 import { BadRequest, Conflict, Forbidden, Unauthorized } from 'effect/http-api/HttpApiError'
 import { SqlClient } from 'effect/sql/SqlClient'
 import { InvalidToken, Refused, TooManyRequests } from '../api.ts'
-import { canGrant, loadAccess } from './access.ts'
+import { canGrant, loadAccess, lockAccessWrites } from './access.ts'
 import { type AuthResult, BetterAuth, usersConfig } from './auth.ts'
 import { adminLink, createInvitation, hashToken } from './invitations.ts'
 import { hashPassword } from './password.ts'
@@ -69,12 +69,14 @@ export class Users extends Context.Service<
     ) => Effect.Effect<void, InvalidToken | TooManyRequests>
     /** The invited address of a pending invitation. */
     readonly invitation: (token: string) => Effect.Effect<{ readonly email: string }, InvalidToken>
-    /** Creates the invitee's user with the password and roles; counts as email verification. */
-    readonly acceptInvitation: (input: {
-      readonly token: string
-      readonly name: string
-      readonly password: string
-    }) => Effect.Effect<void, InvalidToken | Conflict>
+    /**
+     * Creates the invitee's user with the password and roles; counts as email verification.
+     * Rate limited per client address (`cf-connecting-ip` of `headers`).
+     */
+    readonly acceptInvitation: (
+      headers: Headers,
+      input: { readonly token: string; readonly name: string; readonly password: string },
+    ) => Effect.Effect<void, InvalidToken | Conflict | TooManyRequests>
     /** Invites `email` with roles, emailing the link. Needs `users.manage`. */
     readonly invite: (input: {
       readonly email: string
@@ -108,6 +110,42 @@ export class Users extends Context.Service<
           Effect.map((rows) => rows[0]),
           Effect.orDie,
         )
+
+      const pendingInvitation = (tokenHash: string) =>
+        Effect.gen(function* () {
+          const [row] = yield* sql<{ email: string }>`select email from users.invitation
+            where token_hash = ${tokenHash} and accepted_at is null
+              and expires_at > now()`.pipe(Effect.orDie)
+          if (!row) return yield* new InvalidToken()
+          return row
+        })
+
+      /**
+       * A fixed-window limit per client address for our own public endpoints, in Better Auth's
+       * database rate_limit table (its rules cover sign-in and password reset); `path` keeps the
+       * keys apart from Better Auth's.
+       */
+      const throttle = Effect.fn('Users.throttle')(function* (
+        headers: Headers,
+        path: string,
+        rule: { readonly window: number; readonly max: number },
+      ) {
+        const now = Date.now()
+        const expired = now - rule.window * 1000
+        const [row] = yield* sql<{ count: number; since: string }>`
+          insert into users.rate_limit as r (id, key, count, last_request)
+          values (${crypto.randomUUID()}, ${`${headers.get('cf-connecting-ip') ?? ''}${path}`},
+            1, ${now})
+          on conflict (key) do update set
+            count = case when r.last_request <= ${expired} then 1 else r.count + 1 end,
+            last_request = case when r.last_request <= ${expired} then ${now}
+              else r.last_request end
+          returning count, last_request::text as since`.pipe(Effect.orDie)
+        if (row && row.count > rule.max)
+          return yield* new TooManyRequests({
+            retryAfter: Math.max(1, Math.ceil((Number(row.since) - expired) / 1000)),
+          })
+      })
 
       const failOnServerError = (result: AuthResult) =>
         result.status >= 500
@@ -217,15 +255,14 @@ export class Users extends Context.Service<
         }, withSql),
 
         invitation: Effect.fn('Users.invitation')(function* (token) {
-          const [row] = yield* sql<{ email: string }>`select email from users.invitation
-            where token_hash = ${yield* hashToken(token)} and accepted_at is null
-              and expires_at > now()`.pipe(Effect.orDie)
-          if (!row) return yield* new InvalidToken()
-          return row
+          return yield* pendingInvitation(yield* hashToken(token))
         }),
 
-        acceptInvitation: Effect.fn('Users.acceptInvitation')(function* (input) {
+        acceptInvitation: Effect.fn('Users.acceptInvitation')(function* (headers, input) {
+          yield* throttle(headers, '/invitations/accept', { window: 60, max: 5 })
           const tokenHash = yield* hashToken(input.token)
+          // A cheap lookup first: unknown tokens never cost a password hash.
+          yield* pendingInvitation(tokenHash)
           const password = yield* Effect.promise(() => hashPassword(input.password))
           yield* withTransaction(
             Effect.gen(function* () {
@@ -241,7 +278,9 @@ export class Users extends Context.Service<
               yield* sql`insert into users.account (id, account_id, provider_id, user_id, password,
                   updated_at)
                 values (${crypto.randomUUID()}, ${id}, 'credential', ${id}, ${password}, now())`
-              // Roles deleted since the invitation was sent are skipped.
+              // An invitation grants roles, not a snapshot of their permissions: a role edited
+              // since applies to the invitee as to every holder (the edit passed the escalation
+              // guard itself), so nothing is re-checked here. Deleted roles are skipped.
               yield* sql`insert into users.user_role (user_id, role_id)
                 select ${id}, r.id from users.invitation i join users.role r on r.id = any(i.role_ids)
                 where i.id = ${invitation.id}`
@@ -262,20 +301,21 @@ export class Users extends Context.Service<
           const email = normalizeEmail(input.email)
           if (!addressPattern.test(email)) return yield* new BadRequest()
           const roleIds = [...new Set(input.roleIds)]
-          const roles = yield* sql<{ id: string; permissions: ReadonlyArray<string> }>`
-            select id, to_jsonb(permissions) as permissions from users.role
-            where id in (select jsonb_array_elements_text(${JSON.stringify(roleIds)}::jsonb))`.pipe(
-            Effect.orDie,
-          )
-          if (roles.length !== roleIds.length) return yield* new BadRequest()
-          // Escalation guard (TSPACK-10): an invitation grants its roles on acceptance.
-          const self = yield* loadUser(inviter.id)
           const catalog = (yield* Composed).permissions
-          if (!self || roles.some((role) => !canGrant(self, role, catalog)))
-            return yield* new Refused({ reason: 'escalation' })
-          if (yield* userIdByEmail(email)) return yield* new Conflict()
           return yield* withTransaction(
             Effect.gen(function* () {
+              // Under the users/roles lock, the inviter and the roles are read as of now.
+              yield* lockAccessWrites
+              const self = yield* loadUser(inviter.id)
+              if (!self?.user.permissions.includes('users.manage')) return yield* new Forbidden()
+              const roles = yield* sql<{ id: string; permissions: ReadonlyArray<string> }>`
+                select id, to_jsonb(permissions) as permissions from users.role
+                where id in (select jsonb_array_elements_text(${JSON.stringify(roleIds)}::jsonb))`
+              if (roles.length !== roleIds.length) return yield* new BadRequest()
+              // Escalation guard (TSPACK-10): an invitation grants its roles on acceptance.
+              if (roles.some((role) => !canGrant(self, role, catalog)))
+                return yield* new Refused({ reason: 'escalation' })
+              if (yield* userIdByEmail(email)) return yield* new Conflict()
               const invitation = yield* createInvitation({ email, roleIds, invitedBy: inviter.id })
               yield* mail.send(invitationEmail, {
                 to: email,

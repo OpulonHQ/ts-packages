@@ -1,6 +1,15 @@
 import { expect, test } from 'vitest'
 import { useTestDatabase } from '../../../test/postgres/index.ts'
-import { makeHost, seedRole, seedUser, sqlQuery, tokenFrom } from './support/users.ts'
+import {
+  lockWaits,
+  makeHost,
+  pauseInserts,
+  randomIp,
+  seedRole,
+  seedUser,
+  sqlQuery,
+  tokenFrom,
+} from './support/users.ts'
 
 const db = useTestDatabase()
 const host = makeHost(() => db.url)
@@ -129,5 +138,108 @@ test('an invalid address is refused and no email is sent', async () => {
     body: { email: 'not-an-address', roleIds: [] },
   })
   expect(bad.status).toBe(400)
+  expect(host.mailer.sent.length).toBe(sent)
+})
+
+/**
+ * Runs `invite` while `write` (another users/roles change) is in flight: held just before its
+ * audit row (`action`), so its changes are made but not yet committed. Resolves with the invite.
+ */
+async function inviteDuring(
+  write: () => Promise<unknown>,
+  action: string,
+  invite: () => Promise<{ status: number }>,
+) {
+  await using barrier = await pauseInserts(db.url, 'core.audit_event', `new.action = '${action}'`)
+  const writing = write()
+  await barrier.reached()
+  const inviting = invite()
+  // An invitation that waits for the change to commit blocks on its lock; one that does not
+  // finishes first.
+  await Promise.race([inviting, lockWaits(db.url, 2)])
+  await barrier.release()
+  await writing
+  return inviting
+}
+
+test('an invitation is checked against a role edit that commits while it is being sent', async () => {
+  const admin = await signedIn({ superAdmin: true })
+  const manager = await signedIn({ permissions: ['users.manage', 'demo.notes.view'] })
+  const role = await seedRole(db.url, ['demo.notes.view'])
+  const sent = host.mailer.sent.length
+  const invited = await inviteDuring(
+    () =>
+      host.request('PUT', `/users/roles/${role}`, {
+        cookie: admin.cookie,
+        body: { name: 'Raised', permissions: ['demo.notes.view', 'emails.templates.manage'] },
+      }),
+    'users.role_updated',
+    () =>
+      host.request('POST', '/users/invitations', {
+        cookie: manager.cookie,
+        body: { email: 'raised@example.test', roleIds: [role] },
+      }),
+  )
+  expect(invited).toMatchObject({ status: 403, body: { reason: 'escalation' } })
+  expect(host.mailer.sent.length).toBe(sent)
+})
+
+test('accepting invitations is rate limited per client address', async () => {
+  const admin = await signedIn({ superAdmin: true })
+  const token = await invite(admin.cookie, 'throttled@example.test')
+  const ip = randomIp()
+  const attempt = (t: string, from = ip) =>
+    host.request('POST', '/users/invitations/accept', {
+      body: { token: t, name: 'Tess', password: 'invitee password 1' },
+      ip: from,
+    })
+  for (let i = 0; i < 5; i++) expect((await attempt(`guess-${i}`.padEnd(43, 'x'))).status).toBe(400)
+  const limited = await attempt(token)
+  expect(limited).toMatchObject({ status: 429, body: { _tag: 'TooManyRequests' } })
+  expect((await attempt(token, randomIp())).status).toBe(204)
+})
+
+test('two invitations sent at once to one address leave one valid link', async () => {
+  const admin = await signedIn({ superAdmin: true })
+  const manager = await signedIn({ permissions: ['users.manage'] })
+  const send = (cookie: string) =>
+    host.request('POST', '/users/invitations', {
+      cookie,
+      body: { email: 'twice@example.test', roleIds: [] },
+    })
+  const sent = host.mailer.sent.length
+  {
+    await using barrier = await pauseInserts(db.url, 'users.invitation')
+    const first = send(admin.cookie)
+    await barrier.reached()
+    const second = send(manager.cookie)
+    await Promise.race([second, lockWaits(db.url, 2)])
+    await barrier.release()
+    expect((await Promise.all([first, second])).map((r) => r.status)).toEqual([200, 200])
+  }
+  const valid = []
+  for (const mail of host.mailer.sent.slice(sent)) {
+    const inspected = await host.request('POST', '/users/invitations/inspect', {
+      body: { token: tokenFrom(mail.html) },
+    })
+    valid.push(inspected.status === 200)
+  }
+  expect(valid.sort()).toEqual([false, true])
+})
+
+test('an inviter deactivated while sending an invitation sends nothing', async () => {
+  const admin = await signedIn({ superAdmin: true })
+  const manager = await signedIn({ permissions: ['users.manage', 'demo.notes.view'] })
+  const sent = host.mailer.sent.length
+  const invited = await inviteDuring(
+    () => host.request('POST', `/users/users/${manager.id}/deactivate`, { cookie: admin.cookie }),
+    'users.deactivated',
+    () =>
+      host.request('POST', '/users/invitations', {
+        cookie: manager.cookie,
+        body: { email: 'late@example.test', roleIds: [] },
+      }),
+  )
+  expect(invited.status).toBe(403)
   expect(host.mailer.sent.length).toBe(sent)
 })

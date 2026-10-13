@@ -114,7 +114,7 @@ export const UsersAuthGroup = HttpApiGroup.make('users.auth')
         ),
         password: Password,
       }),
-      error: [InvalidToken, Conflict],
+      error: [InvalidToken, Conflict, TooManyRequests],
     }),
   )
   .annotate(Public, true)

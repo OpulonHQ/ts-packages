@@ -108,12 +108,13 @@ export const coupon = emailComponent({
 })
 
 export const shopServer = composeServer({
+  // Public emails are written in the host's content locales.
+  contentLocales: ['en', 'it'],
   modules: [
     core(),
     emails({
       from: 'Shop <noreply@example.test>',
       brand: { name: 'Shop', footer: { en: 'Shop footer', sk: 'Pätička obchodu' } },
-      contentLocales: ['en', 'it'],
       components: [coupon],
     }),
     shop,

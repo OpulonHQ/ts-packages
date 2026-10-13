@@ -36,10 +36,11 @@ export interface EmailsOptions {
    * Insertable in overrides and code defaults as `[[name prop="value"]]`.
    */
   readonly components?: ReadonlyArray<EmailComponent>
-  /** Locales of staff emails, default first. Default `['en', 'sk']` (the admin's). */
+  /**
+   * Locales of staff emails, default first. Default `['en', 'sk']` (the admin's). Public emails
+   * use the host's content locales (`composeServer({ contentLocales })`).
+   */
   readonly adminLocales?: ReadonlyArray<string>
-  /** Locales of public emails, default first. Default `['en']`. */
-  readonly contentLocales?: ReadonlyArray<string>
   /** Days an email log row is kept. Default 90. */
   readonly logRetentionDays?: number
 }
@@ -99,7 +100,6 @@ export const emails = (options: EmailsOptions) =>
       brand: options.brand,
       layout: options.layout ?? defaultLayout,
       adminLocales: options.adminLocales ?? ['en', 'sk'],
-      contentLocales: options.contentLocales ?? ['en'],
       components: componentRegistry(options.components),
     }),
     migrations: {

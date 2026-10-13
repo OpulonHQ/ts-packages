@@ -22,6 +22,12 @@ export async function hashPassword(password: string): Promise<string> {
   return prefix + btoa(String.fromCharCode(...bytes))
 }
 
+/** SHA-256 hex of a string: stored in place of tokens, and as a session's password stamp. */
+export const sha256Hex = async (text: string) =>
+  [...new Uint8Array(await crypto.subtle.digest('SHA-256', encoder.encode(text)))]
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+
 /** False for anything not in the current format, including malformed hashes. */
 export async function verifyPassword(input: { hash: string; password: string }): Promise<boolean> {
   if (!input.hash.startsWith(prefix)) return false

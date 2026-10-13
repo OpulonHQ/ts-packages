@@ -258,8 +258,9 @@ export class CmsConflict extends Schema.TaggedError<CmsConflict>()(
 export const RedirectStatus = Schema.Literals([301, 302])
 export type RedirectStatus = typeof RedirectStatus.Type
 
-/** A redirect as an editor writes it. Paths are locale-relative like page paths (`/old`), but
- *  any characters a URL path allows; a trailing slash is dropped. */
+/** A redirect as an editor writes it. Paths are locale-relative URL paths (`/old`), stored
+ *  decoded and canonical: percent-escapes decoded, dot segments resolved, repeated and trailing
+ *  slashes dropped. */
 export const RedirectInput = Schema.Struct({
   locale: Schema.String,
   from: Schema.String,

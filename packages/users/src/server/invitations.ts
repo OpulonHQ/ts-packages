@@ -2,6 +2,7 @@ import { Audit } from '@opulonjs/core'
 import { Effect } from 'effect'
 import { SqlClient } from 'effect/sql/SqlClient'
 import { usersBaseUrl } from './auth.ts'
+import { sha256Hex } from './password.ts'
 
 /** Days an invitation link is valid. */
 export const invitationDays = 7
@@ -13,12 +14,7 @@ const base64Url = (bytes: Uint8Array) =>
     .replace(/=+$/, '')
 
 /** SHA-256 hex of an invitation token: only the hash is stored. */
-export const hashToken = (token: string) =>
-  Effect.promise(async () =>
-    [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token)))]
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join(''),
-  )
+export const hashToken = (token: string) => Effect.promise(() => sha256Hex(token))
 
 /** Where an emailed token lands: a public admin route; the fragment keeps it out of logs. */
 export const adminLink = (route: 'accept-invitation' | 'reset-password', token: string) =>
@@ -29,7 +25,8 @@ export const adminLink = (route: 'accept-invitation' | 'reset-password', token: 
 
 /**
  * Creates an invitation for `email` (lowercase) with the given roles, replacing that address's
- * pending invitations, and records `users.invited`. Run it in the caller's transaction.
+ * pending invitation, and records `users.invited`. Run it in the caller's transaction, after
+ * `lockAccessWrites` and the caller's checks.
  * Returns the one-time token; only its hash is stored.
  */
 export const createInvitation = Effect.fn('Users.createInvitation')(function* (o: {

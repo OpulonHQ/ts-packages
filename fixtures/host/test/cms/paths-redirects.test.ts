@@ -176,3 +176,34 @@ test('redirects need their permissions', async () => {
   ).toBe(403)
   expect((await host.call('GET', '/redirects', { as: ['cms.pages.view'] })).status).toBe(403)
 })
+
+test('redirect paths are compared, stored and looked up in one canonical form', async () => {
+  // Dot segments, repeated slashes and percent-escapes do not hide a loop or a repeat.
+  expect((await create({ from: '/review-loop', to: '/x/../review-loop' })).body).toMatchObject({
+    reason: 'redirect_loop',
+  })
+  expect((await create({ from: '/caf%C3%A9', to: '/menu' })).status).toBe(200)
+  expect((await create({ from: '/café', to: '/carte' })).body).toMatchObject({
+    reason: 'redirect_taken',
+  })
+  expect((await create({ from: '/a//b/./c/', to: '/d/%7Ee' })).status).toBe(200)
+  expect(await rules()).toEqual(['en /a/b/c -> /d/~e 301', 'en /café -> /menu 301'])
+
+  // What a public site asks for (the URL path) finds the rule.
+  const resolved = await host.call('GET', `/resolve?path=${encodeURIComponent('/caf%C3%A9')}`, {
+    as: null,
+  })
+  expect(resolved.body).toMatchObject({ kind: 'redirect', to: '/menu' })
+
+  for (const bad of ['/x\\y', '//elsewhere.test/x', '/x%0Ay', '/x%', '/%2F%2Felsewhere.test'])
+    expect((await create({ from: bad, to: '/z' })).status).toBe(400)
+
+  const imported = await importCsv(['from,to', '/r/../loop,/loop', '/x\\y,/z'].join('\r\n'))
+  expect(imported.body).toMatchObject({
+    created: 0,
+    errors: [
+      { row: 2, message: expect.stringContaining('itself') },
+      { row: 3, message: expect.stringContaining('not a path') },
+    ],
+  })
+})

@@ -1,6 +1,7 @@
 import {
   Audit,
   Background,
+  ContentLocales,
   type Contribution,
   diffFields,
   requirePermission,
@@ -53,7 +54,6 @@ export interface ResolvedEmailsOptions {
   readonly brand: EmailBrand
   readonly layout: EmailLayout
   readonly adminLocales: ReadonlyArray<string>
-  readonly contentLocales: ReadonlyArray<string>
   readonly components: ReadonlyMap<string, EmailComponent>
 }
 
@@ -172,6 +172,8 @@ export class EmailService extends Context.Service<
         const sql = yield* SqlClient
         const mailer = yield* Mailer
         const background = yield* Background
+        // Public emails use the host's content locales (ADR 0005), staff emails the admin's.
+        const contentLocales = yield* ContentLocales
         const templates = new Map((yield* EmailTemplates.collect).map((t) => [t.key, t]))
         // ponytail: re-checked on every layer build (per request); a few dozen small strings, so
         // well under a millisecond. Cache per template object if hosts grow large catalogs.
@@ -188,7 +190,7 @@ export class EmailService extends Context.Service<
               )
           }
         const localesOf = (t: EmailTemplate) =>
-          t.audience === 'staff' ? options.adminLocales : options.contentLocales
+          t.audience === 'staff' ? options.adminLocales : contentLocales
         const render = (content: EmailContent, locale: string, vars: Record<string, string>) =>
           renderEmail({
             content,
@@ -277,6 +279,7 @@ export class EmailService extends Context.Service<
             set attempts = attempts + 1,
               next_attempt_at = now() + make_interval(mins => ${backoffMinutes} * power(2, attempts)::int)
             where id = ${id} and status = 'queued' and next_attempt_at <= now()
+              and attempts < ${maxAttempts}
             returning attempts, message`
           if (!claimed) return
           const message = yield* Schema.decodeUnknownEffect(StoredMessage)(claimed.message).pipe(
@@ -334,6 +337,11 @@ export class EmailService extends Context.Service<
           }),
 
           sweep: Effect.fn('EmailService.sweep')(function* () {
+            // A last attempt cut off before its outcome was recorded (the Worker was killed)
+            // left its row queued; once its backoff passed it is failed, never sent again.
+            yield* sql`update emails.email_log set status = 'failed', message = null,
+                error = 'the last attempt was interrupted before its outcome was recorded'
+              where status = 'queued' and attempts >= ${maxAttempts} and next_attempt_at <= now()`
             const due = yield* sql<{ id: string }>`
               select id from emails.email_log
               where status = 'queued' and next_attempt_at <= now()
