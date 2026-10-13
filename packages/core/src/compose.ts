@@ -233,6 +233,8 @@ function sortModules(input: ReadonlyArray<Module>): ReadonlyArray<Module> {
   const ids = new Set<string>()
   const errors: Array<string> = []
   for (const m of input) {
+    if (m.id === 'me' || m.id === 'audit')
+      errors.push(`module id "${m.id}" is reserved for core endpoints`)
     if (!idPattern.test(m.id)) errors.push(`module id "${m.id}" must match ${idPattern}`)
     if (ids.has(m.id)) errors.push(`duplicate module id "${m.id}"`)
     ids.add(m.id)

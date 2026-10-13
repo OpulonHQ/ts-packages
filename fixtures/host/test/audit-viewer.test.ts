@@ -1,12 +1,87 @@
 import * as PgClient from '@effect/sql-pg/PgClient'
-import { Audit, Composed, CurrentActor, diffFields, systemActor } from '@opulonjs/core'
-import { Effect, Redacted } from 'effect'
+import {
+  Audit,
+  Composed,
+  CurrentActor,
+  composeServer,
+  core,
+  diffFields,
+  systemActor,
+} from '@opulonjs/core'
+import { createWorker, PgFromHyperdrive } from '@opulonjs/core/workers'
+import { Mailer } from '@opulonjs/emails/server'
+import { Effect, Layer, Redacted } from 'effect'
 import { expect, test } from 'vitest'
 import { useTestDatabase } from '../../../test/postgres/index.ts'
+import { server } from '../server/opulon.ts'
 import { makeHost, seedUser, sqlQuery } from './support/users.ts'
 
 const db = useTestDatabase()
 const host = makeHost(() => db.url)
+
+test('audit masks expired request metadata even when the purge has not run', async () => {
+  const user = await seedUser(db.url, { permissions: ['core.audit.view'] })
+  const cookie = await host.signIn(user.email, user.password)
+  await sqlQuery(
+    db.url,
+    `insert into core.audit_event
+    (occurred_at, actor_kind, action, subject_id, ip, user_agent) values
+    (now() - interval '91 days', 'system', 'users.locale_changed', 'privacy-window', 'old-ip', 'old-agent'),
+    (now() - interval '8 days', 'system', 'users.locale_changed', 'privacy-window', 'recent-ip', 'recent-agent'),
+    (now() - interval '1 day', 'system', 'users.locale_changed', 'privacy-window', 'fresh-ip', 'fresh-agent')`,
+  )
+  const response = await host.request('GET', '/audit?subjectId=privacy-window', { cookie })
+  expect(response.status).toBe(200)
+  expect(response.body).toMatchObject({
+    rows: [
+      { ip: 'fresh-ip', userAgent: 'fresh-agent' },
+      { ip: 'recent-ip', userAgent: 'recent-agent' },
+      { ip: null, userAgent: null },
+    ],
+  })
+  const configured = createWorker(
+    composeServer({
+      modules: [
+        core({ audit: { ipRetentionDays: 7 } }),
+        ...server.modules.filter((module) => module.id === 'emails' || module.id === 'users'),
+      ],
+    }),
+    {
+      infra: (env: ReturnType<typeof host.env>) =>
+        Layer.mergeAll(PgFromHyperdrive(env.HYPERDRIVE), Mailer.log),
+      buildId: () => 'privacy-window',
+    },
+  )
+  const custom = await configured.fetch(
+    new Request('https://host.test/api/audit?subjectId=privacy-window', {
+      headers: { cookie, origin: 'https://host.test' },
+    }),
+    host.env(),
+    { waitUntil: () => {} },
+  )
+  expect(custom.status).toBe(200)
+  expect(await custom.json()).toMatchObject({
+    rows: [
+      { ip: 'fresh-ip', userAgent: 'fresh-agent' },
+      { ip: null, userAgent: null },
+      { ip: null, userAgent: null },
+    ],
+  })
+  expect(
+    await sqlQuery(db.url, 'select ip from core.audit_event where subject_id = $1 order by id', [
+      'privacy-window',
+    ]),
+  ).toEqual([{ ip: 'old-ip' }, { ip: 'recent-ip' }, { ip: 'fresh-ip' }])
+})
+
+test('audit rejects requests beyond the maximum paging offset', async () => {
+  const user = await seedUser(db.url, { permissions: ['core.audit.view'] })
+  const cookie = await host.signIn(user.email, user.password)
+  for (const query of ['page=102&perPage=100', 'page=10002&perPage=1', 'page=402']) {
+    expect((await host.request('GET', `/audit?${query}`, { cookie })).status, query).toBe(400)
+  }
+  expect((await host.request('GET', '/audit?page=101&perPage=100', { cookie })).status).toBe(200)
+})
 
 test('audit reads added and removed fields serialized by the existing writer', async () => {
   const user = await seedUser(db.url, { permissions: ['core.audit.view'] })
@@ -97,8 +172,8 @@ test('audit pages immutable snapshots newest first with filters and a true total
         actor: { id: 'deleted-user', name: 'Former editor' },
         subject: { type: 'user', id: 'b', label: 'Snapshot name' },
         changes: [{ field: 'locale', from: 'en', to: 'sk' }],
-        ip: '10.1.2.3',
-        userAgent: 'Historic UA',
+        ip: null,
+        userAgent: null,
       },
     ],
   })

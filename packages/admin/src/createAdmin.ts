@@ -76,6 +76,10 @@ const toI18n = (catalog: Messages, namespace?: string): Messages => {
 export const createAdmin = (options: AdminOptions): App => {
   const ids = new Set<string>()
   for (const m of options.modules) {
+    for (const route of m.routes) {
+      if (/^\/audit\/*$/i.test(route.path) && route.name !== 'core.audit')
+        throw new Error(`createAdmin: path "${route.path}" is reserved for route "core.audit"`)
+    }
     if (ids.has(m.id)) throw new Error(`createAdmin: duplicate admin module id "${m.id}"`)
     ids.add(m.id)
   }

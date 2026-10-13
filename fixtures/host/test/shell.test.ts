@@ -92,6 +92,20 @@ function mountAdmin(
 
 const navText = () => document.querySelector('nav')?.textContent ?? ''
 
+test.each(['/audit', '/audit/', '/AUDIT'] as const)(
+  'a module cannot silently shadow audit URL %s under another route name',
+  (path) => {
+    const conflicting = defineAdminModule({
+      id: 'conflicting',
+      routes: [{ name: 'conflicting.home', path, signedIn: true, component: screen('conflict') }],
+      messages: { en: async () => ({ default: {} }), sk: async () => ({ default: {} }) },
+    })
+    expect(() => createAdmin({ brand, modules: [...adminModules, conflicting] })).toThrow(
+      /\/audit.*core\.audit/i,
+    )
+  },
+)
+
 test('renders a module route in the user admin locale (sk) with notes from its own API group', async () => {
   const admin = mountAdmin('/admin/demo/notes')
   await expect.poll(admin.text).toContain('hello from demo')

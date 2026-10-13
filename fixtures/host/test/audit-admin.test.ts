@@ -92,7 +92,11 @@ test('the audit log recovers from a failed request with Retry', async () => {
     failAudit: true,
   })
   await expect.poll(() => button('Retry')).toBeDefined()
-  expect(document.querySelector('[role="alert"]')).not.toBeNull()
+  const errors = document.querySelectorAll('[role="alert"]')
+  expect(errors).toHaveLength(1)
+  expect(errors[0]?.textContent).toContain('The audit events could not be loaded.')
+  expect(errors[0]?.querySelector('button')?.textContent?.trim()).toBe('Retry')
+  expect(admin.text()).not.toContain('The data could not be loaded.')
   button('Retry')!.click()
   await expect.poll(() => rows().join(' ')).toContain(user.email)
   expect(button('Retry')).toBeUndefined()
@@ -140,6 +144,33 @@ function type(name: string, value: string) {
   input.value = value
   input.dispatchEvent(new Event('input', { bubbles: true }))
 }
+
+test('the timeline recovers to the last remaining page after its page becomes empty', async () => {
+  const user = await seedUser(db.url, { permissions: ['users.manage', 'core.audit.view'] })
+  const cookie = await host.signIn(user.email, user.password)
+  await sqlQuery(
+    db.url,
+    `insert into core.audit_event (actor_kind, action, subject_type, subject_id, subject_label)
+    select 'system', 'retired.user.changed', 'user', $1, 'Surviving snapshot ' || n
+    from generate_series(1, 12) n`,
+    [user.id],
+  )
+  const admin = mount(`/admin/users/${user.id}`, cookie)
+  const timeline = () => document.querySelector('[aria-label="Audit timeline"]')?.textContent ?? ''
+  await expect.poll(timeline).toContain('Surviving snapshot 12')
+  await sqlQuery(
+    db.url,
+    'delete from core.audit_event where subject_id = $1 and subject_label like $2',
+    [user.id, 'Surviving snapshot %'],
+  )
+  button('Next events')!.click()
+  await expect.poll(timeline).toContain('Signed in')
+  expect(timeline()).not.toContain('No audit events match.')
+  const pages = admin.requests
+    .filter((url) => new URL(url).pathname === '/api/audit')
+    .map((url) => new URL(url).searchParams.get('page'))
+  expect(pages.slice(-2)).toEqual(['2', '1'])
+})
 
 test('audit filters whole UTC days, pages on the server and falls back to unknown action keys', async () => {
   const owner = await seedUser(db.url, { permissions: ['core.audit.view'] })

@@ -86,6 +86,8 @@ export type AuditEvent = typeof AuditEvent.Type
 export const AuditPage = Schema.Struct({ rows: Schema.Array(AuditEvent), total: Schema.Number })
 export type AuditPage = typeof AuditPage.Type
 
+export const auditMaxOffset = 10_000
+
 const filterText = Schema.String.check(Schema.isMaxLength(500))
 const timestamp = Schema.String.check(
   Schema.makeFilter<string>((value) => {
@@ -101,12 +103,13 @@ const timestamp = Schema.String.check(
 )
 
 /** Actor matches kind/id/name text; module/action and subject type/id match exactly.
- * Subject label matches text. UTC ISO start is inclusive; end is exclusive. */
+ * Subject label matches text. UTC ISO start is inclusive; end is exclusive.
+ * Paging offsets cannot exceed auditMaxOffset. */
 export const AuditQuery = Schema.Struct({
   page: Schema.optionalKey(
     Schema.NumberFromString.check(
       Schema.isInt(),
-      Schema.isBetween({ minimum: 1, maximum: 1_000_000 }),
+      Schema.isBetween({ minimum: 1, maximum: auditMaxOffset + 1 }),
     ),
   ),
   perPage: Schema.optionalKey(
@@ -122,7 +125,9 @@ export const AuditQuery = Schema.Struct({
   end: Schema.optionalKey(timestamp),
 }).check(
   Schema.makeFilter(
-    (query) => !query.start || !query.end || Date.parse(query.start) < Date.parse(query.end),
+    (query) =>
+      ((query.page ?? 1) - 1) * (query.perPage ?? 25) <= auditMaxOffset &&
+      (!query.start || !query.end || Date.parse(query.start) < Date.parse(query.end)),
   ),
 )
 export type AuditQuery = typeof AuditQuery.Type

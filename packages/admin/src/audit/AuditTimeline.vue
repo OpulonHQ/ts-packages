@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CoreGroup, type AuditPage } from '@opulonjs/core/api'
+import { CoreGroup, auditMaxOffset, type AuditPage } from '@opulonjs/core/api'
 import { UButton, UCard } from '@opulonjs/ui'
 import { computed, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -20,6 +20,7 @@ const allowed = computed(
 )
 const page = ref(1)
 const perPage = 10
+const maxPage = Math.floor(auditMaxOffset / perPage) + 1
 const events = shallowRef<AuditPage>({ rows: [], total: 0 })
 const status = ref<'loading' | 'ready' | 'failed'>('loading')
 let latest = 0
@@ -43,6 +44,10 @@ async function load() {
       }),
     )
     if (ticket === latest) {
+      if (result.rows.length === 0 && page.value > 1) {
+        page.value = Math.max(1, Math.min(maxPage, Math.ceil(result.total / perPage)))
+        return await load()
+      }
       events.value = result
       status.value = 'ready'
     }
@@ -95,7 +100,7 @@ watch([() => props.subjectType, () => props.subjectId, allowed], refresh, { imme
           <UButton
             color="neutral"
             variant="outline"
-            :disabled="page * perPage >= events.total"
+            :disabled="page * perPage >= events.total || page === maxPage"
             :label="t('admin.audit.next')"
             @click="movePage(1)"
           />

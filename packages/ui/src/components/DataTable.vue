@@ -286,7 +286,9 @@ const onSelect = (_event: Event, row: TableRow<Row>) => props.onRowClick?.(row.o
       <slot name="bulk-actions" :rows="selected" :clear="clearSelection" />
     </div>
 
-    <p v-if="failed" role="alert" class="text-sm text-error">{{ text.loadFailed }}</p>
+    <slot v-if="failed" name="error" :refresh="refresh">
+      <p role="alert" class="text-sm text-error">{{ text.loadFailed }}</p>
+    </slot>
 
     <UTable
       v-model:row-selection="rowSelection"

@@ -4,7 +4,13 @@ import { AuditPage, type AuditQuery } from './api.ts'
 import { requirePermission } from './authz.ts'
 
 export const listAudit = Effect.fn('Audit.list')(
-  function* (query: AuditQuery) {
+  function* ({
+    query,
+    ipRetentionDays,
+  }: {
+    readonly query: AuditQuery
+    readonly ipRetentionDays: number
+  }) {
     yield* requirePermission('core.audit.view')
     const sql = yield* SqlClient
     const page = query.page ?? 1
@@ -43,7 +49,9 @@ export const listAudit = Effect.fn('Audit.list')(
       'changes', coalesce((select jsonb_agg(
         '{"from":null,"to":null}'::jsonb || value order by position)
         from jsonb_array_elements(changes) with ordinality as change(value, position)), '[]'::jsonb),
-      'context', context, 'ip', ip, 'userAgent', user_agent
+      'context', context,
+      'ip', case when occurred_at >= now() - make_interval(days => ${ipRetentionDays}) then ip end,
+      'userAgent', case when occurred_at >= now() - make_interval(days => ${ipRetentionDays}) then user_agent end
     ) order by occurred_at desc, id desc) from paged), '[]'::jsonb) as rows`
     return yield* Schema.decodeUnknownEffect(AuditPage)(result[0])
   },

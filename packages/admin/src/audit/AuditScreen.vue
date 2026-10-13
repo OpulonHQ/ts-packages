@@ -31,9 +31,6 @@ const filters = reactive(Object.fromEntries(fields.map((field) => [field, ''])))
 const applied = ref<AuditQuery>({})
 const revision = ref(0)
 const invalid = ref(false)
-const failed = ref(false)
-const table = ref<{ refresh: () => Promise<void> }>()
-let latest = 0
 const columns = computed<ReadonlyArray<DataTableColumn<AuditEvent>>>(() => [
   { key: 'action', label: t('admin.audit.event') },
 ])
@@ -66,18 +63,10 @@ function reset() {
   apply()
 }
 
-async function load(query: TableQuery) {
-  const ticket = ++latest
-  failed.value = false
-  try {
-    return await core((client) =>
-      client.audit({ query: { ...applied.value, page: query.page, perPage: query.perPage } }),
-    )
-  } catch (error) {
-    if (ticket === latest) failed.value = true
-    throw error
-  }
-}
+const load = (query: TableQuery) =>
+  core((client) =>
+    client.audit({ query: { ...applied.value, page: query.page, perPage: query.perPage } }),
+  )
 </script>
 
 <template>
@@ -111,15 +100,19 @@ async function load(query: TableQuery) {
         </div>
       </form>
     </UCard>
-    <UButton v-if="failed" :label="t('admin.audit.retry')" @click="table?.refresh()" />
     <DataTable
       :key="revision"
-      ref="table"
       :columns="columns"
       :load="load"
       :caption="t('admin.audit.title')"
       :empty-title="t('admin.audit.empty')"
     >
+      <template #error="{ refresh }">
+        <div role="alert" class="space-y-2">
+          <p class="text-sm text-error">{{ t('admin.audit.failed') }}</p>
+          <UButton :label="t('admin.audit.retry')" @click="refresh" />
+        </div>
+      </template>
       <template #action-cell="{ row }"><AuditEventDetails :event="row.original" /></template>
     </DataTable>
   </section>
