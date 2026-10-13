@@ -180,7 +180,7 @@ try {
   const { raw, bundled, twice } = await packagesLoadedTwice(vite, '/main.ts')
   if (twice.length > 0) throw new Error('admin dev loads packages both prebundled and raw, as two instances: ' + twice.join(', '))
   console.log('ok admin dev loads', raw.size, 'packages raw and', bundled.size, 'prebundled, none in both')
-  const screen = spawn(process.execPath, ['--import', './dev-modules.mjs', 'dev-screen.mjs', 'http://127.0.0.1:' + vite.httpServer.address().port + vite.config.base, vite.config.base + '@fs' + require.resolve('@opulonjs/admin')], { stdio: 'inherit' })
+  const screen = spawn(process.execPath, [${JSON.stringify(join(import.meta.dirname, 'dev-screen.ts'))}, 'http://127.0.0.1:' + vite.httpServer.address().port + vite.config.base, vite.config.base + '@fs' + require.resolve('@opulonjs/admin')], { stdio: 'inherit' })
   if ((await new Promise((done) => screen.on('exit', done))) !== 0) throw new Error('the cms Collections screen failed to load its items in dev')
   console.log('ok admin dev renders the cms Collections screen with its decoded API response')
 } finally { await vite.close() }
@@ -190,48 +190,8 @@ const missing = adminModules.map((m) => m.id).filter((id) => !serverIds.has(id))
 if (missing.length > 0) throw new Error('admin modules without a server module: ' + missing.join(', '))
 `
 
-const httpModuleHooks = String.raw`import { register } from 'node:module'
-const hooks = ${'`'}
-const viteClient = 'const noop = () => {}; export const createHotContext = () => ({ data: {}, accept: noop, dispose: noop, prune: noop, invalidate: noop, on: noop, off: noop, send: noop }); export const updateStyle = noop, removeStyle = noop, injectQuery = (url) => url'
-export const resolve = (spec, context, next) => context.parentURL?.startsWith('http:') && !spec.startsWith('node:') ? { url: new URL(spec, context.parentURL).href, shortCircuit: true } : next(spec, context)
-export const load = async (url, context, next) => url.startsWith('http:') ? { format: 'module', shortCircuit: true, source: url.endsWith('/@vite/client') ? viteClient : await (await fetch(url)).text() } : next(url, context)
-${'`'}
-register('data:text/javascript,' + encodeURIComponent(hooks))
-`
-
-const devScreen = String.raw`import { Window } from 'happy-dom'
-const [origin, adminEntry] = process.argv.slice(2)
-const window = new Window({ url: origin + 'cms/collections/posts' })
-for (const key of Object.getOwnPropertyNames(window)) if (!(key in globalThis)) globalThis[key] = window[key]
-Object.assign(globalThis, { window, document: window.document, location: window.location })
-Object.defineProperty(globalThis, 'navigator', { value: window.navigator })
-document.body.innerHTML = '<div id="app"></div>'
-const { createAdmin } = await import(new URL(adminEntry, origin).href)
-const { adminModules } = await import(origin + 'modules.ts')
-const { brand } = await import(origin + 'brand.ts')
-const me = { buildId: 'pack-check', user: { id: 'u', name: 'U', email: 'u@example.com' }, locale: null, permissions: ['cms.collections.view'], modules: adminModules.map((m) => m.id), permissionCatalog: [], contentLocales: ['en'] }
-const row = { id: 'i1', collection: 'posts', title: 'Decoded pack-check item', path: '/decoded', status: 'draft', updatedAt: '2026-01-01T00:00:00.000Z', publishedAt: null }
-const responses = { '/api/me': me, '/api/cms/collections/posts/items': { rows: [row], total: 1 } }
-const fetch = async (url) => {
-  const body = responses[new URL(url, location.origin).pathname]
-  return body ? Response.json(body) : new Response(null, { status: 404 })
-}
-createAdmin({ brand, modules: adminModules, apiPrefix: '/api', buildId: 'pack-check', fetch }).mount('#app')
-const text = () => document.body.textContent
-const settled = () => text().includes(row.title) || text().includes('The data could not be loaded.')
-for (let i = 0; i < 100 && !settled(); i++) await new Promise((r) => setTimeout(r, 100))
-if (!text().includes(row.title)) {
-  console.error(text())
-  process.exit(1)
-}
-process.exit(0)
-`
-
 const root = resolve(import.meta.dirname, '..')
 
-const rootPackage = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as {
-  devDependencies: Record<string, string>
-}
 const hostDependencies = () => {
   const pkg = JSON.parse(readFileSync(join(root, 'fixtures/host/package.json'), 'utf8')) as {
     dependencies: Record<string, string>
@@ -280,11 +240,8 @@ try {
     JSON.stringify({
       private: true,
       type: 'module',
-      dependencies: {
-        ...hostDependencies(),
-        ...tarballs,
-        'happy-dom': rootPackage.devDependencies['happy-dom'],
-      },
+      // The fixture host's own third-party dependencies (effect, vite, ...) plus the tarballs.
+      dependencies: { ...hostDependencies(), ...tarballs },
     }),
   )
   // Internal dependencies resolve to the tarballs too, not to the registry.
@@ -323,8 +280,6 @@ for (const name of names) {
   }
   await checkBrowserApi(scratch, tarballs)
   await checkPublicSite(scratch)
-  writeFileSync(join(scratch, 'dev-modules.mjs'), httpModuleHooks)
-  writeFileSync(join(scratch, 'dev-screen.mjs'), devScreen)
   run('node', ['--input-type=module', '-e', adminCheck], scratch)
   console.log('ok server and admin module id lists match')
 } finally {

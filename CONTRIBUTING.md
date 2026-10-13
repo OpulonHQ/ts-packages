@@ -64,6 +64,7 @@ const source = readFileSync(original, 'utf8').replace(
   /^import UIcon from ["']@nuxt\/ui\/components\/Icon\.vue["'];?$/m,
   'import { UIcon } from "@opulonjs/ui";'
 )
+if (!source.includes('from "@opulonjs/ui"')) throw new Error(`no Nuxt UI icon import to replace in ${original}`)
 mkdirSync('admin/overrides', { recursive: true })
 writeFileSync('admin/overrides/EmptyState.mjs',
   `// @opulonjs/source @opulonjs/ui@${version} ${relative(dirname(manifest), original)}\n${source}`)
