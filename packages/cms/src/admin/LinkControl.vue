@@ -5,7 +5,7 @@ import { useI18n } from '@opulonjs/admin'
 import FieldSelect from '@opulonjs/ui/components/Field/Select'
 import FieldText from '@opulonjs/ui/components/Field/Text'
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
-import { labelText, type ItemSummary, type Link } from '../api.ts'
+import { fields, labelText, type ItemSummary, type Link } from '../api.ts'
 import { pageTitle, useCmsContext, useContent } from './use-cms.ts'
 import ReferenceControl from './ReferenceControl.vue'
 
@@ -121,9 +121,9 @@ watch(
   },
   { immediate: true },
 )
-function selectCollection(value: string | number | null) {
+function selectCollection(value: string | number | null | undefined) {
   latest++
-  itemCollection.value = value === null ? null : String(value)
+  itemCollection.value = value === null || value === undefined ? null : String(value)
   knownItem.value = undefined
   model.value = { type: 'item', id: '' }
 }
@@ -160,7 +160,7 @@ function selectCollection(value: string | number | null) {
       <ReferenceControl
         v-if="itemCollection"
         v-model="target"
-        :field="{ kind: 'reference', label: props.label, collection: itemCollection }"
+        :field="fields.reference({ label: props.label, collection: itemCollection })"
         :name="`${name}.target`"
         :label="t('cms.link.target')"
         :disabled="disabled"
