@@ -1,6 +1,7 @@
 // Signed out, /admin/ redirects to sign-in; valid credentials land back in the shell, signed in.
 // ui.sh journeys/sign-in.mjs email=<address> password=<password>
 export default async ({ page, base, shot, args, check }) => {
+  await page.context().clearCookies()
   await page.goto(`${base}/admin/`)
   await page.getByRole('button', { name: 'Sign in' }).waitFor()
   check(page.url().includes('/admin/sign-in'), `signed out /admin/ lands on ${new URL(page.url()).pathname}`)

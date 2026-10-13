@@ -3,9 +3,14 @@ const [journeyPath, ...pairs] = process.argv.slice(2)
 const args = Object.fromEntries(pairs.map((p) => [p.slice(0, p.indexOf('=')), p.slice(p.indexOf('=') + 1)]))
 const base = process.env.VERIFY_BASE
 const out = process.env.EVIDENCE_DIR
+const session = process.env.VERIFY_SESSION
 
 const browser = await chromium.launch({ executablePath: '/usr/bin/google-chrome', headless: true })
-const context = await browser.newContext({ viewport: { width: 1280, height: 800 } })
+const { existsSync } = await import('node:fs')
+const context = await browser.newContext({
+  viewport: { width: 1280, height: 800 },
+  ...(existsSync(session) ? { storageState: session } : {}),
+})
 await context.tracing.start({ screenshots: true, snapshots: true })
 const page = await context.newPage()
 const errors = []
@@ -30,7 +35,7 @@ try {
   await shot('failure').catch(() => {})
 } finally {
   await context.tracing.stop({ path: `${out}/trace.zip` })
-  await context.storageState({ path: `${out}/storage-state.json` })
+  if ((await context.request.get(`${base}/api/me`)).ok()) await context.storageState({ path: session })
   await browser.close()
   console.log(`evidence: ${out}`)
 }

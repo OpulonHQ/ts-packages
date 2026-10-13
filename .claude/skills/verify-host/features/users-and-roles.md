@@ -1,30 +1,31 @@
 # Users and roles
 
-A Super admin invites users with roles, edits a user's roles, deactivates users, and defines roles from permissions. Permissions decide which sidebar items and actions a user sees.
+A Super admin creates roles from permissions, invites users with roles, edits a user's roles, and deactivates users. Permissions decide which sidebar items and actions a user sees.
 
 ## Sub-features
 
-- `invite` Invite -> email + roles -> Send the invitation; the invitee gets an email.
-- `user-roles` on a user, Save roles changes their permissions.
-- `roles` New role / Save on `/admin/roles`.
-- `account` My account: name, password, admin language.
+- `roles` New role -> Name + permission checkboxes -> Save -> `The role is saved.`
+- `invite` Invite (toggles an inline form) -> Email + role checkboxes -> Send the invitation -> `The invitation to <email> is on its way.` and a `users.invitation` email.
+- `invite-taken` inviting an existing user's email -> `A user with this email already exists.`
+- `user-roles` on `/admin/users/:id`, Save roles -> `The roles are saved.`; deactivation there too.
+- `account` `/admin/account` (page title My account): name, password, admin language.
 
 ## How to get to it (user POV)
 
-- Sidebar `Users` -> `/admin/users`; a row -> `/admin/users/:id`.
+- Sidebar `Users` -> `/admin/users`; a row -> `/admin/users/:id`. Pending invitees are not listed as users.
 - Sidebar `Roles` -> `/admin/roles`.
-- User menu (bottom of sidebar) -> My account `/admin/account`.
+- Sidebar footer button `User menu` -> `Account settings` -> `/admin/account`.
 
 ## Driving it with ui.sh
 
-Preconditions: signed-in Super admin (smoke owner).
+Preconditions: a Super admin session (smoke owner).
 
-- **Invite.** On `/admin/users` click `Invite`, fill `Email`, pick roles, click `Send the invitation`. Expect the toast `The invitation to <email> is on its way.`, a `POST /api/users/invitations` 200, and a new row in the Email log (`emails.md`).
-- **Duplicate.** Invite an existing email: expect `A user with this email already exists.`
-- **Roles.** On `/admin/roles` click `New role`, name it, tick permissions, `Save`; expect `The role is saved.` Assign it on a user with `Save roles` (`The roles are saved.`), then sign in as that user and check the sidebar shows only what the permissions allow.
-- **API second view.** `GET /api/me` lists the signed-in user's permissions (the smoke expects all 20 for a Super admin).
+- **Role + invite + taken + email.** `$V/ui.sh .claude/skills/verify-host/journeys/users-and-roles.mjs email=<owner> 'password=smoke password <run>'`. Proves: `POST /api/users/roles` 200 and `role=status` `The role is saved.`; invite with that role `POST /api/users/invitations` 200 and the status text; inviting the owner's email shows the `role=alert` taken message; the Email log screen lists the invitee and `/api/emails/log` has a `users.invitation` row, status `sent`.
+- **Restricted role.** Needs a second signed-in account, which needs an accept link (see sign-in Gotchas): not drivable on a host with a Super admin unless the invitation is bootstrapped from the CLI on a fresh database.
 
 ## Gotchas
 
-- Not yet driven through the UI by a journey; write `journeys/invite.mjs` on first use and update the README.
-- Testing a restricted role needs a second account: invite it, take the accept link from the email log, accept in a fresh journey.
+- Messages are inline `role=status` / `role=alert` paragraphs, not toasts.
+- `getByLabel('Name')` / `getByLabel('Email')` also match the table's `Sort by Name` / `Sort by Email` buttons; use `getByRole('textbox', { name: ... })`.
+- `Invite` toggles the inline form and it stays open after sending; clicking `Invite` again closes it.
+- Permission checkboxes are named by their label, e.g. `Invite and manage users`; role checkboxes in the invite form are named by role name.

@@ -1,32 +1,33 @@
 # CMS pages and Read API
 
-Editors create a page, edit the draft, publish it, and the public Read API answers it with Cache-Tags; publishing purges those tags from Workers Cache. Collections, menus, site settings and redirects follow the same draft -> publish model.
+Editors create a page, set a path and availability per language, add sections, save a draft and publish; the public Read API answers it with Cache-Tags, and publishing purges them from Workers Cache. Collections, menus, site settings and redirects follow the same draft -> publish model.
 
 ## Sub-features
 
-- `create` New page on `/admin/cms/pages`.
-- `draft` Save draft -> `Draft saved.`; status `Draft` / `Unpublished changes`.
-- `publish` Publish -> `Published.`; Unpublish -> `Unpublished. The page is no longer on the website.`
-- `read-api` `GET /api/cms/resolve?path=<path>` 200, `Cache-Tag: cms,cms:page:<id>`, `public, max-age=0, s-maxage=3600`.
-- `purge` a publish changes what the Read API answers next (cache purged).
+- `create` New page creates an empty page at once and opens `/admin/cms/pages/<id>` (no form).
+- `draft` Save draft -> `Draft saved.` (`PUT /api/cms/pages/<id>/draft`).
+- `publish` Publish saves the draft, then publishes -> `Published.`; Unpublish -> `Unpublished. The page is no longer on the website.`
+- `read-api` `GET /api/cms/resolve?path=<path>` 200, Cache-Tag containing `cms` and `cms:page:<id>`, `public, max-age=0, s-maxage=3600`.
 - `redirects` changing a published path adds a redirect.
 
 ## How to get to it (user POV)
 
-- Sidebar `Pages` -> `/admin/cms/pages` -> `New page` or a row -> `/admin/cms/pages/:id`.
-- Sidebar `Collections`, `Menus`, `Site settings`, `Redirects`.
-- Public: the Read API, as the Nuxt site calls it.
+- Sidebar `Pages` -> `/admin/cms/pages` -> `New page`, or a row -> `/admin/cms/pages/<id>`.
+- Sidebar `Collections`, `Menus` (both with children), `Site settings`, `Redirects`.
+- Public: the Read API, as the Nuxt site calls it. Italian paths resolve under `/it/...`.
 
 ## Driving it with ui.sh
 
-Preconditions: signed-in user with cms permissions; locales `en`, `it`.
+Preconditions: a session with cms rights (smoke owner).
 
-- **Create and publish.** `New page`, fill title and path, `Save draft` (`Draft saved.`), `Publish` (`Published.`). Columns on the list: Title, Path, Status, Edited.
-- **Read API.** `curl -i "http://127.0.0.1:<port>/api/cms/resolve?path=<path>"`: 200 with the Cache-Tag above (smoke step `Read API resolve with Cache-Tag`).
-- **Purge.** Resolve once, edit and publish again, resolve again: the new content is served (not the cached answer).
+- **Create, publish, resolve.** `$V/ui.sh .claude/skills/verify-host/journeys/cms-pages.mjs email=<owner> 'password=smoke password <run>'`. Proves: `POST /api/cms/pages` 200; English tab `Path` `/verify-<run>`, `Available in this language` on, `SEO title`; draft `PUT` 200 + `Draft saved.`; publish 200 + `Published.`; the Read API answers 200 with the tags; the list row shows the SEO title and `Published`.
+- **Purge.** Resolve, edit the SEO title, Publish, resolve again: the new title is served.
 
 ## Gotchas
 
-- `cache.enabled` local behaviour is workerd's, not the edge's; purge timing on real Workers is covered by `pnpm smoke` against the deployed host.
-- The fixture's definitions live in `fixtures/host/cms/definitions.ts`; required fields there decide what the New page form needs.
-- Not yet driven through the UI by a journey.
+- There is no Title field: the list shows the en SEO title, else the en path, else `Untitled`.
+- `Available in this language` is off by default; without it the Read API does not serve the page.
+- Paths start with `/`, lowercase letters, digits and dashes.
+- Assert that Cache-Tag contains the tags, not equality: linked targets add tags and a large set collapses to `cms:routes`.
+- `getByRole('button', { name: 'Publish', exact: true })`; Unpublish also matches a substring search.
+- Local Workers Cache is workerd's; edge purge timing is covered by `pnpm smoke` against the deployed host.
