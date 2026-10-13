@@ -95,6 +95,17 @@ const lucideSubset = (names: ReadonlySet<string>): IconSet => {
   return { ...set, icons, aliases }
 }
 
+// Tailwind 4 resets buttons to the default cursor; everything clickable gets the pointer again.
+// In the base layer, so a component's own cursor utility (cursor-not-allowed) still wins.
+const pointer = `@layer base {
+  :is(button, [role='button'], [role='menuitem'], [role='menuitemcheckbox'], [role='menuitemradio'],
+    [role='option'], [role='tab'], [role='checkbox'], [role='radio'], [role='switch'], summary,
+    select, label[for], input[type='checkbox'], input[type='radio'], input[type='file'],
+    input[type='submit'], input[type='button'], a[href]):not(:disabled, [aria-disabled='true'], [data-disabled]) {
+    cursor: pointer;
+  }
+}`
+
 const css = (brand: Brand | undefined, sources: ReadonlyArray<string>): string =>
   [
     '@import "tailwindcss";',
@@ -107,6 +118,7 @@ const css = (brand: Brand | undefined, sources: ReadonlyArray<string>): string =
           .map(([shade, value]) => `  --color-${name}-${shade}: ${value};`)
           .join('\n')}\n}`,
     ),
+    pointer,
     `@theme {\n  --font-sans: ${brand?.font ? `"${brand.font}"` : '"Inter Variable"'}, ui-sans-serif, system-ui, sans-serif;\n}`,
     brand?.radius ? `:root {\n  --ui-radius: ${brand.radius};\n}` : '',
     brand?.colors?.primary
