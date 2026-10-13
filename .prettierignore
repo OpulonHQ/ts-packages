@@ -5,3 +5,5 @@ dist/
 fixtures/host/public/
 .claude/
 .vitest/
+.nuxt/
+.output/

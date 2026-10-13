@@ -41,6 +41,8 @@ export default defineConfig(
       '**/node_modules/',
       '.packed/',
       'fixtures/host/public/',
+      '**/.nuxt/',
+      '**/.output/',
       '.claude/',
       '.vitest/',
     ],

@@ -1,9 +1,9 @@
 import type { Page, PageDocument, PageLocale } from '@opulonjs/cms/api'
-import { CachePurge } from '@opulonjs/cms/server'
+import { workersCachePurge } from '@opulonjs/cms/server'
 import { createWorker, PgFromHyperdrive } from '@opulonjs/core/workers'
 import { Mailer } from '@opulonjs/emails/server'
 import { R2MediaStorage } from '@opulonjs/media/server'
-import { Effect, Layer } from 'effect'
+import { Layer } from 'effect'
 import { adminQuery } from '../../../../test/postgres/admin.ts'
 import { useTestDatabase } from '../../../../test/postgres/index.ts'
 import { server } from '../../server/opulon.ts'
@@ -27,7 +27,8 @@ const editor = [
 ]
 
 /**
- * The fixture host's composed server behind a test Worker that records cache purges. The
+ * The fixture host's composed server behind a test Worker whose Workers Cache (`ctx.cache`)
+ * records purges, wired as the fixture host wires it. The
  * editor holds every cms permission; `as` narrows them, null sends no credentials. `composed`
  * replaces the fixture host's server (its `call` helper assumes the default `/api` prefix).
  */
@@ -35,12 +36,12 @@ export const useCmsHost = (composed = server) => {
   const db = useTestDatabase()
   const purged: Array<ReadonlyArray<string>> = []
   const worker = createWorker(composed, {
-    infra: (env: typeof usersEnv & { url: string }) =>
+    infra: (env: typeof usersEnv & { url: string }, ctx) =>
       Layer.mergeAll(
         PgFromHyperdrive({ connectionString: env.url }),
         R2MediaStorage(memoryBucket()),
         Mailer.log,
-        Layer.succeed(CachePurge, { purge: (tags) => Effect.sync(() => purged.push(tags)) }),
+        workersCachePurge(ctx),
       ),
     buildId: () => 'build-1',
   })
@@ -50,6 +51,12 @@ export const useCmsHost = (composed = server) => {
     const pending: Array<Promise<unknown>> = []
     const response = await worker.fetch(request, env(), {
       waitUntil: (p) => pending.push(p),
+      cache: {
+        purge: async ({ tags }) => {
+          purged.push(tags)
+          return { success: true, errors: [] }
+        },
+      },
     })
     const body = await response.arrayBuffer()
     await Promise.all(pending)

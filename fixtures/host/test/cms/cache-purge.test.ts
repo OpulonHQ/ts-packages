@@ -1,90 +1,135 @@
-import { CachePurge, cloudflareCachePurge } from '@opulonjs/cms/server'
-import { ConfigProvider, Effect, Fiber, Layer } from 'effect'
+import { CachePurge, type WorkersCache, workersCachePurge } from '@opulonjs/cms/server'
+import { Effect, Fiber, Logger } from 'effect'
 import * as TestClock from 'effect/testing/TestClock'
 import { expect, test } from 'vitest'
 
-/** A fake Cloudflare API: records requests and answers with `reply`. Never a real zone. */
-const fakeCloudflare = (reply: () => Response) => {
-  const requests: Array<{ url: string; auth: string | null; tags: Array<string> }> = []
-  const fetch: typeof globalThis.fetch = async (input, init) => {
-    const request = new Request(input, init)
-    requests.push({
-      url: request.url,
-      auth: request.headers.get('authorization'),
-      tags: ((await request.json()) as { tags: Array<string> }).tags,
-    })
-    return reply()
+/** A fake Workers Cache (`ctx.cache`): records purges and answers with `reply`. */
+const fakeCache = (reply: () => ReturnType<WorkersCache['purge']>) => {
+  const purged: Array<Array<string>> = []
+  const cache: WorkersCache = {
+    purge: (options) => {
+      purged.push(options.tags)
+      return reply()
+    },
   }
-  return { fetch, requests }
+  return { cache, purged }
 }
 
-const purge = (env: Record<string, string>, fetch: typeof globalThis.fetch, tags: Array<string>) =>
+const purge = (ctx: { cache?: WorkersCache }, tags: Array<string>) =>
   Effect.runPromise(
     Effect.gen(function* () {
       const cache = yield* CachePurge
       yield* cache.purge(tags)
-    }).pipe(
-      Effect.provide(
-        cloudflareCachePurge({ fetch }).pipe(
-          Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord(env))),
-        ),
-      ),
-    ),
+    }).pipe(Effect.provide(workersCachePurge(ctx))),
   )
 
-const env = { CMS_CLOUDFLARE_ZONE_ID: 'zone-1', CMS_CLOUDFLARE_API_TOKEN: 'secret-token' }
-const ok = () => Response.json({ success: true, errors: [], result: {} })
+const ok = async () => ({ success: true, errors: [] })
 
-test('purges tags through the zone purge_cache endpoint, 100 tags per request', async () => {
-  const api = fakeCloudflare(ok)
+test("purges tags through the Worker's own cache, 100 tags per call", async () => {
+  const fake = fakeCache(ok)
   const tags = Array.from({ length: 150 }, (_, i) => `cms:page:${i}`)
-  await purge(env, api.fetch, tags)
-  expect(api.requests).toEqual([
-    {
-      url: 'https://api.cloudflare.com/client/v4/zones/zone-1/purge_cache',
-      auth: 'Bearer secret-token',
-      tags: tags.slice(0, 100),
-    },
-    expect.objectContaining({ tags: tags.slice(100) }),
-  ])
+  await purge({ cache: fake.cache }, tags)
+  expect(fake.purged).toEqual([tags.slice(0, 100), tags.slice(100)])
 })
 
-test('does nothing until a zone and a token are configured', async () => {
-  const api = fakeCloudflare(ok)
-  await purge({ CMS_CLOUDFLARE_ZONE_ID: 'zone-1' }, api.fetch, ['cms'])
-  expect(api.requests).toEqual([])
+test('does nothing where the invocation has no Workers Cache', async () => {
+  await expect(purge({}, ['cms'])).resolves.toBeUndefined()
 })
 
-test('a refused or failed purge is logged, never failing the caller', async () => {
-  const refused = fakeCloudflare(() => Response.json({ success: false }, { status: 403 }))
-  await expect(purge(env, refused.fetch, ['cms'])).resolves.toBeUndefined()
-  const down: typeof globalThis.fetch = () => Promise.reject(new Error('network down'))
-  await expect(purge(env, down, ['cms'])).resolves.toBeUndefined()
-  expect(refused.requests).toHaveLength(1)
+test('a failed purge is logged, never failing the caller, and not retried', async () => {
+  const down = fakeCache(() => Promise.reject(new Error('cache down')))
+  await expect(purge({ cache: down.cache }, ['cms'])).resolves.toBeUndefined()
+  expect(down.purged).toHaveLength(1)
 })
 
-test('one deadline covers the answer body too: a stalled body is cancelled and the purge ends', async () => {
+test('a stalled purge ends at its 25 s deadline', async () => {
   const called = Promise.withResolvers<void>()
-  let cancelled = false
-  const stalled: typeof globalThis.fetch = async () => {
+  const stalled = fakeCache(() => {
     called.resolve()
-    return new Response(new ReadableStream({ cancel: () => void (cancelled = true) }))
-  }
+    return new Promise(() => {})
+  })
   await Effect.runPromise(
     Effect.gen(function* () {
       const cache = yield* CachePurge
       const fiber = yield* Effect.forkChild(cache.purge(['cms']))
       yield* Effect.promise(() => called.promise)
-      yield* TestClock.adjust('11 seconds')
+      yield* TestClock.adjust('25 seconds')
       yield* Fiber.join(fiber)
     }).pipe(
-      Effect.provide(
-        cloudflareCachePurge({ fetch: stalled }).pipe(
-          Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord(env))),
-        ),
-      ),
+      Effect.provide(workersCachePurge({ cache: stalled.cache })),
       Effect.provide(TestClock.layer()),
     ),
   )
-  expect(cancelled).toBe(true)
+  expect(stalled.purged).toHaveLength(1)
+})
+
+const refusedReply = async () => ({
+  success: false,
+  errors: [{ code: 1, message: 'rate limited' }],
+})
+
+/** Purges `cms` under the test clock, advancing it `steps` times by 12 seconds. */
+const purgeOverTime = (cache: WorkersCache, steps: number) =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const purger = yield* CachePurge
+      const fiber = yield* Effect.forkChild(purger.purge(['cms']))
+      for (let i = 0; i < steps; i++) yield* TestClock.adjust('12 seconds')
+      yield* Fiber.join(fiber)
+    }).pipe(Effect.provide(workersCachePurge({ cache })), Effect.provide(TestClock.layer())),
+  )
+
+test('a refused (rate-limited) purge is retried as a token refills (12 s), at most twice', async () => {
+  let calls = 0
+  const flaky = fakeCache(() => (calls++ === 0 ? refusedReply() : ok()))
+  await purgeOverTime(flaky.cache, 2)
+  expect(flaky.purged).toEqual([['cms'], ['cms']])
+
+  // Still refused after both retries: logged, the caller does not fail.
+  const refused = fakeCache(refusedReply)
+  await expect(purgeOverTime(refused.cache, 4)).resolves.toBeUndefined()
+  expect(refused.purged).toHaveLength(3)
+})
+
+test('one 25 s deadline covers calls, retries and sleeps; the failure is logged within it', async () => {
+  // Refusals that take 8 s to arrive: per-attempt deadlines would log at 56 s, long after
+  // Workers stopped keeping the Worker alive for waitUntil (30 s).
+  let now = 0
+  const pending: Array<{ start: number; resolve: () => void }> = []
+  const slow = fakeCache(
+    () =>
+      new Promise((resolve) => {
+        pending.push({
+          start: now,
+          resolve: () =>
+            resolve({ success: false, errors: [{ code: 1, message: 'rate limited' }] }),
+        })
+      }),
+  )
+  const logged: Array<number> = []
+  const errors = Logger.make(({ logLevel, date }) => {
+    if (logLevel === 'Error') logged.push(date.getTime())
+  })
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const purger = yield* CachePurge
+      const fiber = yield* Effect.forkChild(purger.purge(['cms']))
+      for (let second = 0; second < 60; second++) {
+        yield* Effect.yieldNow
+        yield* TestClock.adjust('1 second')
+        now += 1000
+        for (const call of pending.splice(0)) {
+          if (now - call.start >= 8000) call.resolve()
+          else pending.push(call)
+        }
+      }
+      yield* Fiber.join(fiber)
+    }).pipe(
+      Effect.provide(workersCachePurge({ cache: slow.cache })),
+      Effect.provide(TestClock.layer()),
+      Effect.provide(Logger.layer([errors])),
+    ),
+  )
+  expect(logged).toHaveLength(1)
+  expect(logged[0]).toBeLessThanOrEqual(25_000)
 })

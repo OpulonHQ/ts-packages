@@ -1,0 +1,23 @@
+{
+  "name": "@opulonjs-fixtures/nuxt",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "nuxt prepare && vue-tsc -b --noEmit && vue-tsc --noEmit -p test",
+    "build:nuxt": "nuxt build",
+    "test:built": "nuxt build && node scripts/test-built.ts"
+  },
+  "dependencies": {
+    "@opulonjs-fixtures/host": "workspace:*",
+    "@opulonjs/cms": "workspace:*",
+    "nuxt": "4.6.1",
+    "vue": "3.5.43",
+    "vue-router": "5.4.0"
+  },
+  "devDependencies": {
+    "h3": "1.15.11",
+    "miniflare": "4.20260730.0",
+    "node-mock-http": "1.0.5"
+  }
+}

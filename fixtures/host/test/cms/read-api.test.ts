@@ -41,7 +41,7 @@ test('resolve answers a published page per content locale, the default locale un
     seo: { title: '', description: '', image: null, noindex: false },
     sections: [{ type: 'rich_text', data: { body: '<p>Hello</p>' } }],
   })
-  expect(en.headers.get('cache-control')).toBe('public, max-age=0, s-maxage=86400')
+  expect(en.headers.get('cache-control')).toBe('public, max-age=0, s-maxage=3600')
   expect(tags(en.headers)).toEqual(['cms', `cms:page:${id}`])
 
   const it = await resolve('/it/chi-siamo')

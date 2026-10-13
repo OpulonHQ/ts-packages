@@ -57,6 +57,16 @@ test('rejects a request without a user', async () => {
   expect((await request('/api/demo/notes')).status).toBe(401)
 })
 
+test('an API answer without its own Cache-Control is private, no-store (Workers Cache keeps no session reads)', async () => {
+  expect(await request('/api/demo/notes', { cookie })).toMatchObject({
+    status: 200,
+    cacheControl: 'private, no-store',
+  })
+  expect((await request('/api/demo/notes')).cacheControl).toBe('private, no-store')
+  // An answer that sets its own policy keeps it.
+  expect((await request('/api/cms/site')).cacheControl).toBe('public, max-age=0, s-maxage=3600')
+})
+
 test('the cron runs the demo task as the system actor, and its afterCommit work lands', async () => {
   await worker.scheduled(
     { scheduledTime: Date.parse('2026-10-13T10:05:00Z'), cron: '*/5 * * * *' },

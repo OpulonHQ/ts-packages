@@ -8,3 +8,5 @@ dist/
 wrangler.deploy.jsonc
 fixtures/host/public/admin/
 .vitest/
+.nuxt/
+.output/

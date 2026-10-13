@@ -1,6 +1,11 @@
 packages:
   - packages/*
   - fixtures/*
+# One esbuild: fixtures/nuxt (nitropack) needs ^0.28, and a second copy forks vue-router into
+# peer variants, so the admin and the host would get different router instances.
+overrides:
+  esbuild: 0.28.2
 allowBuilds:
   esbuild: false
   vue-demi: false
+  workerd: false
