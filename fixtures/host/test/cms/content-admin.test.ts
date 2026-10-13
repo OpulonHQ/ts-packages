@@ -179,7 +179,14 @@ test('read-only revision forms preserve the stored snapshot on rerender and rest
     return host.fetch(request)
   }
   const text = mountAdmin(`/admin/cms/items/${created.id}`, fetch, modules)
-  await expect.poll(() => document.querySelectorAll('tbody tr').length).toBe(2)
+  await expect
+    .poll(
+      () =>
+        [...document.querySelectorAll<HTMLButtonElement>('tbody button')].filter(
+          (button) => button.textContent?.trim() === 'Zobraziť revíziu',
+        ).length,
+    )
+    .toBe(2)
   ;[...document.querySelectorAll<HTMLButtonElement>('tbody button')]
     .filter((b) => b.textContent?.trim() === 'Zobraziť revíziu')[1]!
     .click()
@@ -234,7 +241,14 @@ test('revision history views a snapshot and restores it to the editor without pu
   const second = (await host.publish(created.id)).body
   const text = mountAdmin(`/admin/cms/pages/${created.id}`)
   await expect.poll(text).toContain('História revízií')
-  await expect.poll(() => document.querySelectorAll('tbody tr').length).toBe(2)
+  await expect
+    .poll(
+      () =>
+        [...document.querySelectorAll<HTMLButtonElement>('tbody button')].filter(
+          (button) => button.textContent?.trim() === 'Zobraziť revíziu',
+        ).length,
+    )
+    .toBe(2)
   const views = [...document.querySelectorAll<HTMLButtonElement>('tbody button')].filter(
     (b) => b.textContent?.trim() === 'Zobraziť revíziu',
   )
@@ -316,7 +330,14 @@ test.each([
   await host.call('PUT', `${path}/draft`, { body: c.second })
   const second = (await host.call<Item | Menu | SiteSettings>('POST', `${path}/publish`)).body
   const text = mountAdmin(c.route(id))
-  await expect.poll(() => document.querySelectorAll('tbody tr').length).toBeGreaterThanOrEqual(2)
+  await expect
+    .poll(
+      () =>
+        [...document.querySelectorAll<HTMLButtonElement>('tbody button')].filter(
+          (button) => button.textContent?.trim() === 'Zobraziť revíziu',
+        ).length,
+    )
+    .toBeGreaterThanOrEqual(2)
   const views = [...document.querySelectorAll<HTMLButtonElement>('tbody button')].filter(
     (b) => b.textContent?.trim() === 'Zobraziť revíziu',
   )

@@ -72,8 +72,12 @@ test('a reference picker searches beyond page one, retains selections and discar
   const app = createAdmin({ brand, modules: adminModules, buildId: 'build-1', fetch })
   app.mount('#app')
   onTestFinished(() => app.unmount())
+  const picker = () =>
+    [...document.querySelectorAll<HTMLTableElement>('table')].find(
+      (table) => table.caption?.textContent?.trim() === 'Kategórie',
+    )
   const rows = () =>
-    [...document.querySelectorAll('table tbody tr')].map((row) => row.textContent?.trim())
+    [...(picker()?.querySelectorAll('tbody tr') ?? [])].map((row) => row.textContent?.trim())
   await expect.poll(rows).toHaveLength(25)
   await expect.poll(() => document.querySelector('[aria-label="Odstrániť Picker 31"]')).toBeTruthy()
   blockResolved = true
@@ -94,7 +98,7 @@ test('a reference picker searches beyond page one, retains selections and discar
   await new Promise((resolve) => setTimeout(resolve, 100))
   expect(rows()).toEqual(['Picker 30'])
   expect(document.querySelector('[aria-label="Odstrániť Picker 31"]')).toBeTruthy()
-  document.querySelector<HTMLElement>('table tbody tr')?.click()
+  picker()?.querySelector<HTMLElement>('tbody tr')?.click()
   await expect.poll(() => document.querySelector('[aria-label="Odstrániť Picker 30"]')).toBeTruthy()
   const save = [...document.querySelectorAll('button')].find(
     (button) => button.textContent?.trim() === 'Uložiť koncept',
