@@ -1,4 +1,4 @@
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { adminScope } from './admin-scope.ts'
 
 const never = () => new Promise<never>(() => {})
@@ -9,7 +9,25 @@ test('a timed-out body cannot call a host, mount, poll or sleep into the next te
   const held = Promise.withResolvers<string>()
   const host = scope.host({ call: () => held.promise })
   const pending = host.call()
+  const answer = Promise.withResolvers<boolean>()
+  let asked = false
+  const outcome = scope
+    .poll(
+      () => {
+        asked = true
+        return answer.promise
+      },
+      { timeout: 100 },
+    )
+    .toBe(true)
+    .then(
+      () => 'matched',
+      () => 'failed',
+    )
+  await vi.waitFor(() => expect(asked).toBe(true))
   timeout.abort(new Error('Test timed out'))
+  answer.resolve(true)
+  expect(await outcome).toBe('failed')
   await expect(pending).rejects.toThrow('Test timed out')
   document.body.innerHTML = '<div id="next">next test</div>'
   expect(() => scope.mount('/admin', { fetch: never })).toThrow('Test timed out')

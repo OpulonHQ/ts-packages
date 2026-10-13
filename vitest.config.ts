@@ -58,6 +58,8 @@ export default defineConfig({
           name: 'admin',
           include: adminTests,
           environment: './test/happy-dom-server.ts',
+          expect: { poll: { timeout: 5000 } },
+          testTimeout: 15_000,
           globalSetup,
           server,
         },

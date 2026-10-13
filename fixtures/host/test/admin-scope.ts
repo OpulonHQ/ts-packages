@@ -1,13 +1,16 @@
 import { type AdminOptions, createAdmin } from '@opulonjs/admin'
-import { test as base, expect } from 'vitest'
+import { beforeEach, test as base, expect } from 'vitest'
 import { brand } from '../admin/brand.ts'
 import { adminModules } from '../admin/modules.ts'
 
 /**
  * One admin journey's lifetime. Vitest does not cancel a timed-out test body, so once the test
  * has finished every host call, mount, poll and sleep made through the scope throws, and pending
- * ones reject: a late body cannot reach the next test's DOM or data. `close` unmounts, releases
- * the scope's gates and waits for every request it started, failing if one is still pending 5s later.
+ * ones reject. `close` unmounts, releases the scope's gates and waits for every request it
+ * started, failing if one is still pending 5s later. The unmounted app's own requests settle
+ * instead of rejecting, so the product does not log the scope's abort as a transport failure.
+ * Work that may outlive its test (a timeout in the test or its hooks, or a failed drain) stops
+ * every later test in the file from running.
  */
 export const adminScope = (signal: AbortSignal) => {
   const controller = new AbortController()
@@ -22,7 +25,7 @@ export const adminScope = (signal: AbortSignal) => {
   const pending = new Set<Promise<unknown>>()
   const gates = new Set<() => void>()
   const apps: Array<{ unmount: () => void }> = []
-  const wait = <T>(work: Promise<T>): Promise<T> => {
+  const track = <T>(work: Promise<T>): Promise<T> => {
     if (!controller.signal.aborted) {
       pending.add(work)
       void work.then(
@@ -30,7 +33,10 @@ export const adminScope = (signal: AbortSignal) => {
         () => pending.delete(work),
       )
     }
-    const raced = Promise.race([work, stopped])
+    return work
+  }
+  const wait = <T>(work: Promise<T>): Promise<T> => {
+    const raced = Promise.race([track(work), stopped])
     raced.catch(() => {})
     return raced
   }
@@ -54,9 +60,11 @@ export const adminScope = (signal: AbortSignal) => {
       return gate
     },
     poll: <T>(actual: () => T, options?: Parameters<typeof expect.poll>[1]) =>
-      expect.poll(() => {
+      expect.poll(async () => {
         controller.signal.throwIfAborted()
-        return actual()
+        const value = await actual()
+        controller.signal.throwIfAborted()
+        return value
       }, options),
     mount: (
       path: string,
@@ -72,7 +80,8 @@ export const adminScope = (signal: AbortSignal) => {
         brand,
         modules,
         buildId: 'build-1',
-        fetch: (input, init) => wait(controller.signal.aborted ? stopped : fetch(input, init)),
+        fetch: (input, init) =>
+          controller.signal.aborted ? new Promise<never>(() => {}) : track(fetch(input, init)),
       })
       app.mount('#app')
       apps.push(app)
@@ -96,10 +105,24 @@ export const adminScope = (signal: AbortSignal) => {
   }
 }
 
+let unfinished: string | undefined
+let previous: { readonly signal: AbortSignal; readonly name: string } | undefined
+beforeEach(({ signal, task }) => {
+  if (previous?.signal.aborted) unfinished ??= previous.name
+  previous = { signal, name: task.name }
+  if (unfinished)
+    throw new Error(`Not run: "${unfinished}" timed out or left requests pending and may still run`)
+})
+
 export const test = base.extend<{ scope: ReturnType<typeof adminScope> }>({
-  scope: async ({ signal }, use) => {
+  scope: async ({ signal, task }, use) => {
     const scope = adminScope(signal)
     await use(scope)
-    await scope.close()
+    try {
+      await scope.close()
+    } catch (error) {
+      unfinished ??= task.name
+      throw error
+    }
   },
 })

@@ -3,14 +3,13 @@ import { cmsAdmin } from '@opulonjs/cms/admin'
 import { cms } from '@opulonjs/cms/server'
 import { composeServer } from '@opulonjs/core'
 import { Schema } from 'effect'
-import { expect, vi } from 'vitest'
+import { expect } from 'vitest'
 import { adminModules } from '../../admin/modules.ts'
 import { definitions } from '../../cms/definitions.ts'
 import { server } from '../../server/opulon.ts'
 import { test as adminTest } from '../admin-scope.ts'
 import { useCmsHost } from './helpers.ts'
 
-vi.setConfig({ testTimeout: 15_000, expect: { poll: { timeout: 5000 } } })
 const cmsHost = useCmsHost()
 const largeDefinitions = {
   ...definitions,
