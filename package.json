@@ -13,6 +13,7 @@
     "test": "vitest run",
     "build": "pnpm -r --workspace-concurrency=6 build",
     "pack:check": "node scripts/pack-check.ts",
+    "smoke": "node scripts/smoke.ts",
     "changeset": "changeset",
     "version-packages": "changeset version && pnpm install --lockfile-only",
     "release": "pnpm build && changeset publish",

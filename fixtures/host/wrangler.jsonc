@@ -12,6 +12,10 @@
 // Create the Hyperdrive config with query caching off (`wrangler hyperdrive create <name>
 // --connection-string=... --caching-disabled`): the cms Read API is purged by Cache-Tag on
 // publish, and a cached database read would rebuild it from stale rows (docs/adr/0006).
+// Then drive it with `SMOKE_URL=<origin> DATABASE_URL_DIRECT=<direct url> pnpm smoke`
+// (scripts/smoke.ts; waits for a real */5 cron tick, so allow ~6 minutes). Cleanup: wrangler
+// delete, hyperdrive delete, empty the R2 bucket (r2 object delete) before r2 bucket delete,
+// and delete the throwaway database.
 {
   "name": "tspack-fixture-host",
   "main": "worker.ts",
