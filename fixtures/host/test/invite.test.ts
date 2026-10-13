@@ -243,3 +243,23 @@ test('an inviter deactivated while sending an invitation sends nothing', async (
   expect(invited.status).toBe(403)
   expect(host.mailer.sent.length).toBe(sent)
 })
+
+test('accepting a Super admin invitation while it is being replaced does not deadlock', async () => {
+  const admin = await signedIn({ superAdmin: true })
+  const email = 'deadlock@example.test'
+  const token = await invite(admin.cookie, email, ['super_admin'])
+  const replace = () =>
+    host.request('POST', '/users/invitations', {
+      cookie: admin.cookie,
+      body: { email, roleIds: ['super_admin'] },
+    })
+  await using barrier = await pauseInserts(db.url, 'users.user', `new.email = '${email}'`)
+  const accepting = accept(token)
+  await barrier.reached()
+  const replacing = replace()
+  await Promise.race([replacing, lockWaits(db.url, 2)])
+  await barrier.release()
+  // Either order is fine (accepted, then the address is taken; or the link replaced first);
+  // a deadlock answers 500.
+  expect((await Promise.all([accepting, replacing])).map((r) => r.status)).not.toContain(500)
+})

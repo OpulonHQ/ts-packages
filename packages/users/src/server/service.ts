@@ -266,6 +266,10 @@ export class Users extends Context.Service<
           const password = yield* Effect.promise(() => hashPassword(input.password))
           yield* withTransaction(
             Effect.gen(function* () {
+              // The shared lock first, as every users/roles/invitation write takes it: granting
+              // a role (Super admin's row is the lock) after locking the invitation would
+              // deadlock with a re-invite that holds the lock and replaces this invitation.
+              yield* lockAccessWrites
               const [invitation] = yield* sql<{ id: string; email: string }>`
                 select id, email from users.invitation
                 where token_hash = ${tokenHash} and accepted_at is null and expires_at > now()
