@@ -107,7 +107,7 @@ const title = computed(() => {
         icon="i-lucide-refresh-cw"
         :title="t('admin.reload.message')"
         :actions="[
-          { label: t('admin.reload.action'), color: 'neutral', variant: 'solid', onClick: reload },
+          { label: t('admin.reload.action'), color: 'neutral', variant: 'subtle', onClick: reload },
         ]"
         :ui="{ root: 'rounded-none' }"
       />
