@@ -1,17 +1,39 @@
+import { type SitemapEntry, sitemapSource } from '@opulonjs/cms/server'
+import { composeServer, defineModule } from '@opulonjs/core'
+import { Effect, Layer } from 'effect'
 import { expect, test } from 'vitest'
+import { server } from '../../server/opulon.ts'
 import { useCmsHost } from './helpers.ts'
 
 const host = useCmsHost()
 const origin = 'https://host.test'
 const locs = (xml: string) => [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]!)
 const escaped = (path: string) => encodeURI(`${origin}${path}`).replaceAll('&', '&amp;')
+let boundaryEntries: ReadonlyArray<SitemapEntry> = []
+const boundary = useCmsHost(
+  composeServer({
+    modules: [
+      ...server.modules,
+      defineModule({
+        id: 'bulk',
+        dependsOn: ['cms'],
+        groups: [],
+        handlers: () => Layer.empty,
+        contributes: [
+          sitemapSource({ key: 'bulk.boundary', list: Effect.sync(() => boundaryEntries) }),
+        ],
+      }),
+    ],
+    contentLocales: ['en', 'it'],
+  }),
+)
 
 test.each([
-  { count: 50_000, suffix: '', split: false },
-  { count: 50_001, suffix: '', split: true },
-  { count: 50_001, suffix: 'é&'.repeat(40), split: true },
+  { name: 'count boundary', count: 50_000, suffix: '', split: false },
+  { name: 'count split', count: 50_001, suffix: '', split: true },
+  { name: 'escaped XML byte split', count: 50_001, suffix: 'é&'.repeat(40), split: true },
 ])(
-  'cms pages sitemap covers $count URLs with suffix "$suffix"',
+  'cms pages sitemap preserves every URL at the $name',
   async ({ count, suffix, split }) => {
     await host.query('delete from cms.document')
     await host.query(`
@@ -45,7 +67,7 @@ test.each([
       expect(response.status).toBe(200)
       expect(response.headers.get('content-type')).toMatch(/^application\/xml/)
       const body = await response.text()
-      expect(Buffer.byteLength(body, 'utf8')).toBeLessThanOrEqual(52_428_800)
+      expect(Buffer.byteLength(body, 'utf8')).toBeLessThanOrEqual(50_000_000)
       const urls = locs(body)
       expect(urls.length).toBeGreaterThan(0)
       expect(urls.length).toBeLessThanOrEqual(50_000)
@@ -59,6 +81,84 @@ test.each([
       (await host.publicFetch(`${origin}/api/cms/sitemaps/cms.pages-${children.length + 1}.xml`))
         .status,
     ).toBe(404)
+    if (process.env.SITEMAP_TIMINGS === '1' && count > 50_000) {
+      const samples = []
+      for (let run = 0; run < 5; run++) {
+        for (const path of ['/api/cms/sitemap.xml', new URL(children[0]!).pathname]) {
+          const cpu = process.cpuUsage()
+          const start = performance.now()
+          const response = await host.publicFetch(`${origin}${path}`)
+          const body = await response.text()
+          const wallMs = performance.now() - start
+          const used = process.cpuUsage(cpu)
+          expect(response.status).toBe(200)
+          expect(locs(body).length).toBeGreaterThan(0)
+          samples.push({
+            path,
+            wallMs,
+            cpuMs: (used.user + used.system) / 1000,
+            bytes: Buffer.byteLength(body),
+          })
+        }
+      }
+      console.log(JSON.stringify({ count, suffix, samples }))
+    }
   },
   60_000,
 )
+
+test.each([-1, 0, 1])(
+  'serialized sitemap splits at the byte cap %+i',
+  async (delta) => {
+    const read = async (name: string) => {
+      const response = await boundary.publicFetch(`${origin}/api/cms/sitemaps/${name}`)
+      expect(response.status).toBe(200)
+      return response.text()
+    }
+    boundaryEntries = []
+    const wrapperBytes = Buffer.byteLength(await read('bulk.boundary.xml'))
+    const entry = (i: number, padding: number): SitemapEntry => ({
+      path: `/boundary/${String(i).padStart(5, '0')}/&é${'x'.repeat(padding)}`,
+      lastmod: '2026-10-01T00:00:00Z',
+    })
+    boundaryEntries = [entry(0, 0)]
+    const entryBytes = Buffer.byteLength(await read('bulk.boundary.xml')) - wrapperBytes
+    const width = Math.floor((50_000_000 - wrapperBytes) / 50_000)
+    const remainder = 50_000_000 - wrapperBytes - width * 50_000 + delta
+    boundaryEntries = Array.from({ length: 50_000 }, (_, i) =>
+      entry(i, width - entryBytes + (i < remainder ? 1 : 0)),
+    )
+    const response = await boundary.publicFetch(`${origin}/api/cms/sitemap.xml`)
+    expect(response.status).toBe(200)
+    const children = locs(await response.text()).filter((loc) => loc.includes('/bulk.boundary'))
+    expect(children).toEqual(
+      delta <= 0
+        ? [`${origin}/api/cms/sitemaps/bulk.boundary.xml`]
+        : [1, 2].map((i) => `${origin}/api/cms/sitemaps/bulk.boundary-${i}.xml`),
+    )
+    let totalBytes = 0
+    const actual: string[] = []
+    for (const child of children) {
+      const body = await read(new URL(child).pathname.split('/').at(-1)!)
+      const bytes = Buffer.byteLength(body)
+      expect(bytes).toBeLessThanOrEqual(50_000_000)
+      const urls = locs(body)
+      expect(urls.length).toBeGreaterThan(0)
+      expect(urls.length).toBeLessThanOrEqual(50_000)
+      totalBytes += bytes
+      actual.push(...urls)
+    }
+    expect(totalBytes).toBe(50_000_000 + delta + (children.length - 1) * wrapperBytes)
+    expect(actual).toEqual(boundaryEntries.map((e) => escaped(e.path)))
+  },
+  60_000,
+)
+
+test('an entry larger than a whole sitemap fails instead of serving invalid XML', async () => {
+  boundaryEntries = [{ path: `/oversized/${'x'.repeat(50_000_000)}` }]
+  for (const path of ['/sitemap.xml', '/sitemaps/bulk.boundary.xml']) {
+    const response = await boundary.publicFetch(`${origin}/api/cms${path}`)
+    expect(response.status).toBe(500)
+    expect(await response.text()).not.toContain('/oversized/')
+  }
+}, 60_000)
