@@ -105,6 +105,26 @@ test('?preview forwards the editor session to the cms and makes the HTML private
   })
 })
 
+test('outside ?preview, credentials passed to the cms fetch are dropped and an uncacheable read keeps the HTML private', async () => {
+  const created = await host.create(
+    page({ en: '/secret' }, [section('rich_text', { body: { en: '<p>Secret</p>' } })]),
+  )
+  const cookie = await host.cookie()
+
+  const { event, settled } = request('https://example.com/secret')
+  const draft = await event.context.cms!.fetch(
+    `https://example.com/api/cms/pages/${created.body.id}/preview?locale=en`,
+    { headers: { cookie, authorization: 'Bearer x' } },
+  )
+  expect(draft.status).toBe(401)
+  await (await ssrClient(event)).site()
+  await settled()
+
+  expect(
+    respond(event, { statusCode: 200, headers: { 'cache-control': 'public, max-age=60' } }),
+  ).toEqual({ 'cache-control': 'private, no-store' })
+})
+
 test('outside Workers (no cloudflare context) nothing is installed or added', () => {
   const event: CmsEvent = { path: '/', headers: new Headers(), context: {} }
   hooks.request(event)

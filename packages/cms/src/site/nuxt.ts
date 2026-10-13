@@ -23,6 +23,8 @@ export interface CmsRequestContext {
   readonly tags: Set<string>
   /** The page was requested with `?preview`: the session is forwarded, the HTML not cached. */
   readonly preview: boolean
+  /** Some cms answer read for this page was not publicly cacheable: the HTML is not cached. */
+  uncacheable: boolean
 }
 
 /** The parts of an H3 event the hooks use (nitropack 2 on the cloudflare-module preset). */
@@ -50,8 +52,10 @@ export interface CmsRenderResponse {
  * Nitro runtime hooks for a public site on Workers. `request` gives every request an in-process
  * cms fetch (no subrequest; the request's own env and ctx); `renderResponse` copies the Cache-Tags
  * the page read onto its HTML with the Read API's `s-maxage` (a Cache-Control the host already set
- * is kept), or, for `?preview`, answers `private, no-store` without tags. Only `?preview` requests
- * forward the visitor's cookie to the cms, so a draft is never read for a cacheable page.
+ * is kept), or, for `?preview` or when a cms answer was not publicly cacheable, answers
+ * `private, no-store` without tags. Only `?preview` requests forward the visitor's cookie to the
+ * cms (credentials the page passes itself are dropped), so a draft is never read for a cacheable
+ * page.
  *
  * ```ts
  * // server/plugins/cms.ts
@@ -77,20 +81,30 @@ export const cmsNitroHooks = <Env>(worker: CmsWorker<Env>) => ({
     const fetch: typeof globalThis.fetch = async (input, init) => {
       // The public origin: sitemap answers build their URLs from the request's.
       const request = new Request(new URL(input instanceof Request ? input.url : input, url), init)
+      // Credentials reach the cms only for `?preview`, whatever the caller passed: a cacheable
+      // page must never be rendered from a session's (draft or permissioned) reads.
+      request.headers.delete('cookie')
+      request.headers.delete('authorization')
       if (preview && cookie) request.headers.set('cookie', cookie)
       // The env is the Worker's own (`cloudflare.env`); the host types it through `worker`.
       const response = await worker.fetch(request, cloudflare.env as Env, cloudflare.context)
+      // Only publicly cacheable answers may end up in cached HTML; anything else (an error, a
+      // private read) keeps this page out of the shared cache.
+      if (!/\bpublic\b/.test(response.headers.get('cache-control') ?? '')) {
+        context.uncacheable = true
+      }
       for (const tag of response.headers.get('cache-tag')?.split(',') ?? []) {
         if (tag.trim()) tags.add(tag.trim())
       }
       return response
     }
-    event.context.cms = { fetch, tags, preview }
+    const context: CmsRequestContext = { fetch, tags, preview, uncacheable: false }
+    event.context.cms = context
   },
   renderResponse: (response: CmsRenderResponse, { event }: { event: CmsEvent }) => {
     const cms = event.context.cms
     if (!cms) return
-    if (cms.preview) {
+    if (cms.preview || cms.uncacheable) {
       response.headers = { ...response.headers, 'cache-control': 'private, no-store' }
       delete response.headers['cache-tag']
       return
