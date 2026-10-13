@@ -1,9 +1,61 @@
+import * as PgClient from '@effect/sql-pg/PgClient'
+import { Audit, Composed, CurrentActor, diffFields, systemActor } from '@opulonjs/core'
+import { Effect, Redacted } from 'effect'
 import { expect, test } from 'vitest'
 import { useTestDatabase } from '../../../test/postgres/index.ts'
 import { makeHost, seedUser, sqlQuery } from './support/users.ts'
 
 const db = useTestDatabase()
 const host = makeHost(() => db.url)
+
+test('audit reads added and removed fields serialized by the existing writer', async () => {
+  const user = await seedUser(db.url, { permissions: ['core.audit.view'] })
+  const cookie = await host.signIn(user.email, user.password)
+  const absent: { memo?: string } = {}
+  const present: { memo?: string } = { memo: 'added' }
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      for (const changes of [
+        diffFields(absent, present, ['memo']),
+        diffFields(present, absent, ['memo']),
+      ]) {
+        yield* Audit.record({
+          action: 'users.locale_changed',
+          subject: { type: 'user', id: 'historical-changes', label: 'Snapshot user' },
+          changes,
+        })
+      }
+    }).pipe(
+      Effect.provideService(Composed, {
+        modules: ['core', 'users'],
+        permissions: ['core.audit.view'],
+        auditActions: new Set(['users.locale_changed']),
+        contributions: [],
+      }),
+      Effect.provideService(CurrentActor, systemActor('Importer')),
+      Effect.provide(PgClient.layer({ url: Redacted.make(db.url), maxConnections: 2 })),
+    ),
+  )
+  expect(
+    await sqlQuery(
+      db.url,
+      'select changes from core.audit_event where subject_id = $1 order by id',
+      ['historical-changes'],
+    ),
+  ).toEqual([
+    { changes: [{ field: 'memo', to: 'added' }] },
+    { changes: [{ field: 'memo', from: 'added' }] },
+  ])
+  const result = await host.request('GET', '/audit?subjectId=historical-changes', { cookie })
+  expect(result.status).toBe(200)
+  expect(result.body).toMatchObject({
+    total: 2,
+    rows: [
+      { changes: [{ field: 'memo', from: 'added', to: null }] },
+      { changes: [{ field: 'memo', from: null, to: 'added' }] },
+    ],
+  })
+})
 
 test('audit requires a session and core.audit.view', async () => {
   expect((await host.request('GET', '/audit')).status).toBe(401)

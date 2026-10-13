@@ -116,6 +116,28 @@ test('a route needing a permission the user lacks falls back to the dashboard', 
   expect(location.pathname).toBe('/admin/')
 })
 
+test('an authorized user reaches the host audit override with one navigation entry', async () => {
+  const user = await seedUser(db.url, { permissions: ['core.audit.view'] })
+  const session = await hosts.b1.signIn(user.email, user.password)
+  const admin = mountAdmin('/admin/core/audit', { as: session })
+  await expect.poll(admin.text).toContain('audit screen')
+  const links = [...document.querySelectorAll<HTMLAnchorElement>('nav a')].filter(
+    (link) => link.textContent?.trim() === 'Audit log',
+  )
+  expect(links).toHaveLength(1)
+  expect(links[0]?.getAttribute('href')).toBe('/admin/core/audit')
+  expect(document.querySelector('a[href="/admin/audit"]')).toBeNull()
+})
+
+test('the host audit override suppresses the built-in audit URL', async () => {
+  const user = await seedUser(db.url, { permissions: ['core.audit.view'] })
+  const session = await hosts.b1.signIn(user.email, user.password)
+  const admin = mountAdmin('/admin/audit', { as: session })
+  await expect.poll(admin.text).toContain('Page not found.')
+  expect(admin.text()).not.toContain('Newest events first.')
+  expect(admin.text()).not.toContain('audit screen')
+})
+
 test('hides admin modules missing from /me, with a dev warning', async () => {
   const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
   onTestFinished(() => warn.mockRestore())

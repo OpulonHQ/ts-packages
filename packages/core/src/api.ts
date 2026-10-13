@@ -58,7 +58,8 @@ export const Me = Schema.Struct({
 })
 export type Me = typeof Me.Type
 
-/** Immutable actor, subject and change snapshots; retention may remove IP and user agent. */
+/** Immutable actor, subject and change snapshots; retention may remove IP and user agent.
+ * Missing historical change values are returned as null. */
 export const AuditEvent = Schema.Struct({
   id: Schema.String,
   occurredAt: Schema.String,

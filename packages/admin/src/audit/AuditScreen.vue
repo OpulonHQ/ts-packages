@@ -26,7 +26,7 @@ const fields = [
   'subjectLabel',
   'start',
   'end',
-] as const
+] as const satisfies ReadonlyArray<Exclude<keyof AuditQuery, 'page' | 'perPage'>>
 const filters = reactive(Object.fromEntries(fields.map((field) => [field, ''])))
 const applied = ref<AuditQuery>({})
 const revision = ref(0)

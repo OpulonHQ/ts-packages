@@ -160,6 +160,7 @@ test('audit filters whole UTC days, pages on the server and falls back to unknow
   button('Apply filters')!.click()
   await expect.poll(() => rows().length).toBe(25)
   expect(rows()[0]).toContain('Archive note 27')
+  expect(document.querySelector('tbody time')?.textContent).toContain('UTC')
   expect(rows()[24]).toContain('Archive note 3')
   expect(rows().join(' ')).toContain('retired.note.changed')
   expect(rows().join(' ')).not.toContain('IP address')

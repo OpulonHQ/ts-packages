@@ -40,7 +40,10 @@ export const listAudit = Effect.fn('Audit.list')(
       'actor', jsonb_build_object('kind', actor_kind, 'id', actor_id, 'name', actor_name),
       'action', action,
       'subject', jsonb_build_object('type', subject_type, 'id', subject_id, 'label', subject_label),
-      'changes', coalesce(changes, '[]'::jsonb), 'context', context, 'ip', ip, 'userAgent', user_agent
+      'changes', coalesce((select jsonb_agg(
+        '{"from":null,"to":null}'::jsonb || value order by position)
+        from jsonb_array_elements(changes) with ordinality as change(value, position)), '[]'::jsonb),
+      'context', context, 'ip', ip, 'userAgent', user_agent
     ) order by occurred_at desc, id desc) from paged), '[]'::jsonb) as rows`
     return yield* Schema.decodeUnknownEffect(AuditPage)(result[0])
   },

@@ -17,7 +17,12 @@ const value = (input: unknown) =>
     <div class="flex flex-wrap items-baseline justify-between gap-2">
       <strong>{{ te(`audit.${event.action}`) ? t(`audit.${event.action}`) : event.action }}</strong>
       <time :datetime="event.occurredAt" class="text-sm text-muted">
-        {{ new Date(event.occurredAt).toLocaleString(locale) }}
+        {{
+          new Date(event.occurredAt).toLocaleString(locale, {
+            timeZone: 'UTC',
+            timeZoneName: 'short',
+          })
+        }}
       </time>
     </div>
     <p class="text-sm">
