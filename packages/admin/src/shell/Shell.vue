@@ -17,15 +17,17 @@ import {
   UNavigationMenu,
   useToast,
 } from '@opulonjs/ui'
-import { computed } from 'vue'
+import { computed, inject } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
-import { useAdmin } from '../state.ts'
+import { failedScreenKey, useAdmin } from '../state.ts'
+import ScreenFailed from './ScreenFailed.vue'
 
 const { brand, me, status, stale, nav, signOut, accountRoute, setLocale } = useAdmin()
 const { t, locale, availableLocales } = useI18n()
 const toast = useToast()
 const route = useRoute()
+const failedScreen = inject(failedScreenKey)
 
 const uiLocale = computed(() => (locale.value === 'sk' ? nuxtUiSk : nuxtUiEn))
 // Public routes (sign-in) and signed-out states render without the dashboard frame.
@@ -125,6 +127,7 @@ const title = computed(() => {
       <p v-else-if="status === 'loading'" class="p-6 text-muted" aria-live="polite">
         {{ t('admin.loading') }}
       </p>
+      <ScreenFailed v-else-if="failedScreen" />
       <RouterView v-else />
     </main>
 
@@ -202,7 +205,8 @@ const title = computed(() => {
           </UDashboardNavbar>
         </template>
         <template #body>
-          <RouterView />
+          <ScreenFailed v-if="failedScreen" />
+          <RouterView v-else />
         </template>
       </UDashboardPanel>
     </UDashboardGroup>

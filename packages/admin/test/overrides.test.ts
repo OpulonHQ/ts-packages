@@ -171,3 +171,22 @@ test.each(['/audit', '/AUDIT/', '/audit///'] as const)(
     ).toThrow(/reserved.*core\.audit/)
   },
 )
+
+test('a rejected route loader shows an error and retries', async () => {
+  let attempts = 0
+  const dashboard = () =>
+    ++attempts === 1
+      ? Promise.reject(new Error('override download failed'))
+      : Promise.resolve(screen('retry host'))
+  mount('/', { overrides: { dashboard } })
+  await expect
+    .poll(() => document.querySelector('[role="alert"]')?.textContent)
+    .toContain('This screen could not be loaded.')
+  const retry = [...document.querySelectorAll('button')].find((b) =>
+    b.textContent?.includes('Try again'),
+  )
+  retry?.click()
+  await expect.poll(() => document.body.textContent).toContain('retry host')
+  expect(attempts).toBe(2)
+  expect(document.querySelector('[role="alert"]')).toBeNull()
+})

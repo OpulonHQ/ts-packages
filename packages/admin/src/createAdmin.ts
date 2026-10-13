@@ -25,6 +25,7 @@ import NotFound from './shell/NotFound.vue'
 import Shell from './shell/Shell.vue'
 import {
   adminStateKey,
+  failedScreenKey,
   type AdminState,
   type Me,
   type ShellNavGroup,
@@ -366,8 +367,14 @@ export const createAdmin = (options: AdminOptions): App => {
     if (!allowed(access)) return { name: 'dashboard' }
     return true
   })
+  const failedScreen = shallowRef<string>()
+  router.onError((error: unknown, to) => {
+    console.error(error)
+    failedScreen.value = to.fullPath
+  })
   // Re-check the build after each navigation, so an open tab learns about a deploy.
-  router.afterEach((_to, from) => {
+  router.afterEach((_to, from, failure) => {
+    if (!failure) failedScreen.value = undefined
     if (from.matched.length === 0 || !me.value) return
     getMe().then(
       (next) => {
@@ -385,4 +392,5 @@ export const createAdmin = (options: AdminOptions): App => {
     .use(uiPlugin)
     .provide(apiContextKey, { apiPrefix, fetch })
     .provide(adminStateKey, state)
+    .provide(failedScreenKey, failedScreen)
 }

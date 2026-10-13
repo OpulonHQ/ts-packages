@@ -46,6 +46,11 @@ export interface AdminState {
 
 export const adminStateKey: InjectionKey<AdminState> = Symbol('@opulonjs/admin/state')
 
+/** The location whose screen failed to load, for the shell's error and retry. */
+export const failedScreenKey: InjectionKey<ShallowRef<string | undefined>> = Symbol(
+  '@opulonjs/admin/failed-screen',
+)
+
 /** The shell's state for module screens: the signed-in user (`me`) and `can(permission)`. */
 export const useAdmin = (): AdminState => {
   const state = inject(adminStateKey)
