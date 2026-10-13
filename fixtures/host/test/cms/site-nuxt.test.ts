@@ -125,6 +125,40 @@ test('outside ?preview, credentials passed to the cms fetch are dropped and an u
   ).toEqual({ 'cache-control': 'private, no-store' })
 })
 
+test('the HTML Cache-Tag union stays bounded: link tags collapse into cms:routes', async () => {
+  // Two answers each under the bound whose union is not (as a page and the site can be).
+  const tags = (from: number) => [
+    'cms',
+    ...Array.from({ length: 150 }, (_, i) => `cms:page:${crypto.randomUUID()}-${from + i}`),
+  ]
+  let call = 0
+  const stub = cmsNitroHooks({
+    fetch: async () =>
+      new Response('{}', {
+        headers: { 'cache-control': readCacheControl, 'cache-tag': tags(call++ * 150).join(',') },
+      }),
+  })
+  const event: CmsEvent = {
+    path: '/big',
+    headers: new Headers(),
+    context: {
+      cloudflare: {
+        request: new Request('https://example.com/big'),
+        env: {},
+        context: { waitUntil: () => {} },
+      },
+    },
+  }
+  stub.request(event)
+  await event.context.cms!.fetch('/api/cms/resolve?path=%2Fbig')
+  await event.context.cms!.fetch('/api/cms/site')
+  const response = { statusCode: 200, headers: {} as Record<string, string> }
+  stub.renderResponse(response, { event })
+  const header = response.headers['cache-tag']!
+  expect(new TextEncoder().encode(header).length).toBeLessThanOrEqual(8 * 1024)
+  expect(header.split(',').sort()).toEqual(['cms', 'cms:routes'])
+})
+
 test('outside Workers (no cloudflare context) nothing is installed or added', () => {
   const event: CmsEvent = { path: '/', headers: new Headers(), context: {} }
   hooks.request(event)

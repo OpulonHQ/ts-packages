@@ -161,6 +161,28 @@ test('site settings and menus need the site permissions', async () => {
   ).toBe(403)
 })
 
+test('a site linking hundreds of pages keeps its Cache-Tag header bounded, and still purged', async () => {
+  const linked = (await host.create(page({ en: '/linked-from-menus' }))).body
+  const links = (n: number) =>
+    Array.from({ length: n }, (_, i) =>
+      entry({ en: `Page ${i}` }, { type: 'page', id: i === 0 ? linked.id : crypto.randomUUID() }),
+    )
+  for (const key of ['main', 'footer']) {
+    expect((await saveMenu(key, links(200))).status).toBe(200)
+    expect((await host.call(`POST`, `/menus/${key}/publish`)).status).toBe(200)
+  }
+
+  const site = await host.call('GET', '/site', { as: null })
+  const header = site.headers.get('cache-tag')!
+  // Cloudflare refuses Cache-Tag headers above 16 KiB; answers stay at most 8 KiB.
+  expect(new TextEncoder().encode(header).length).toBeLessThanOrEqual(8 * 1024)
+  // The links' page tags collapsed into cms:routes, which publishing any page purges.
+  expect(header.split(',')).toEqual(expect.arrayContaining(['cms', 'cms:site', 'cms:routes']))
+  const purges = host.purged.length
+  await host.publish(linked.id)
+  expect(host.purged.slice(purges).flat()).toContain('cms:routes')
+})
+
 function seo() {
   return { title: '', description: '', image: null, noindex: false }
 }

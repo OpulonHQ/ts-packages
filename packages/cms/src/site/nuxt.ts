@@ -3,7 +3,7 @@
 // H3 event (nitropack 2, cloudflare-module preset), the app half reads that event from Vue's
 // SSR context, which Nuxt fills with `{ event }`.
 import { useSSRContext } from 'vue'
-import { readCacheControl } from '../public.ts'
+import { cacheTagHeader, readCacheControl } from '../public.ts'
 import { type CmsClient, createCmsClient } from './client.ts'
 
 /** The host's Worker (`createWorker(...)`, or the host's wrapper of it). */
@@ -111,7 +111,7 @@ export const cmsNitroHooks = <Env>(worker: CmsWorker<Env>) => ({
     }
     if (cms.tags.size === 0 || (response.statusCode ?? 200) >= 500) return
     const headers = (response.headers ??= {})
-    headers['cache-tag'] = [...cms.tags].join(',')
+    headers['cache-tag'] = cacheTagHeader(cms.tags)
     if (!headers['cache-control'] && !event.node?.res?.getHeader('cache-control')) {
       headers['cache-control'] = readCacheControl
     }

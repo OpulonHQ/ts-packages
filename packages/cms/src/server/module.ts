@@ -5,6 +5,7 @@ import type * as HttpServerRequest from 'effect/http/HttpServerRequest'
 import * as HttpServerResponse from 'effect/http/HttpServerResponse'
 import type * as HttpApi from 'effect/http-api/HttpApi'
 import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
+import { cacheTagHeader } from '../public.ts'
 import {
   cmsAuditActions,
   type CmsDefinitions,
@@ -38,7 +39,7 @@ const preview = <A, E, R>(effect: Effect.Effect<A, E, R>) => noStore.pipe(Effect
 const cached = <A, E, R>(effect: Effect.Effect<Tagged<A>, E, R>) =>
   Effect.gen(function* () {
     const { body, tags } = yield* effect
-    const tag = [...new Set(tags)].join(',')
+    const tag = cacheTagHeader(tags)
     yield* HttpEffect.appendPreResponseHandler((_request, response) =>
       Effect.succeed(
         response.status === 200
