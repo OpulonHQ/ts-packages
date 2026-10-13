@@ -11,7 +11,7 @@ const model = defineModel<unknown>()
 const props = defineProps<{ field: Field; name: string; label: string; disabled?: boolean }>()
 const { t } = useI18n()
 const content = useContent()
-const chosen = shallowRef<ReadonlyArray<{ id: string; title: string }>>([])
+const chosen = shallowRef<ReadonlyMap<string, Pick<ItemSummary, 'title' | 'collection'>>>(new Map())
 const failed = ref(false)
 const selected = computed<ReadonlyArray<string>>(() =>
   props.field.many
@@ -29,20 +29,28 @@ watch(
   async ([ids, collection]) => {
     const ticket = ++latest
     failed.value = false
-    const rows: Array<{ id: string; title: string }> = []
+    const wanted = new Set(ids)
+    const rows = new Map(
+      [...chosen.value].filter(([id, item]) => wanted.has(id) && item.collection === collection),
+    )
+    chosen.value = rows
     for (const id of ids) {
+      if (rows.has(id)) continue
       try {
         const item = await content.getItem(id)
         if (ticket !== latest) return
-        if (item.collection === collection) rows.push(item)
-        else rows.push({ id, title: id })
+        rows.set(
+          id,
+          item.collection === collection
+            ? { title: item.title, collection: item.collection }
+            : { title: id, collection: collection ?? '' },
+        )
       } catch {
         if (ticket !== latest) return
-        rows.push({ id, title: id })
         failed.value = true
       }
+      if (ticket === latest) chosen.value = new Map(rows)
     }
-    if (ticket === latest) chosen.value = rows
   },
   { immediate: true },
 )
@@ -59,15 +67,16 @@ const load = (query: TableQuery) =>
     sort: 'title',
     direction: query.sort?.direction ?? 'asc',
   })
-function toggle(id: string) {
+function toggle(row: ItemSummary) {
   if (props.disabled) return
+  const id = row.id
+  chosen.value = new Map(chosen.value).set(id, { title: row.title, collection: row.collection })
   model.value = props.field.many
     ? selected.value.includes(id)
       ? selected.value.filter((value) => value !== id)
       : [...selected.value, id]
     : id
 }
-const pick = (row: ItemSummary) => toggle(row.id)
 </script>
 
 <template>
@@ -84,10 +93,8 @@ const pick = (row: ItemSummary) => toggle(row.id)
         size="sm"
         color="neutral"
         variant="outline"
-        :label="chosen.find((item) => item.id === id)?.title ?? id"
-        :aria-label="
-          t('cms.reference.remove', { title: chosen.find((item) => item.id === id)?.title ?? id })
-        "
+        :label="chosen.get(id)?.title ?? id"
+        :aria-label="t('cms.reference.remove', { title: chosen.get(id)?.title ?? id })"
         :disabled="disabled"
         icon="i-lucide-x"
         @click="model = field.many ? selected.filter((value) => value !== id) : null"
@@ -104,7 +111,7 @@ const pick = (row: ItemSummary) => toggle(row.id)
       :empty-title="t('cms.reference.empty')"
       :search-placeholder="t('cms.reference.search')"
       searchable
-      :on-row-click="disabled ? undefined : pick"
+      :on-row-click="disabled ? undefined : toggle"
     >
       <template #error
         ><p role="alert" class="text-sm text-error">{{ t('cms.errors.failed') }}</p></template
@@ -117,7 +124,7 @@ const pick = (row: ItemSummary) => toggle(row.id)
           :model-value="selected.includes(row.original.id)"
           :disabled="disabled"
           @click.stop
-          @update:model-value="toggle(row.original.id)"
+          @update:model-value="toggle(row.original)"
         />
       </template>
       <template #title-cell="{ row }">

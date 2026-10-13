@@ -20,11 +20,17 @@ test('a reference picker searches beyond page one, retains selections and discar
     body: { locales: {}, data: { title: { en: 'References' }, categories: [ids[30]] } },
   })
   const gate = Promise.withResolvers<void>()
+  const labelsGate = Promise.withResolvers<void>()
+  let blockResolved = false
   const reached = Promise.withResolvers<void>()
   onTestFinished(() => gate.resolve())
+  onTestFinished(() => labelsGate.resolve())
   const fetch: typeof globalThis.fetch = async (input, init) => {
     const request = new Request(input, init)
     const response = await host.fetch(request)
+    if (blockResolved && new URL(request.url).pathname.endsWith(`/items/${ids[30]}`)) {
+      await labelsGate.promise
+    }
     if (new URL(request.url).searchParams.get('search') === 'Picker 01') {
       reached.resolve()
       await gate.promise
@@ -40,6 +46,7 @@ test('a reference picker searches beyond page one, retains selections and discar
     [...document.querySelectorAll('table tbody tr')].map((row) => row.textContent?.trim())
   await expect.poll(rows).toHaveLength(25)
   await expect.poll(() => document.querySelector('[aria-label="Odstrániť Picker 31"]')).toBeTruthy()
+  blockResolved = true
   const search = () =>
     document.querySelector<HTMLInputElement>('input[placeholder="Hľadať položky…"]')
   await expect.poll(search).toBeTruthy()
