@@ -8,6 +8,7 @@ import {
   diffFields,
   systemActor,
 } from '@opulonjs/core'
+import { auditDefaultPerPage, auditMaxOffset } from '@opulonjs/core/api'
 import { createWorker, PgFromHyperdrive } from '@opulonjs/core/workers'
 import { Mailer } from '@opulonjs/emails/server'
 import { Effect, Layer, Redacted } from 'effect'
@@ -81,6 +82,35 @@ test('audit rejects requests beyond the maximum paging offset', async () => {
     expect((await host.request('GET', `/audit?${query}`, { cookie })).status, query).toBe(400)
   }
   expect((await host.request('GET', '/audit?page=101&perPage=100', { cookie })).status).toBe(200)
+})
+
+test('audit uses the exported default page size for reads and the paging boundary', async () => {
+  expect(auditDefaultPerPage).toBe(25)
+  const user = await seedUser(db.url, { permissions: ['core.audit.view'] })
+  const cookie = await host.signIn(user.email, user.password)
+  await sqlQuery(
+    db.url,
+    `insert into core.audit_event (actor_kind, action, subject_id)
+    select 'system', 'default.page', 'default-page-' || n from generate_series(1, $1::int) n`,
+    [auditDefaultPerPage + 1],
+  )
+  const first = await host.request('GET', '/audit?action=default.page', { cookie })
+  expect(first.status).toBe(200)
+  expect(first.body).toMatchObject({
+    total: auditDefaultPerPage + 1,
+    rows: Array.from({ length: auditDefaultPerPage }, (_, index) => ({
+      subject: { id: `default-page-${auditDefaultPerPage + 1 - index}` },
+    })),
+  })
+  const second = await host.request('GET', '/audit?action=default.page&page=2', { cookie })
+  expect(second.status).toBe(200)
+  expect(second.body).toMatchObject({
+    total: auditDefaultPerPage + 1,
+    rows: [{ subject: { id: 'default-page-1' } }],
+  })
+  const lastPage = Math.floor(auditMaxOffset / auditDefaultPerPage) + 1
+  expect((await host.request('GET', `/audit?page=${lastPage}`, { cookie })).status).toBe(200)
+  expect((await host.request('GET', `/audit?page=${lastPage + 1}`, { cookie })).status).toBe(400)
 })
 
 test('audit reads added and removed fields serialized by the existing writer', async () => {
@@ -208,6 +238,54 @@ test('audit pages immutable snapshots newest first with filters and a true total
   expect((await get(`${range}&actor=%25`)).body).toEqual({ total: 0, rows: [] })
   expect((await get('start=2026-01-02T12:00:00Z&end=2026-01-02T12:00:00.500Z')).body).toMatchObject(
     { total: 2 },
+  )
+})
+
+test('audit trims exact-match filters and ignores whitespace-only values', async () => {
+  const user = await seedUser(db.url, { permissions: ['core.audit.view'] })
+  const cookie = await host.signIn(user.email, user.password)
+  await sqlQuery(
+    db.url,
+    `insert into core.audit_event (occurred_at, actor_kind, action, subject_type, subject_id) values
+    ('2090-02-01T12:00:00Z', 'system', 'trimmed.note.changed', 'note', 'target'),
+    ('2090-02-01T12:00:00Z', 'system', 'trimmedExtra.note.changed', 'note-extra', 'target-extra')`,
+  )
+  const range = 'start=2090-02-01T00:00:00Z&end=2090-02-02T00:00:00Z'
+  const filters = {
+    module: 'trimmed',
+    action: 'trimmed.note.changed',
+    subjectType: 'note',
+    subjectId: 'target',
+  }
+  for (const [filter, value] of Object.entries(filters)) {
+    const padded = new URLSearchParams({ [filter]: ` \t${value}\n ` })
+    const result = await host.request('GET', `/audit?${range}&${padded}`, { cookie })
+    expect(result.status, filter).toBe(200)
+    expect(result.body, filter).toMatchObject({
+      total: 1,
+      rows: [{ action: 'trimmed.note.changed' }],
+    })
+    const blank = new URLSearchParams({ [filter]: ' \t\n ' })
+    const ignored = await host.request('GET', `/audit?${range}&${blank}`, { cookie })
+    expect(ignored.status, filter).toBe(200)
+    expect(ignored.body, filter).toMatchObject({ total: 2 })
+    const partial = new URLSearchParams({ [filter]: value.slice(0, -1) })
+    expect(
+      (await host.request('GET', `/audit?${range}&${partial}`, { cookie })).body,
+      filter,
+    ).toEqual({
+      total: 0,
+      rows: [],
+    })
+  }
+  const combined = new URLSearchParams(
+    Object.entries(filters).map(([filter, value]) => [filter, ` ${value} `]),
+  )
+  expect((await host.request('GET', `/audit?${range}&${combined}`, { cookie })).body).toMatchObject(
+    {
+      total: 1,
+      rows: [{ action: 'trimmed.note.changed' }],
+    },
   )
 })
 
