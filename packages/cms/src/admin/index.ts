@@ -78,8 +78,22 @@ export const cmsAdmin = (options: CmsAdminOptions) => {
         permission: 'cms.pages.view',
         component: screen(() => import('./PageScreen.vue')),
       },
+      {
+        name: 'cms.redirects',
+        path: '/cms/redirects',
+        permission: 'cms.redirects.view',
+        component: () => import('./RedirectsScreen.vue'),
+      },
     ],
-    nav: [{ label: 'nav.pages', route: 'cms.pages', icon: 'i-lucide-file-text', group: 'content' }],
+    nav: [
+      { label: 'nav.pages', route: 'cms.pages', icon: 'i-lucide-file-text', group: 'content' },
+      {
+        label: 'nav.redirects',
+        route: 'cms.redirects',
+        icon: 'i-lucide-arrow-right-left',
+        group: 'content',
+      },
+    ],
     messages: {
       en: () => import('./messages/en.ts'),
       sk: () => import('./messages/sk.ts'),

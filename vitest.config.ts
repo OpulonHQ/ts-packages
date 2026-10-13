@@ -15,6 +15,7 @@ const adminTests = [
   'packages/{ui,admin}/test/**/*.test.ts',
   'fixtures/host/test/media/admin.test.ts',
   'fixtures/host/test/cms/admin.test.ts',
+  'fixtures/host/test/cms/redirects-admin.test.ts',
 ]
 
 export default defineConfig({

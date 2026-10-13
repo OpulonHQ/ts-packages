@@ -9,6 +9,7 @@ import {
   labelText,
   type PageDocument,
   type PageSummary,
+  type RedirectInput,
 } from '../api.ts'
 
 /**
@@ -51,6 +52,22 @@ export const usePages = () => {
     remove: (id: string) => cms((client) => client.deletePage({ params: { id } })),
     publish: (id: string) => cms((client) => client.publishPage({ params: { id } })),
     unpublish: (id: string) => cms((client) => client.unpublishPage({ params: { id } })),
+    can: admin.can,
+    contentLocales: computed(() => admin.me.value?.contentLocales ?? []),
+  }
+}
+
+/** The redirects API for the redirects screen. */
+export const useRedirects = () => {
+  const cms = useApiClient(CmsGroup)
+  const admin = useAdmin()
+  return {
+    list: () => cms((client) => client.listRedirects()),
+    create: (input: RedirectInput) => cms((client) => client.createRedirect({ payload: input })),
+    update: (id: string, input: RedirectInput) =>
+      cms((client) => client.updateRedirect({ params: { id }, payload: input })),
+    remove: (id: string) => cms((client) => client.deleteRedirect({ params: { id } })),
+    importCsv: (csv: string) => cms((client) => client.importRedirects({ payload: { csv } })),
     can: admin.can,
     contentLocales: computed(() => admin.me.value?.contentLocales ?? []),
   }
