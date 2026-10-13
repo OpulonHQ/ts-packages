@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import StalePurgeNotice from './StalePurgeNotice.vue'
 /** Content > Menus: the host's menus as tabs; the chosen one's entries, draft and publishing. */
 import { useI18n } from '@opulonjs/admin'
 import { UButton, UCard } from '@opulonjs/ui'
@@ -72,7 +71,6 @@ const unpublish = async () =>
         />
       </template>
     </PageHeader>
-    <StalePurgeNotice class="mb-4" />
     <nav class="mb-4 flex flex-wrap gap-2" :aria-label="t('cms.menus.title')">
       <UButton
         v-for="key in keys"
