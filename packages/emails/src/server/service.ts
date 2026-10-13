@@ -277,6 +277,7 @@ export class EmailService extends Context.Service<
             set attempts = attempts + 1,
               next_attempt_at = now() + make_interval(mins => ${backoffMinutes} * power(2, attempts)::int)
             where id = ${id} and status = 'queued' and next_attempt_at <= now()
+              and attempts < ${maxAttempts}
             returning attempts, message`
           if (!claimed) return
           const message = yield* Schema.decodeUnknownEffect(StoredMessage)(claimed.message).pipe(
@@ -334,6 +335,11 @@ export class EmailService extends Context.Service<
           }),
 
           sweep: Effect.fn('EmailService.sweep')(function* () {
+            // A last attempt cut off before its outcome was recorded (the Worker was killed)
+            // left its row queued; once its backoff passed it is failed, never sent again.
+            yield* sql`update emails.email_log set status = 'failed', message = null,
+                error = 'the last attempt was interrupted before its outcome was recorded'
+              where status = 'queued' and attempts >= ${maxAttempts} and next_attempt_at <= now()`
             const due = yield* sql<{ id: string }>`
               select id from emails.email_log
               where status = 'queued' and next_attempt_at <= now()

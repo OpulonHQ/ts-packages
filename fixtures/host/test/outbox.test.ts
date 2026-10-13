@@ -84,6 +84,25 @@ test('the sweep retries a queued email with bounded attempts, then marks it fail
   }
 })
 
+test('an attempt cut off before its outcome was recorded still counts toward the cap', async () => {
+  shop.mailer.failure = 'provider down'
+  const { body } = await shop.order({ email: 'cutoff@example.test' })
+  shop.mailer.failure = undefined
+  // What a Worker killed during its third (last) attempt leaves behind: claimed, never settled.
+  await adminQuery(
+    db.url,
+    `update emails.email_log set attempts = 3, next_attempt_at = now() where id = '${body.id}'`,
+  )
+  await shop.tick(fiveMinuteTick)
+  expect(await entry(body.id)).toMatchObject({ status: 'failed', attempts: 3 })
+  expect(shop.mailer.sent.some((m) => m.idempotencyKey === body.id)).toBe(false)
+  const [row] = await adminQuery<{ message: unknown }>(
+    db.url,
+    `select message from emails.email_log where id = '${body.id}'`,
+  )
+  expect(row?.message).toBeNull()
+})
+
 test('the sweep delivers a queued email once the provider is back', async () => {
   shop.mailer.failure = 'provider down'
   const { body } = await shop.order({ email: 'later@example.test' })
