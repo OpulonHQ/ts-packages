@@ -1,5 +1,5 @@
 import type { Page, PageDocument, PageLocale } from '@opulonjs/cms/api'
-import { workersCachePurge } from '@opulonjs/cms/server'
+import { type WorkersCache, workersCachePurge } from '@opulonjs/cms/server'
 import { createWorker, PgFromHyperdrive } from '@opulonjs/core/workers'
 import { Mailer } from '@opulonjs/emails/server'
 import { R2MediaStorage } from '@opulonjs/media/server'
@@ -24,6 +24,7 @@ const editor = [
   'cms.redirects.edit',
   'media.view',
   'media.upload',
+  'media.archive',
 ]
 
 /**
@@ -32,7 +33,7 @@ const editor = [
  * editor holds every cms permission; `as` narrows them, null sends no credentials. `composed`
  * replaces the fixture host's server (its `call` helper assumes the default `/api` prefix).
  */
-export const useCmsHost = (composed = server) => {
+export const useCmsHost = (composed = server, reply?: WorkersCache['purge']) => {
   const db = useTestDatabase()
   const purged: Array<ReadonlyArray<string>> = []
   const worker = createWorker(composed, {
@@ -54,7 +55,7 @@ export const useCmsHost = (composed = server) => {
       cache: {
         purge: async ({ tags }) => {
           purged.push(tags)
-          return { success: true, errors: [] }
+          return reply ? reply({ tags }) : { success: true, errors: [] }
         },
       },
     })
@@ -109,6 +110,17 @@ export const useCmsHost = (composed = server) => {
     /** The test Worker and its env, for code that calls `worker.fetch(request, env, ctx)`. */
     worker,
     env,
+    sweep: async () => {
+      await worker.scheduled({ scheduledTime: Date.now(), cron: '*/5 * * * *' }, env(), {
+        waitUntil: () => {},
+        cache: {
+          purge: async ({ tags }) => {
+            purged.push(tags)
+            return reply ? reply({ tags }) : { success: true, errors: [] }
+          },
+        },
+      })
+    },
     /** The editor's session cookie. */
     cookie: () => session(editor, editorName),
     query: <R extends Record<string, unknown>>(sql: string) => adminQuery<R>(db.url, sql),

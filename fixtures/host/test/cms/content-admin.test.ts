@@ -4,20 +4,33 @@ import { cmsAdmin } from '@opulonjs/cms/admin'
 import { expect, onTestFinished, test } from 'vitest'
 import { brand } from '../../admin/brand.ts'
 import { adminModules } from '../../admin/modules.ts'
-import { useCmsHost } from './helpers.ts'
+import { page, useCmsHost } from './helpers.ts'
 
 // Runs in the `admin` vitest project (happy-dom); the admin's fetch goes into the test Worker.
 // The editor's admin locale is sk.
 const host = useCmsHost()
 
-function mountAdmin(path: string) {
+function mountAdmin(path: string, fetch = host.fetch) {
   history.replaceState(null, '', path)
   document.body.innerHTML = '<div id="app"></div>'
-  const app = createAdmin({ brand, modules: adminModules, buildId: 'build-1', fetch: host.fetch })
+  const app = createAdmin({ brand, modules: adminModules, buildId: 'build-1', fetch })
   app.mount('#app')
   onTestFinished(() => app.unmount())
   return () => document.body.textContent ?? ''
 }
+
+test('the composed admin shows an editor the real failed purge from a media edit', async () => {
+  const failed = useCmsHost(undefined, async () => ({
+    success: false,
+    errors: [{ code: 1, message: 'private diagnostic' }],
+  }))
+  const created = await failed.create(page({ en: '/stale-notice' }))
+  expect((await failed.publish(created.body.id)).status).toBe(200)
+  const text = mountAdmin('/admin/cms/pages', failed.fetch)
+  await expect.poll(text).toContain('Živý web môže zobrazovať predchádzajúcu verziu')
+  expect(text()).toContain('vymazanie vyrovnávacej pamäte')
+  expect(text()).not.toContain('private diagnostic')
+})
 
 const button = (label: string) =>
   [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === label)
