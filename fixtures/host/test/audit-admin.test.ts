@@ -11,7 +11,11 @@ const host = makeHost(() => db.url, { buildId: 'b1' })
 function mount(
   path: string,
   cookie: string,
-  options: { apiPrefix?: `/${string}`; failAudit?: boolean } = {},
+  options: {
+    apiPrefix?: `/${string}`
+    failAudit?: boolean
+    firstAudit?: Promise<Response>
+  } = {},
 ) {
   history.replaceState(null, '', path)
   document.body.innerHTML = '<div id="app"></div>'
@@ -19,6 +23,7 @@ function mount(
   const fetch = host.browserFetch({ cookie })
   const prefix = options.apiPrefix ?? '/api'
   let failAudit = options.failAudit ?? false
+  let firstAudit = options.firstAudit
   const app = createAdmin({
     brand,
     modules: adminModules,
@@ -28,6 +33,11 @@ function mount(
       const request = new Request(input, init)
       requests.push(request.url)
       const url = new URL(request.url)
+      if (url.pathname === `${prefix}/audit` && firstAudit) {
+        const response = firstAudit
+        firstAudit = undefined
+        return response
+      }
       if (url.pathname === `${prefix}/audit` && failAudit) {
         failAudit = false
         return Promise.resolve(new Response('Temporarily unavailable', { status: 503 }))
@@ -99,6 +109,26 @@ test('the subject timeline recovers from a failed request with Retry', async () 
   button('Retry')!.click()
   await expect.poll(timeline).toContain('Signed in')
   expect(admin.requests.filter((url) => new URL(url).pathname === '/api/audit')).toHaveLength(2)
+})
+
+test('an obsolete audit request cannot show Retry after new filters succeed', async () => {
+  const user = await seedUser(db.url, { permissions: ['core.audit.view'] })
+  const pending = Promise.withResolvers<Response>()
+  const admin = mount('/admin/audit', await host.signIn(user.email, user.password), {
+    firstAudit: pending.promise,
+  })
+  await expect
+    .poll(() => admin.requests.filter((url) => new URL(url).pathname === '/api/audit').length)
+    .toBe(1)
+  type('subjectId', user.id)
+  button('Apply filters')!.click()
+  await expect.poll(() => rows().join(' ')).toContain(user.email)
+  pending.resolve(new Response('Obsolete request failed', { status: 503 }))
+  await pending.promise
+  await new Promise<void>((resolve) => setTimeout(resolve, 0))
+  expect(rows().join(' ')).toContain(user.email)
+  expect(button('Retry')).toBeUndefined()
+  expect(document.querySelector('[role="alert"]')).toBeNull()
 })
 
 const button = (label: string) =>

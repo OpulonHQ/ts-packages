@@ -33,6 +33,7 @@ const revision = ref(0)
 const invalid = ref(false)
 const failed = ref(false)
 const table = ref<{ refresh: () => Promise<void> }>()
+let latest = 0
 const columns = computed<ReadonlyArray<DataTableColumn<AuditEvent>>>(() => [
   { key: 'action', label: t('admin.audit.event') },
 ])
@@ -66,13 +67,14 @@ function reset() {
 }
 
 async function load(query: TableQuery) {
+  const ticket = ++latest
   failed.value = false
   try {
     return await core((client) =>
       client.audit({ query: { ...applied.value, page: query.page, perPage: query.perPage } }),
     )
   } catch (error) {
-    failed.value = true
+    if (ticket === latest) failed.value = true
     throw error
   }
 }
