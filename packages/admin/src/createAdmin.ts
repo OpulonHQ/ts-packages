@@ -1,4 +1,6 @@
 import 'virtual:opulon-ui.css'
+import { Me as MeSchema } from '@opulonjs/core/api'
+import { Schema } from 'effect'
 import { type Brand, uiPlugin } from '@opulonjs/ui'
 import { computed, createApp, defineAsyncComponent, shallowRef, type App } from 'vue'
 import { createI18n } from 'vue-i18n'
@@ -74,6 +76,10 @@ const toI18n = (catalog: Messages, namespace?: string): Messages => {
 export const createAdmin = (options: AdminOptions): App => {
   const ids = new Set<string>()
   for (const m of options.modules) {
+    for (const route of m.routes) {
+      if (/^\/audit\/*$/i.test(route.path) && route.name !== 'core.audit')
+        throw new Error(`createAdmin: path "${route.path}" is reserved for route "core.audit"`)
+    }
     if (ids.has(m.id)) throw new Error(`createAdmin: duplicate admin module id "${m.id}"`)
     ids.add(m.id)
   }
@@ -115,6 +121,7 @@ export const createAdmin = (options: AdminOptions): App => {
   const status = shallowRef<Status>('loading')
   const enabled = computed(() => options.modules.filter((m) => me.value?.modules.includes(m.id)))
   const can = (permission: string) => me.value?.permissions.includes(permission) ?? false
+  const auditOverride = options.modules.some((m) => m.routes.some((r) => r.name === 'core.audit'))
   const allowed = (access: Access | undefined) =>
     !access || access.public || access.signedIn || can(access.permission)
 
@@ -124,7 +131,7 @@ export const createAdmin = (options: AdminOptions): App => {
     })
     if (response.status === 401) return 'signedOut'
     if (!response.ok) throw new Error(`${apiPrefix}/me answered ${response.status}`)
-    return (await response.json()) as Me
+    return Schema.decodeUnknownSync(MeSchema)(await response.json())
   }
 
   const loadMessages = (locale: string, modules: ReadonlyArray<AdminModule>) =>
@@ -178,9 +185,26 @@ export const createAdmin = (options: AdminOptions): App => {
   let ready = load()
 
   const nav = computed<ReadonlyArray<ShellNavGroup>>(() => {
-    const routes = new Map(options.modules.flatMap((m) => m.routes.map((r) => [r.name, r])))
-    const items = enabled.value
-      .flatMap((m) => (m.nav ?? []).map((n) => ({ ...n, label: `${m.id}.${n.label}` })))
+    const routes = new Map<string, Access>([
+      ['core.audit', { permission: 'core.audit.view' }],
+      ...options.modules.flatMap((m) => m.routes.map((r): [string, Access] => [r.name, r])),
+    ])
+    const items = [
+      ...enabled.value.flatMap((m) =>
+        (m.nav ?? []).map((n) => ({ ...n, label: `${m.id}.${n.label}` })),
+      ),
+      ...(me.value?.modules.includes('core') && !auditOverride
+        ? [
+            {
+              label: 'admin.audit.title',
+              route: 'core.audit',
+              group: 'settings',
+              order: 100,
+              icon: 'i-lucide-history',
+            },
+          ]
+        : []),
+    ]
       .filter((n) => allowed(routes.get(n.route)))
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     const ids = [...new Set(items.map((n) => n.group))].sort(
@@ -253,6 +277,16 @@ export const createAdmin = (options: AdminOptions): App => {
 
   const routes: Array<RouteRecordRaw> = [
     { path: '/', name: 'dashboard', component: Dashboard, meta: { access: { signedIn: true } } },
+    ...(!auditOverride
+      ? [
+          {
+            path: '/audit',
+            name: 'core.audit',
+            component: () => import('./audit/AuditScreen.vue'),
+            meta: { module: 'core', access: { permission: 'core.audit.view' } },
+          },
+        ]
+      : []),
     ...options.modules.flatMap((m) =>
       m.routes.map((r) => {
         const { name, path, component, ...access } = r
@@ -272,7 +306,7 @@ export const createAdmin = (options: AdminOptions): App => {
       return { name: auth.auth!.signInRoute, query: { redirect: to.fullPath } }
     }
     if (status.value !== 'ready') return true
-    if (module && !enabled.value.some((m) => m.id === module)) return { name: 'dashboard' }
+    if (module && !me.value?.modules.includes(module)) return { name: 'dashboard' }
     // UX only: the API enforces the permission.
     if (!allowed(access)) return { name: 'dashboard' }
     return true

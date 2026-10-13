@@ -92,6 +92,20 @@ function mountAdmin(
 
 const navText = () => document.querySelector('nav')?.textContent ?? ''
 
+test.each(['/audit', '/audit/', '/AUDIT'] as const)(
+  'a module cannot silently shadow audit URL %s under another route name',
+  (path) => {
+    const conflicting = defineAdminModule({
+      id: 'conflicting',
+      routes: [{ name: 'conflicting.home', path, signedIn: true, component: screen('conflict') }],
+      messages: { en: async () => ({ default: {} }), sk: async () => ({ default: {} }) },
+    })
+    expect(() => createAdmin({ brand, modules: [...adminModules, conflicting] })).toThrow(
+      /\/audit.*core\.audit/i,
+    )
+  },
+)
+
 test('renders a module route in the user admin locale (sk) with notes from its own API group', async () => {
   const admin = mountAdmin('/admin/demo/notes')
   await expect.poll(admin.text).toContain('hello from demo')
@@ -114,6 +128,28 @@ test('a route needing a permission the user lacks falls back to the dashboard', 
   await expect.poll(admin.text).toContain('hello widget')
   expect(admin.text()).not.toContain('audit screen')
   expect(location.pathname).toBe('/admin/')
+})
+
+test('an authorized user reaches the host audit override with one navigation entry', async () => {
+  const user = await seedUser(db.url, { permissions: ['core.audit.view'] })
+  const session = await hosts.b1.signIn(user.email, user.password)
+  const admin = mountAdmin('/admin/core/audit', { as: session })
+  await expect.poll(admin.text).toContain('audit screen')
+  const links = [...document.querySelectorAll<HTMLAnchorElement>('nav a')].filter(
+    (link) => link.textContent?.trim() === 'Audit log',
+  )
+  expect(links).toHaveLength(1)
+  expect(links[0]?.getAttribute('href')).toBe('/admin/core/audit')
+  expect(document.querySelector('a[href="/admin/audit"]')).toBeNull()
+})
+
+test('the host audit override suppresses the built-in audit URL', async () => {
+  const user = await seedUser(db.url, { permissions: ['core.audit.view'] })
+  const session = await hosts.b1.signIn(user.email, user.password)
+  const admin = mountAdmin('/admin/audit', { as: session })
+  await expect.poll(admin.text).toContain('Page not found.')
+  expect(admin.text()).not.toContain('Newest events first.')
+  expect(admin.text()).not.toContain('audit screen')
 })
 
 test('hides admin modules missing from /me, with a dev warning', async () => {

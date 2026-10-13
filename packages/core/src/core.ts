@@ -5,6 +5,7 @@ import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import { Forbidden } from 'effect/http-api/HttpApiError'
 import { CoreGroup, corePermissions } from './api.ts'
 import { purgeAudit } from './audit.ts'
+import { listAudit } from './audit-query.ts'
 import { CurrentUser } from './authz.ts'
 import { CachePurge } from './cache-purge.ts'
 import { CachePurgeStatusAccess } from './cache-purge-access.ts'
@@ -17,14 +18,15 @@ export interface CoreOptions {
   readonly audit?: {
     /** Days an audit event is kept. Default 365. */
     readonly retentionDays?: number
-    /** Days after which an event's IP and user agent are nulled. Default 90. */
+    /** Days after which IP and user agent are masked on reads and nulled. Default 90. */
     readonly ipRetentionDays?: number
   }
 }
 
 /** Core's own module: the audit log, its retention task and `/me`. Every host lists it. */
-export const core = (options: CoreOptions = {}) =>
-  defineModule({
+export const core = (options: CoreOptions = {}) => {
+  const ipRetentionDays = options.audit?.ipRetentionDays ?? 90
+  return defineModule({
     id: 'core',
     groups: [CoreGroup],
     handlers: (api) =>
@@ -51,6 +53,16 @@ export const core = (options: CoreOptions = {}) =>
                     }),
                   ),
                 }
+              }),
+            )
+            .handle('audit', ({ query }) =>
+              Effect.gen(function* () {
+                yield* HttpEffect.appendPreResponseHandler((_request, response) =>
+                  Effect.succeed(
+                    HttpServerResponse.setHeader(response, 'cache-control', 'private, no-store'),
+                  ),
+                )
+                return yield* listAudit({ query, ipRetentionDays })
               }),
             )
             .handle('me', () =>
@@ -86,8 +98,9 @@ export const core = (options: CoreOptions = {}) =>
         every: '1d',
         run: purgeAudit({
           retentionDays: options.audit?.retentionDays ?? 365,
-          ipRetentionDays: options.audit?.ipRetentionDays ?? 90,
+          ipRetentionDays,
         }),
       },
     ],
   })
+}

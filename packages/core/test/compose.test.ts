@@ -58,6 +58,9 @@ const fails = (modules: ReadonlyArray<Module>, message: RegExp) =>
   )
 
 describe('composeServer fails at startup on', () => {
+  test.each(['me', 'audit'])('a reserved core URL module id %s', (id) =>
+    fails([module(id)], /reserved.*core/),
+  )
   test('a duplicate module id', () =>
     fails([module('demo'), module('demo')], /duplicate module id "demo"/))
 

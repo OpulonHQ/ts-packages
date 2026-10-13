@@ -1,21 +1,8 @@
 import type { Brand } from '@opulonjs/ui'
+import type { Me } from '@opulonjs/core/api'
 import { inject, type Component, type ComputedRef, type InjectionKey, type ShallowRef } from 'vue'
 
-/**
- * What the shell reads from `<apiPrefix>/me` (staff-only; mirrors `Me` in @opulonjs/core/api,
- * which the admin may not import).
- */
-export interface Me {
-  readonly buildId: string
-  readonly user: { readonly id: string; readonly name: string; readonly email: string }
-  /** The user's admin locale; null means the admin default. */
-  readonly locale: string | null
-  readonly permissions: ReadonlyArray<string>
-  readonly modules: ReadonlyArray<string>
-  readonly permissionCatalog: ReadonlyArray<string>
-  /** The host's content locales, first = default (for localized fields, e.g. `LocaleTabs`). */
-  readonly contentLocales: ReadonlyArray<string>
-}
+export type { Me } from '@opulonjs/core/api'
 
 export type Status = 'loading' | 'ready' | 'signedOut' | 'failed'
 

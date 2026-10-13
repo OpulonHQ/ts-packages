@@ -48,6 +48,8 @@ const props = withDefaults(
     searchPlaceholder?: string
     selectable?: boolean
     perPage?: number
+    /** Bounds selectable pages while preserving the true total in the range label. */
+    maxPage?: number
     sort?: SortState | null
     emptyTitle?: string
     emptyDescription?: string
@@ -234,6 +236,9 @@ const forwarded = computed(() =>
 )
 const from = computed(() => (current.value.total === 0 ? 0 : (page.value - 1) * props.perPage + 1))
 const to = computed(() => Math.min(page.value * props.perPage, current.value.total))
+const paginationTotal = computed(() =>
+  Math.min(current.value.total, (props.maxPage ?? Infinity) * props.perPage),
+)
 const onSelect = (_event: Event, row: TableRow<Row>) => props.onRowClick?.(row.original)
 </script>
 
@@ -286,7 +291,9 @@ const onSelect = (_event: Event, row: TableRow<Row>) => props.onRowClick?.(row.o
       <slot name="bulk-actions" :rows="selected" :clear="clearSelection" />
     </div>
 
-    <p v-if="failed" role="alert" class="text-sm text-error">{{ text.loadFailed }}</p>
+    <slot v-if="failed" name="error" :refresh="refresh">
+      <p role="alert" class="text-sm text-error">{{ text.loadFailed }}</p>
+    </slot>
 
     <UTable
       v-model:row-selection="rowSelection"
@@ -314,12 +321,24 @@ const onSelect = (_event: Event, row: TableRow<Row>) => props.onRowClick?.(row.o
       </template>
     </UTable>
 
+    <slot
+      v-if="current.total > paginationTotal"
+      name="pagination-limit"
+      :total="current.total"
+      :limit="paginationTotal"
+    />
+
     <div
       v-if="current.total > perPage"
       class="flex flex-wrap items-center justify-between gap-2 text-sm text-muted"
     >
       <span>{{ text.range(from, to, current.total) }}</span>
-      <UPagination v-model:page="page" :total="current.total" :items-per-page="perPage" size="sm" />
+      <UPagination
+        v-model:page="page"
+        :total="paginationTotal"
+        :items-per-page="perPage"
+        size="sm"
+      />
     </div>
   </div>
 </template>
