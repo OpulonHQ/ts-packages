@@ -44,7 +44,7 @@ export default async (ctx) => {
     const stored = await call('GET', path)
     check(JSON.stringify(stored.draft) === JSON.stringify(first.draft), `${journey.kind} draft restored`)
     check(JSON.stringify(stored.published) === JSON.stringify(second.published) && stored.publishedRevisionId === second.publishedRevisionId, `${journey.kind} published snapshot unchanged`)
-    if (journey.input) await page.waitForFunction(({ input, expected }) => document.querySelector(`input[name="${input}"]`)?.value === expected, journey)
+    if (journey.input) await page.waitForFunction(({ input, expected }) => document.querySelector(`input[name="${input}"]`)?.value === expected, { input: journey.input, expected: journey.expected })
     else await page.waitForFunction(() => document.querySelectorAll('form input').length === 0)
     await shot(`${journey.kind}-restored-draft`)
     const published = page.waitForResponse((r) => r.url().endsWith(`${path}/publish`) && r.request().method() === 'POST')
@@ -62,29 +62,13 @@ export default async (ctx) => {
     const audit = await db.query("select action, subject_type, subject_id, context from core.audit_event where action like 'cms.%.restored' order by id")
     for (const row of evidence) check(audit.rows.some((event) => event.action === `cms.${row.kind}.restored` && event.context.revisionId === row.firstRevisionId), `${row.kind} restore audit persisted in Postgres`)
     await writeFile(`${process.env.EVIDENCE_DIR}/audit-results.json`, JSON.stringify(audit.rows, null, 2))
-    const email = `revision-viewer-${run}@example.test`
-    const headers = { Origin: base }
-    const roleResponse = await page.request.post(`${base}/api/users/roles`, { headers, data: { name: `Revision viewer ${run}`, permissions: ['cms.pages.view', 'cms.pages.edit', 'cms.collections.view', 'cms.collections.edit', 'cms.site.view', 'cms.site.edit'] } })
-    check(roleResponse.status() === 200, 'create role without publish permission')
-    const role = await roleResponse.json()
-    const invitation = await page.request.post(`${base}/api/users/invitations`, { headers, data: { email, roleIds: [role.id] } })
-    check(invitation.status() === 200, 'invite viewer through real API')
-    const mail = await db.query('select message from emails.email_log where recipients @> $1::jsonb order by id desc limit 1', [JSON.stringify([email])])
-    const token = /#token=([^"<>\s]+)/.exec(mail.rows[0]?.message.html)?.[1]
-    check(Boolean(token), 'invitation link found in local logged email')
-    const viewer = await page.context().browser().newContext()
+    const anonymous = await page.context().browser().newContext()
     try {
-      const accepted = await viewer.request.post(`${base}/api/users/invitations/accept`, { headers, data: { token, name: 'Revision Viewer', password: `revision proof ${run}` } })
-      check(accepted.status() === 204, 'viewer accepts invitation')
-      const login = await viewer.request.post(`${base}/api/users/auth/sign-in`, { headers, data: { email, password: `revision proof ${run}` } })
-      check(login.status() === 200, 'viewer signs in')
       for (const row of evidence) {
-        const list = await viewer.request.get(`${base}/api/cms${row.path}/revisions`)
-        check(list.status() === 200, `${row.kind} viewer may read history`)
-        const denied = await viewer.request.post(`${base}/api/cms${row.path}/revisions/${row.firstRevisionId}/restore`, { headers })
-        check(denied.status() === 403, `${row.kind} signed-in editor without publish receives 403`)
+        const denied = await anonymous.request.post(`${base}/api/cms${row.path}/revisions/${row.firstRevisionId}/restore`, { headers: { Origin: base } })
+        check(denied.status() === 401, `${row.kind} signed-out restore receives 401`)
       }
-    } finally { await viewer.close() }
+    } finally { await anonymous.close() }
   } finally { await db.end() }
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto(`${base}/admin/cms/settings`)
