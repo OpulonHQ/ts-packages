@@ -42,7 +42,9 @@ export interface CmsEvent {
     // rejects the hooks in a Nuxt app as having "no properties in common" (a weak type).
     [key: string]: unknown
   }
-  readonly node?: { readonly res?: { getHeader(name: string): unknown } }
+  readonly node?: {
+    readonly res?: { getHeader(name: string): unknown; removeHeader(name: string): void }
+  }
 }
 
 /** Nitro's `render:response` payload. */
@@ -58,15 +60,18 @@ export interface CmsRenderRoute {
   prefersStream: boolean
 }
 
+const cachingHeader = /^(cache-control|cache-tag)$/i
+
 /**
  * Nitro runtime hooks for a public site on Workers. `request` gives every request an in-process
  * cms fetch (no subrequest; the request's own env and ctx); `renderResponse` copies the Cache-Tags
  * the page read onto its HTML with the Read API's `s-maxage` (a Cache-Control the host already set
  * is kept), or, for `?preview`, when a cms answer was not publicly cacheable or when the page was
  * streamed, answers `private, no-store` without tags. A streamed page sends its headers before its
- * reads finish, so `renderRoute` (Nuxt's `render:route`) renders cms pages whole instead. Only
- * `?preview` requests forward the visitor's cookie to the cms (credentials the page passes itself
- * are dropped), so a draft is never read for a cacheable page.
+ * reads finish, and which pages read the cms is known only once they render, so `renderRoute`
+ * (Nuxt's `render:route`) turns streaming off for every page on Workers, cms reads or not. Only
+ * `?preview` requests forward the visitor's cookie, and only to the page's own origin
+ * (credentials the page passes itself are dropped), so a draft is never read for a cacheable page.
  *
  * ```ts
  * // server/plugins/cms.ts
@@ -97,7 +102,10 @@ export const cmsNitroHooks = <Env>(worker: CmsWorker<Env>) => ({
       // page must never be rendered from a session's (draft or permissioned) reads.
       request.headers.delete('cookie')
       request.headers.delete('authorization')
-      if (preview && cookie) request.headers.set('cookie', cookie)
+      // Only to the page's own origin: a session never leaves with a read meant for elsewhere.
+      if (preview && cookie && new URL(request.url).origin === url.origin) {
+        request.headers.set('cookie', cookie)
+      }
       // The env is the Worker's own (`cloudflare.env`); the host types it through `worker`.
       const response = await worker.fetch(request, cloudflare.env as Env, cloudflare.context)
       // Only publicly cacheable answers may end up in cached HTML; anything else (an error, a
@@ -121,17 +129,23 @@ export const cmsNitroHooks = <Env>(worker: CmsWorker<Env>) => ({
     // A streamed body left before the page finished reading: its tags would be incomplete.
     const streamed = response.body instanceof ReadableStream
     if (cms.preview || cms.uncacheable || streamed || tag === undefined) {
-      response.headers = { ...response.headers, 'cache-control': 'private, no-store' }
-      delete response.headers['cache-tag']
+      // Header names in any case, on the hook's headers and on those H3 already holds.
+      response.headers = Object.fromEntries(
+        Object.entries(response.headers ?? {}).filter(([name]) => !cachingHeader.test(name)),
+      )
+      response.headers['cache-control'] = 'private, no-store'
+      event.node?.res?.removeHeader('cache-tag')
       return
     }
     if (cms.tags.size === 0 || (response.statusCode ?? 200) >= 500) return
     const headers = (response.headers ??= {})
     headers['cache-tag'] = tag
-    if (!headers['cache-control'] && !event.node?.res?.getHeader('cache-control')) {
+    const hostPolicy = Object.keys(headers).some((name) => /^cache-control$/i.test(name))
+    if (!hostPolicy && !event.node?.res?.getHeader('cache-control')) {
       headers['cache-control'] = readCacheControl
     }
   },
+  // Every page `request` equipped (all of them on Workers): reads happen during the render.
   renderRoute: (route: CmsRenderRoute, { event }: { event: CmsEvent }) => {
     if (event.context.cms) route.prefersStream = false
   },

@@ -76,6 +76,12 @@ test('a host cache policy is kept; error pages and pages without cms reads are l
     'cache-control': 'private',
     'cache-tag': 'cms,cms:routes',
   })
+  const mixed = request('https://example.com/missing')
+  await (await ssrClient(mixed.event)).resolve('/missing')
+  expect(respond(mixed.event, { headers: { 'Cache-Control': 'private' } })).toEqual({
+    'Cache-Control': 'private',
+    'cache-tag': 'cms,cms:routes',
+  })
 
   const failed = request('https://example.com/missing')
   await (await ssrClient(failed.event)).resolve('/missing')
@@ -193,27 +199,62 @@ test('an HTML Cache-Tag union over the bound after collapsing is not edge-cached
   expect(response.headers['cache-control']).toBe('private, no-store')
 })
 
-test('a page rendered with the cms is not streamed, so its tags can still go on its headers', () => {
+test('on Workers no page is streamed, so tags read late still go on its headers', async () => {
   const { event } = request('https://example.com/about')
   const route = { canStream: true, prefersStream: true }
   hooks.renderRoute(route, { event })
   expect(route.prefersStream).toBe(false)
 
-  const plain = { canStream: true, prefersStream: true }
-  hooks.renderRoute(plain, { event: { path: '/', headers: new Headers(), context: {} } })
-  expect(plain.prefersStream).toBe(true)
+  // Which pages read the cms is known only once they render: one without reads is not streamed
+  // either, and its headers are left alone.
+  const plain = request('https://example.com/plain')
+  const plainRoute = { canStream: true, prefersStream: true }
+  hooks.renderRoute(plainRoute, { event: plain.event })
+  await ssrClient(plain.event)
+  expect(plainRoute.prefersStream).toBe(false)
+  expect(respond(plain.event, { statusCode: 200, headers: { 'x-a': '1' } })).toEqual({ 'x-a': '1' })
+
+  // Off Workers there is no in-process cms, and the host's streaming stays.
+  const offWorkers: CmsEvent = { path: '/', headers: new Headers(), context: {} }
+  hooks.request(offWorkers)
+  const offRoute = { canStream: true, prefersStream: true }
+  hooks.renderRoute(offRoute, { event: offWorkers })
+  expect(offRoute.prefersStream).toBe(true)
 })
 
 test('a streamed page is not edge-cached: reads after the headers went out are not in its tags', async () => {
   const { event } = request('https://example.com/streamed')
-  await (await ssrClient(event)).site()
+  // A tag the host set on H3's response already, in any case.
+  const sent = new Headers({ 'Cache-Tag': 'cms,cms:site' })
+  const withRes: CmsEvent = {
+    ...event,
+    node: {
+      res: { getHeader: (n) => sent.get(n) ?? undefined, removeHeader: (n) => sent.delete(n) },
+    },
+  }
+  await (await ssrClient(withRes)).site()
   const response = {
     statusCode: 200,
-    headers: { 'cache-control': 'public, s-maxage=60' } as Record<string, string>,
+    headers: { 'Cache-Control': 'public, s-maxage=60', 'Cache-Tag': 'cms,cms:site' } as Record<
+      string,
+      string
+    >,
     body: new ReadableStream(),
   }
-  hooks.renderResponse(response, { event })
+  hooks.renderResponse(response, { event: withRes })
   expect(response.headers).toEqual({ 'cache-control': 'private, no-store' })
+  expect(sent.has('cache-tag')).toBe(false)
+})
+
+test('?preview forwards the session only to the page origin', async () => {
+  const created = await host.create(
+    page({ en: '/elsewhere' }, [section('rich_text', { body: { en: '<p>Draft</p>' } })]),
+  )
+  const cookie = await host.cookie()
+  const { event } = request('https://example.com/elsewhere?preview', cookie)
+  const path = `/api/cms/pages/${created.body.id}/preview?locale=en`
+  expect((await event.context.cms!.fetch(path)).status).toBe(200)
+  expect((await event.context.cms!.fetch(`https://evil.example${path}`)).status).toBe(401)
 })
 
 test('outside Workers (no cloudflare context) nothing is installed or added', () => {
