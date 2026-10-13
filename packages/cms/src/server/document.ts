@@ -17,6 +17,9 @@ export const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 /** Locale-relative path: `/` or lowercase segments of letters, digits and dashes. */
 const pathPattern = /^\/(?:[\p{Ll}\p{Lo}\p{N}-]+(?:\/[\p{Ll}\p{Lo}\p{N}-]+)*)?$/u
 const maxSections = 200
+/** Characters of a locale-relative path, for pages, items and redirects alike: what a write
+ *  accepts, `resolve` answers (after the locale prefix). */
+export const maxPathLength = 1024
 
 const invalid = (message: string) => new CmsInvalid({ message })
 
@@ -78,6 +81,8 @@ const cleanLocale = (locale: string, given: PageLocale | undefined, withPaths = 
       return yield* invalid(
         `The ${locale} path "${path}" must start with "/" and use lowercase letters, digits and dashes.`,
       )
+    if (path.length > maxPathLength)
+      return yield* invalid(`The ${locale} path is longer than ${maxPathLength} characters.`)
     if (withPaths && given.available && path === '')
       return yield* invalid(`The page is available in ${locale}, so it needs a ${locale} path.`)
     const image = given.seo.image

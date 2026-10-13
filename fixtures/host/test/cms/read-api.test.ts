@@ -135,6 +135,19 @@ test('a default-locale path may not start with another locale prefix', async () 
   expect(body).toMatchObject({ message: expect.stringContaining('prefix of it pages') })
 })
 
+test('a page path resolves in every locale up to the longest path a write accepts', async () => {
+  const longest = (n: number) => `/${crypto.randomUUID()}-${'a'.repeat(n - 38)}`
+  const en = longest(1024)
+  const it = longest(1024)
+  expect(en.length).toBe(1024)
+  const id = await publishedPage({ en, it })
+  expect((await resolve(en)).body).toMatchObject({ kind: 'page', id, path: en })
+  expect((await resolve(`/it${it}`)).body).toMatchObject({ kind: 'page', id, locale: 'it' })
+  const { status, body } = await host.create(page({ en: longest(1025) }))
+  expect(status).toBe(400)
+  expect(body).toMatchObject({ message: expect.stringContaining('1024') })
+})
+
 test('the homepage resolves at / and at the locale root; unicode paths are decoded', async () => {
   await publishedPage({ en: '/', it: '/' })
   expect((await resolve('/')).body).toMatchObject({ kind: 'page', path: '/' })

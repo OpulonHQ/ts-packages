@@ -21,7 +21,7 @@ import {
   SettingsDocument,
 } from '../api.ts'
 import { cacheTags } from './cache.ts'
-import { localizeData, uuid } from './document.ts'
+import { localizeData, maxPathLength, uuid } from './document.ts'
 import { canonicalPath, Redirects } from './redirects.ts'
 import { allLinks, resolveLinks, resolveMenuItems } from './site.ts'
 
@@ -228,6 +228,8 @@ export const makeReader = (definitions: CmsDefinitions) =>
         const canonical = canonicalPath(decoded)
         if (canonical === undefined) return notFound(defaultLocale)
         const { locale, path, prefixed } = split(canonical)
+        // Longer paths are refused on write: none is published.
+        if (path.length > maxPathLength) return notFound(locale)
         // One canonical form per page: no empty or dot segments, no trailing slash, no prefix
         // for the default locale.
         if (canonical !== decoded || (prefixed && locale === defaultLocale))

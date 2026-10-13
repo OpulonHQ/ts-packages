@@ -21,9 +21,8 @@ import {
 } from '../api.ts'
 import { CachePurge, cacheTags, purgeAfterCommit } from './cache.ts'
 import { parseCsv } from './csv.ts'
-import { uuid } from './document.ts'
+import { maxPathLength, uuid } from './document.ts'
 
-const maxPath = 1024
 /** Starts with one `/` (not `//`); no whitespace, control characters, `\`, query or fragment. */
 const pathPattern = /^\/(?!\/)[^\s?#\\\p{Cc}]*$/u
 
@@ -33,7 +32,7 @@ const pathPattern = /^\/(?!\/)[^\s?#\\\p{Cc}]*$/u
  * Undefined when it is not a locale-relative path.
  */
 export const canonicalPath = (path: string) => {
-  if (path.length > maxPath || !pathPattern.test(path)) return undefined
+  if (!pathPattern.test(path)) return undefined
   const segments: Array<string> = []
   for (const segment of path.split('/'))
     if (segment === '..') segments.pop()
@@ -53,12 +52,12 @@ export const redirectPath = (raw: string) => {
   } catch {
     return undefined
   }
-  return canonicalPath(decoded)
+  return decoded.length > maxPathLength ? undefined : canonicalPath(decoded)
 }
 
 const notAPath = (raw: string) =>
   `"${raw.slice(0, 200)}" is not a path: it must start with "/" and have no spaces, "?", "#" ` +
-  `or "\\" (at most ${maxPath} characters).`
+  `or "\\" (at most ${maxPathLength} characters).`
 
 interface Rule {
   readonly id: string
