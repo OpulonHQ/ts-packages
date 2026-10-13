@@ -6,16 +6,133 @@ import {
   type Menu,
   type SiteSettings,
   type Page,
+  type ItemRevision,
+  type PageRevision,
+  type CmsDefinitions,
 } from '@opulonjs/cms/api'
 import { cmsAdmin } from '@opulonjs/cms/admin'
 import { expect, onTestFinished, test } from 'vitest'
-import { defineComponent, h } from 'vue'
+import { defineComponent, h, provide, reactive, ref, type VNode } from 'vue'
 import { brand } from '../../admin/brand.ts'
 import { adminModules } from '../../admin/modules.ts'
+import { definitions } from '../../cms/definitions.ts'
+import RevisionView from '../../../../packages/cms/src/admin/RevisionView.vue'
+import { cmsContextKey } from '../../../../packages/cms/src/admin/use-cms.ts'
+import type { RevisionSnapshot } from '../../../../packages/cms/src/admin/use-revisions.ts'
 import { files } from '../media/helpers.ts'
-import { page, useCmsHost } from './helpers.ts'
+import { page, section, trackRequests, useCmsHost } from './helpers.ts'
 
+// Runs in the `admin` vitest project (happy-dom); the admin's fetch goes into the test Worker.
+// The editor's admin locale is sk.
 const host = useCmsHost()
+const testScreen = (setup: () => () => VNode) => defineComponent({ setup })
+
+test.each(['item', 'page'])(
+  'every %s revision JSON block preserves stored values after form rendering',
+  async (kind) => {
+    const snapshot: RevisionSnapshot =
+      kind === 'item'
+        ? await (async () => {
+            const created = (
+              await host.call<Item>('POST', '/collections/posts/items', {
+                body: { locales: {}, data: { title: { en: 'Stored JSON item' } } },
+              })
+            ).body
+            const published = (await host.call<Item>('POST', `/items/${created.id}/publish`)).body
+            return {
+              kind: 'item',
+              revision: (
+                await host.call<ItemRevision>(
+                  'GET',
+                  `/items/${created.id}/revisions/${published.publishedRevisionId}`,
+                )
+              ).body,
+            }
+          })()
+        : await (async () => {
+            const created = (
+              await host.create(
+                page({ en: '/stored-json-section' }, [
+                  section('hero', { title: { en: 'Stored section title' } }),
+                ]),
+              )
+            ).body
+            const published = (await host.publish(created.id)).body
+            return {
+              kind: 'page',
+              revision: (
+                await host.call<PageRevision>(
+                  'GET',
+                  `/pages/${created.id}/revisions/${published.publishedRevisionId}`,
+                )
+              ).body,
+            }
+          })()
+    const sections: Record<string, CmsDefinitions['sections'][string]> &
+      Pick<CmsDefinitions['sections'], 'rich_text'> = { ...definitions.sections }
+    const current = reactive({ ...definitions, sections })
+    if (kind === 'page')
+      current.sections.hero = {
+        label: 'Hero',
+        fields: {
+          ...definitions.sections.hero?.fields,
+          subtitle: fields.text({ label: 'New optional subtitle' }),
+        },
+      }
+    const collection = ref<string | undefined>('posts')
+    let fallback: (() => void) | undefined
+    const modules = adminModules.map((module) =>
+      module.id !== 'cms'
+        ? module
+        : {
+            ...module,
+            routes: module.routes?.map((route) =>
+              route.name !== 'cms.item'
+                ? route
+                : {
+                    ...route,
+                    component: async () => ({
+                      default: testScreen(() => {
+                        provide(cmsContextKey, { definitions: current, widgets: {} })
+                        const { locale } = useI18n()
+                        fallback = () => {
+                          collection.value = undefined
+                          delete current.sections.hero
+                          locale.value = 'en'
+                        }
+                        return () =>
+                          h(RevisionView, {
+                            snapshot,
+                            documentRef: 'stored-json',
+                            collection: collection.value,
+                          })
+                      }),
+                    }),
+                  },
+            ),
+          },
+    )
+    mountAdmin('/admin/cms/items/stored-json', host.fetch, modules)
+    await expect
+      .poll(() =>
+        document.querySelector(
+          `input[name="revision.${kind === 'item' ? 'data.title.en' : 'sections.0.subtitle.en'}"]`,
+        ),
+      )
+      .toBeTruthy()
+    fallback!()
+    await expect.poll(() => document.querySelectorAll('pre').length).toBe(2)
+    const blocks = [...document.querySelectorAll('pre')].map((block) =>
+      JSON.parse(block.textContent!),
+    )
+    expect(blocks).toEqual([
+      snapshot.kind === 'item'
+        ? snapshot.revision.document.data
+        : snapshot.revision.document.sections[0]?.data,
+      snapshot.revision.document,
+    ])
+  },
+)
 
 test('read-only revision forms preserve the stored snapshot on rerender and restore by id', async () => {
   const created = (
@@ -42,14 +159,12 @@ test('read-only revision forms preserve the stored snapshot on rerender and rest
                   component: async () => {
                     const inner = await route.component()
                     return {
-                      default: defineComponent({
-                        setup() {
-                          const { locale } = useI18n()
-                          rerender = () => {
-                            locale.value = 'en'
-                          }
-                          return () => h(inner.default)
-                        },
+                      default: testScreen(() => {
+                        const { locale } = useI18n()
+                        rerender = () => {
+                          locale.value = 'en'
+                        }
+                        return () => h(inner.default)
                       }),
                     }
                   },
@@ -300,9 +415,13 @@ test('a media view-only editor does not see an unavailable purge status warning'
 function mountAdmin(path: string, fetch = host.fetch, modules = adminModules) {
   history.replaceState(null, '', path)
   document.body.innerHTML = '<div id="app"></div>'
-  const app = createAdmin({ brand, modules, buildId: 'build-1', fetch })
+  const requests = trackRequests(fetch)
+  const app = createAdmin({ brand, modules, buildId: 'build-1', fetch: requests.fetch })
   app.mount('#app')
-  onTestFinished(() => app.unmount())
+  onTestFinished(async () => {
+    app.unmount()
+    await requests.drain()
+  })
   return () => document.body.textContent ?? ''
 }
 
@@ -394,6 +513,7 @@ test('editors manage collection items in generated forms and publish them', asyn
   window.dispatchEvent(new PopStateEvent('popstate'))
   await expect.poll(() => input('data.title.en')).toBeTruthy()
 
+  // Routed collections edit path and SEO; references offer the collection's items.
   expect(input('locales.en.path')).toBeTruthy()
   await expect.poll(text).toContain('News')
 

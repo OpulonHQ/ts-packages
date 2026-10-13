@@ -1,4 +1,8 @@
 <script setup lang="ts">
+/**
+ * One page: path, availability and SEO per content locale, its ordered sections with forms
+ * generated from the definitions, and save draft / publish / unpublish / delete.
+ */
 import { CachePurgeNotice, useI18n } from '@opulonjs/admin'
 import { UButton, UCard } from '@opulonjs/ui'
 import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
@@ -13,6 +17,7 @@ import FieldsForm from './FieldsForm.vue'
 import LocaleDetails from './LocaleDetails.vue'
 import { failureMessage, pageTitle, useCmsContext, usePages } from './use-cms.ts'
 
+/** The draft as edited: plain mutable copies of the document's parts. */
 interface Draft {
   locales: Record<string, PageLocale>
   sections: Array<{ id: string; type: string; data: Record<string, unknown> }>
@@ -47,6 +52,7 @@ const blankLocale = (): PageLocale => ({
   seo: { title: '', description: '', image: null, noindex: false },
 })
 const toDraft = (document: PageDocument): Draft => {
+  // A deep, mutable copy: JSON documents only.
   const copy: Draft = {
     locales: Object.fromEntries(
       Object.entries(document.locales).map(([code, value]) => [code, structuredClone(value)]),
@@ -109,6 +115,7 @@ async function run(action: () => Promise<Page | void>, done: string) {
 
 const save = () => run(() => pages.save(page.value!.id, draft.value!), t('cms.page.saved'))
 
+// Publishing publishes what is on screen: the draft is saved first.
 const publish = () =>
   run(async () => {
     const id = page.value!.id

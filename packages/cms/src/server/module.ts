@@ -32,8 +32,10 @@ export interface CmsOptions {
 const noStore = HttpEffect.appendPreResponseHandler((_request, response) =>
   Effect.succeed(HttpServerResponse.setHeader(response, 'cache-control', 'private, no-store')),
 )
+/** Previews read drafts: answered `private, no-store`. */
 const preview = <A, E, R>(effect: Effect.Effect<A, E, R>) => noStore.pipe(Effect.andThen(effect))
 
+/** Read API answers are edge-cached under their Cache-Tags (successful ones only). */
 const cached = <A, E, R>(effect: Effect.Effect<Tagged<A>, E, R>) =>
   Effect.gen(function* () {
     const { body, tags } = yield* effect
@@ -54,6 +56,7 @@ const cached = <A, E, R>(effect: Effect.Effect<Tagged<A>, E, R>) =>
     return body
   })
 
+/** The origin public URLs (the sitemaps') are built on: the request's. */
 const originOf = (request: HttpServerRequest.HttpServerRequest) =>
   new URL(request.originalUrl, 'http://localhost').origin
 
@@ -81,6 +84,8 @@ export const cms = (options: CmsOptions) =>
                 cached(reader.collection(params.collection, query)),
               )
               .handle('sitemapIndex', ({ request }) => {
+                // The children are served next to the index, under whatever API prefix the
+                // host mounted cms at: `<prefix>/cms/sitemaps/<file>`.
                 const url = new URL(request.originalUrl, 'http://localhost')
                 const children = url.pathname.replace(/sitemap\.xml$/, 'sitemaps/')
                 return cached(sitemaps.index(url.origin, children))
@@ -104,6 +109,7 @@ export const cms = (options: CmsOptions) =>
       ...Object.entries(options.definitions.collections)
         .filter(([, c]) => c.routed)
 
+        // Their own namespace: a collection may be named like a cms source (`pages`).
         .map(([key]) => documentsSource(`cms.items.${key}`, 'item', key)),
     ],
     migrations: {
@@ -115,6 +121,7 @@ export const cms = (options: CmsOptions) =>
     auditActions: cmsAuditActions,
   })
 
+/** The editor (admin) endpoints. */
 const handlers = (api: HttpApi.HttpApi<'opulon', typeof CmsGroup | typeof CmsReadGroup>) =>
   HttpApiBuilder.group(api, 'cms', (h) =>
     Effect.gen(function* () {

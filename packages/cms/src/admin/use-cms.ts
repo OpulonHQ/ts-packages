@@ -42,6 +42,7 @@ export const useCmsContext = () => {
   return context
 }
 
+/** The pages API for admin screens, plus what they show around it. */
 export const usePages = () => {
   const cms = useApiClient(CmsGroup)
   const admin = useAdmin()
@@ -59,6 +60,7 @@ export const usePages = () => {
   }
 }
 
+/** The redirects API for the redirects screen. */
 export const useRedirects = () => {
   const cms = useApiClient(CmsGroup)
   const admin = useAdmin()
@@ -74,6 +76,7 @@ export const useRedirects = () => {
   }
 }
 
+/** The collections, site settings and menus API for admin screens. */
 export const useContent = () => {
   const cms = useApiClient(CmsGroup)
   const admin = useAdmin()
@@ -104,6 +107,7 @@ export const useContent = () => {
   }
 }
 
+/** Runs an editor action: pending flag, then a success or failure message to show. */
 export const useAction = (failed: () => string) => {
   const pending = ref(false)
   const status = ref<{ kind: 'ok' | 'error'; message: string }>()
@@ -134,6 +138,7 @@ export const useAction = (failed: () => string) => {
   return { pending, status, run, invalidate }
 }
 
+/** System pages go by their label in the admin locale, other pages by the server's title. */
 export const pageTitle = (
   definitions: CmsDefinitions,
   page: Pick<PageSummary, 'systemKey' | 'title'>,
@@ -143,5 +148,6 @@ export const pageTitle = (
   return system ? labelText(system.label, locale) : page.title
 }
 
+/** The editor-facing message of a failure: the server's own for validation and conflicts. */
 export const failureMessage = (error: unknown, fallback: string) =>
   error instanceof CmsInvalid || error instanceof CmsConflict ? error.message : fallback

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+/** Content > Site settings: global SEO and the host's fields, with draft and publishing. */
 import { useI18n } from '@opulonjs/admin'
 import { UCard } from '@opulonjs/ui'
 import PageHeader from '@opulonjs/ui/components/PageHeader'

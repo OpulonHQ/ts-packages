@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from '@opulonjs/admin'
-import { computed } from 'vue'
+import { computed, shallowRef, watch } from 'vue'
 import { labelText } from '../api.ts'
 import FieldsForm from './FieldsForm.vue'
 import LocaleDetails from './LocaleDetails.vue'
@@ -16,7 +16,13 @@ const props = defineProps<{
 const { t, locale } = useI18n()
 const { definitions } = useCmsContext()
 const content = useContent()
-const form = computed(() => structuredClone(props.snapshot))
+const form = shallowRef(structuredClone(props.snapshot))
+watch(
+  () => props.snapshot,
+  (snapshot) => {
+    form.value = structuredClone(snapshot)
+  },
+)
 const locales = computed(() => {
   const document = props.snapshot.revision.document
   return 'locales' in document ? Object.keys(document.locales) : content.contentLocales.value
@@ -32,7 +38,7 @@ const menuItems = computed<EditedMenuItem[]>(() =>
 
 <template>
   <div class="space-y-4">
-    <template v-if="form.kind === 'page'">
+    <template v-if="snapshot.kind === 'page' && form.kind === 'page'">
       <LocaleDetails
         :value="form.revision.document.locales"
         :locales="locales"
@@ -59,11 +65,11 @@ const menuItems = computed<EditedMenuItem[]>(() =>
           disabled
         />
         <pre v-else class="overflow-auto whitespace-pre-wrap text-sm">{{
-          JSON.stringify(section.data, null, 2)
+          JSON.stringify(snapshot.revision.document.sections[index]?.data, null, 2)
         }}</pre>
       </div>
     </template>
-    <template v-else-if="form.kind === 'item'">
+    <template v-else-if="snapshot.kind === 'item' && form.kind === 'item'">
       <LocaleDetails
         :value="form.revision.document.locales"
         :locales="locales"
@@ -79,7 +85,7 @@ const menuItems = computed<EditedMenuItem[]>(() =>
         disabled
       />
       <pre v-else class="overflow-auto whitespace-pre-wrap text-sm">{{
-        JSON.stringify(form.revision.document.data, null, 2)
+        JSON.stringify(snapshot.revision.document.data, null, 2)
       }}</pre>
     </template>
     <FieldsForm

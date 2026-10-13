@@ -1,4 +1,5 @@
 <script setup lang="ts">
+/** Path, availability and SEO per content locale of a page or a routed item. Edits in place. */
 import { useI18n } from '@opulonjs/admin'
 import { MediaPicker } from '@opulonjs/media/admin'
 import FieldText from '@opulonjs/ui/components/Field/Text'

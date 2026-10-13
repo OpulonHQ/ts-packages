@@ -1,4 +1,8 @@
 <script setup lang="ts">
+/**
+ * One collection item: path, availability and SEO per content locale (routed collections
+ * only), the collection's fields, and save draft / publish / unpublish / delete.
+ */
 import { useI18n } from '@opulonjs/admin'
 import { UCard } from '@opulonjs/ui'
 import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
@@ -38,6 +42,7 @@ const collection = computed(() =>
 const collectionLabel = computed(() => labelText(collection.value?.label, locale.value))
 
 const toDraft = (document: ItemDocument): Draft => {
+  // A deep, mutable copy: JSON documents only.
   const copy: Draft = {
     locales: Object.fromEntries(
       Object.entries(document.locales).map(([code, value]) => [code, structuredClone(value)]),
@@ -83,6 +88,7 @@ watch(
 const save = async () =>
   show(await run(() => content.saveItem(item.value!.id, draft.value!), t('cms.page.saved')))
 
+// Publishing publishes what is on screen: the draft is saved first.
 const publish = async () =>
   show(
     await run(async () => {

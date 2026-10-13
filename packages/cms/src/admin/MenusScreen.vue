@@ -1,4 +1,5 @@
 <script setup lang="ts">
+/** Content > Menus: the host's menus as tabs; the chosen one's entries, draft and publishing. */
 import { useI18n } from '@opulonjs/admin'
 import { UButton, UCard } from '@opulonjs/ui'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
@@ -46,6 +47,7 @@ watch(
 )
 
 const document = () => Schema.decodeUnknownSync(MenuDocument)({ items: items.value })
+// The server validates links; the editor's working copy is sent as is.
 const save = async () =>
   show(await run(() => content.saveMenu(current.value!, document()), t('cms.page.saved')))
 const publish = async () =>
