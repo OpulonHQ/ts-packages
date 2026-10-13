@@ -18,6 +18,7 @@ import { BetterAuth } from './auth.ts'
 import { createInvitation } from './invitations.ts'
 import createUsers from './migrations/0001_create_users.ts'
 import guardSessionInsert from './migrations/0002_guard_session_insert.ts'
+import onePendingInvitation from './migrations/0003_one_pending_invitation.ts'
 import { UserManagement } from './manage.ts'
 import { Users } from './service.ts'
 import { invitationEmail, passwordResetEmail } from './templates.ts'
@@ -158,6 +159,7 @@ export const users = () =>
     migrations: {
       '0001_create_users': createUsers,
       '0002_guard_session_insert': guardSessionInsert,
+      '0003_one_pending_invitation': onePendingInvitation,
     },
     permissions: usersPermissions,
     auditActions: usersAuditActions,

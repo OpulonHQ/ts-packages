@@ -179,6 +179,34 @@ test('an invitation is checked against a role edit that commits while it is bein
   expect(host.mailer.sent.length).toBe(sent)
 })
 
+test('two invitations sent at once to one address leave one valid link', async () => {
+  const admin = await signedIn({ superAdmin: true })
+  const manager = await signedIn({ permissions: ['users.manage'] })
+  const send = (cookie: string) =>
+    host.request('POST', '/users/invitations', {
+      cookie,
+      body: { email: 'twice@example.test', roleIds: [] },
+    })
+  const sent = host.mailer.sent.length
+  {
+    await using barrier = await pauseInserts(db.url, 'users.invitation')
+    const first = send(admin.cookie)
+    await barrier.reached()
+    const second = send(manager.cookie)
+    await Promise.race([second, lockWaits(db.url, 2)])
+    await barrier.release()
+    expect((await Promise.all([first, second])).map((r) => r.status)).toEqual([200, 200])
+  }
+  const valid = []
+  for (const mail of host.mailer.sent.slice(sent)) {
+    const inspected = await host.request('POST', '/users/invitations/inspect', {
+      body: { token: tokenFrom(mail.html) },
+    })
+    valid.push(inspected.status === 200)
+  }
+  expect(valid.sort()).toEqual([false, true])
+})
+
 test('an inviter deactivated while sending an invitation sends nothing', async () => {
   const admin = await signedIn({ superAdmin: true })
   const manager = await signedIn({ permissions: ['users.manage', 'demo.notes.view'] })
