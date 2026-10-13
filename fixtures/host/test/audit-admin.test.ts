@@ -103,6 +103,48 @@ test('the audit log recovers from a failed request with Retry', async () => {
   expect(admin.requests.filter((url) => new URL(url).pathname === '/api/audit')).toHaveLength(2)
 })
 
+test.each(['', '2026-01-01'])(
+  'the audit log rejects a Through date beyond 9999-12-30 with From "%s" and recovers',
+  async (start) => {
+    const user = await seedUser(db.url, { permissions: ['core.audit.view'] })
+    const admin = mount('/admin/audit', await host.signIn(user.email, user.password))
+    await expect.poll(() => rows().join(' ')).toContain(user.email)
+    const initialRequests = admin.requests.filter((url) => new URL(url).pathname === '/api/audit')
+    type('start', start)
+    type('end', '9999-12-31')
+    button('Apply filters')!.click()
+    await expect
+      .poll(() => document.querySelector('[role="alert"]')?.textContent?.trim())
+      .toBe('Enter a Through date on or before 9999-12-30.')
+    expect(button('Retry')).toBeUndefined()
+    expect(admin.requests.filter((url) => new URL(url).pathname === '/api/audit')).toEqual(
+      initialRequests,
+    )
+    type('end', '9999-12-30')
+    type('subjectId', 'missing-future-date')
+    button('Apply filters')!.click()
+    await expect.poll(admin.text).toContain('No audit events match.')
+    expect(document.querySelector('[role="alert"]')).toBeNull()
+    expect(button('Retry')).toBeUndefined()
+    const requests = admin.requests.filter((url) => new URL(url).pathname === '/api/audit')
+    expect(requests).toHaveLength(initialRequests.length + 1)
+    expect(new URL(requests.at(-1)!).searchParams.get('end')).toBe('9999-12-31T00:00:00.000Z')
+  },
+)
+
+test('the Through date limit has a Slovak validation message', async () => {
+  const user = await seedUser(db.url, { permissions: ['core.audit.view'], locale: 'sk' })
+  const admin = mount('/admin/audit', await host.signIn(user.email, user.password))
+  await expect.poll(() => rows().join(' ')).toContain(user.email)
+  type('end', '9999-12-31')
+  button('Použiť filtre')!.click()
+  await expect
+    .poll(() => document.querySelector('[role="alert"]')?.textContent?.trim())
+    .toBe('Zadajte dátum konca najneskôr 9999-12-30.')
+  expect(button('Skúsiť znova')).toBeUndefined()
+  expect(admin.requests.filter((url) => new URL(url).pathname === '/api/audit')).toHaveLength(1)
+})
+
 test('the subject timeline recovers from a failed request with Retry', async () => {
   const user = await seedUser(db.url, { permissions: ['users.manage', 'core.audit.view'] })
   const admin = mount(`/admin/users/${user.id}`, await host.signIn(user.email, user.password), {
