@@ -1,5 +1,6 @@
 import { sitemapSource } from '@opulonjs/cms/server'
 import { Background, CurrentActor, defineModule, withTransaction } from '@opulonjs/core'
+import { emailTemplate } from '@opulonjs/emails/server'
 import { Context, Effect, Layer, Schema } from 'effect'
 import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import { SqlClient } from 'effect/sql/SqlClient'
@@ -47,10 +48,21 @@ const tick = Effect.gen(function* () {
   )
 })
 
+/** A host module's own email template (public: a visitor gets it in a content locale). */
+export const noteShared = emailTemplate({
+  key: 'demo.note_shared',
+  audience: 'public',
+  placeholders: { note: 'Hello' },
+  defaults: {
+    en: { subject: 'A note for you', body: '<p>{{note}}</p>' },
+    it: { subject: 'Una nota per te', body: '<p>{{note}}</p>' },
+  },
+})
+
 /** A throwaway host module proving the module contract end to end. */
 export const demo = defineModule({
   id: 'demo',
-  dependsOn: ['cms'],
+  dependsOn: ['cms', 'emails'],
   groups: [DemoGroup],
   handlers: (api) =>
     HttpApiBuilder.group(api, 'demo', (h) =>
@@ -65,6 +77,7 @@ export const demo = defineModule({
   tasks: [{ name: 'tick', every: '5m', run: tick }],
   // A host module's own sitemap child (/sitemaps/demo.notes.xml).
   contributes: [
+    noteShared,
     sitemapSource({
       key: 'demo.notes',
       list: Effect.gen(function* () {
