@@ -3,7 +3,7 @@
  * One page: path, availability and SEO per content locale, its ordered sections with forms
  * generated from the definitions, and save draft / publish / unpublish / delete.
  */
-import { useI18n } from '@opulonjs/admin'
+import { CachePurgeNotice, useI18n } from '@opulonjs/admin'
 import { UButton, UCard } from '@opulonjs/ui'
 import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
 import FieldSelect from '@opulonjs/ui/components/Field/Select'
@@ -161,6 +161,7 @@ function move(index: number, by: -1 | 1) {
           />
         </template>
       </PageHeader>
+      <CachePurgeNotice :pending="pending" class="mb-4" />
 
       <p
         v-if="status && status.message"

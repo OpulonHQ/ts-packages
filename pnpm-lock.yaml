@@ -145,6 +145,9 @@ importers:
 
   packages/admin:
     dependencies:
+      '@opulonjs/core':
+        specifier: workspace:*
+        version: link:../core
       '@opulonjs/ui':
         specifier: workspace:*
         version: link:../ui

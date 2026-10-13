@@ -5,6 +5,37 @@ import * as HttpApiEndpoint from 'effect/http-api/HttpApiEndpoint'
 import * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
 import { Authorization, Policy } from './authz.ts'
 
+/** Editor-safe summary of a durable cache purge. Provider diagnostics are never returned. */
+export const PendingCachePurge = Schema.Struct({
+  id: Schema.String,
+  tags: Schema.Array(Schema.String),
+  attempts: Schema.Number,
+  state: Schema.Literals(['queued', 'failed']),
+  error: Schema.NullOr(Schema.String),
+  staleUntil: Schema.String,
+})
+export type PendingCachePurge = typeof PendingCachePurge.Type
+
+export const CachePurgeSummary = Schema.Struct({
+  total: Schema.Number,
+  failed: Schema.Number,
+  staleUntil: Schema.NullOr(Schema.String),
+})
+export type CachePurgeSummary = typeof CachePurgeSummary.Type
+export const CachePurgeStatus = Schema.Struct({
+  summary: CachePurgeSummary,
+  rows: Schema.Array(
+    Schema.Struct({
+      id: PendingCachePurge.fields.id,
+      attempts: PendingCachePurge.fields.attempts,
+      state: PendingCachePurge.fields.state,
+      error: PendingCachePurge.fields.error,
+      staleUntil: PendingCachePurge.fields.staleUntil,
+    }),
+  ),
+})
+export type CachePurgeStatus = typeof CachePurgeStatus.Type
+
 export { Authorization, CurrentUser, Policy, Public } from './authz.ts'
 
 export const corePermissions = ['core.audit.view'] as const
@@ -30,4 +61,9 @@ export type Me = typeof Me.Type
 /** Core's group. Unlike other modules it is mounted at the API prefix itself: `/api/me`. */
 export const CoreGroup = HttpApiGroup.make('core')
   .add(HttpApiEndpoint.get('me', '/me', { success: Me }).annotate(Policy, 'signedIn'))
+  .add(
+    HttpApiEndpoint.get('cachePurges', '/cache-purges', {
+      success: CachePurgeStatus,
+    }).annotate(Policy, 'signedIn'),
+  )
   .middleware(Authorization)

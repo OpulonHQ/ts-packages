@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /** One media item: preview, alt text and caption per content locale, replace, archive. */
-import { useI18n } from '@opulonjs/admin'
+import { CachePurgeNotice, useI18n } from '@opulonjs/admin'
 import { UBadge, UButton } from '@opulonjs/ui'
 import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
 import FieldText from '@opulonjs/ui/components/Field/Text'
@@ -72,6 +72,10 @@ const restore = () => run(() => media.restore(props.item.id), t('media.details.r
 
 <template>
   <div class="space-y-6">
+    <CachePurgeNotice
+      v-if="media.can('media.upload') || media.can('media.archive')"
+      :pending="pending"
+    />
     <figure class="space-y-2">
       <img
         v-if="item.mime !== 'application/pdf'"

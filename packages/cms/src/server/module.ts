@@ -1,4 +1,4 @@
-import { defineModule } from '@opulonjs/core'
+import { cachePurgeStatusAccess, defineModule } from '@opulonjs/core'
 import { Effect, Layer } from 'effect'
 import * as HttpEffect from 'effect/http/HttpEffect'
 import type * as HttpServerRequest from 'effect/http/HttpServerRequest'
@@ -69,7 +69,7 @@ const originOf = (request: HttpServerRequest.HttpServerRequest) =>
 export const cms = (options: CmsOptions) =>
   defineModule({
     id: 'cms',
-    dependsOn: ['media'],
+    dependsOn: ['core', 'media'],
     groups: [CmsGroup, CmsReadGroup],
     handlers: (api) =>
       Layer.merge(
@@ -104,6 +104,7 @@ export const cms = (options: CmsOptions) =>
       Menus.layer(options.definitions),
     ).pipe(Layer.provideMerge(Redirects.layer)),
     contributes: [
+      ...cmsPermissions.map(cachePurgeStatusAccess),
       documentsSource('cms.pages', 'page'),
       ...Object.entries(options.definitions.collections)
         .filter(([, c]) => c.routed)

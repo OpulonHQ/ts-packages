@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /** Content > Pages: every page with its path and publish status; system pages first. */
-import { useI18n } from '@opulonjs/admin'
+import { CachePurgeNotice, useI18n } from '@opulonjs/admin'
 import { queryRows, type TableQuery, UButton } from '@opulonjs/ui'
 import DataTable from '@opulonjs/ui/components/DataTable'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
@@ -62,6 +62,7 @@ async function create() {
         />
       </template>
     </PageHeader>
+    <CachePurgeNotice class="mb-4" />
     <p v-if="failure" role="alert" class="mb-4 text-sm text-error">{{ failure }}</p>
     <DataTable
       :columns="columns"

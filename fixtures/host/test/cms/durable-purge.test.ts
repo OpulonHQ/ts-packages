@@ -1,0 +1,181 @@
+import { CachePurgeStatus } from '@opulonjs/core/api'
+import type { WorkersCache } from '@opulonjs/core/workers'
+import { Schema } from 'effect'
+import { expect, test } from 'vitest'
+import { page, useCmsHost } from './helpers.ts'
+
+let failing = true
+const host = useCmsHost(undefined, async () => {
+  if (failing) throw new Error('adapter failed with secret-token')
+  return { success: true, errors: [] }
+})
+
+const refused = useCmsHost(undefined, async () => ({
+  success: false,
+  errors: [{ code: 1, message: 'secret provider diagnostic' }],
+}))
+const statusHost = useCmsHost(undefined, async () => ({
+  success: false,
+  errors: [{ code: 1, message: 'secret provider diagnostic' }],
+}))
+let down = true
+const concurrent = useCmsHost(undefined, async () => {
+  if (down) throw new Error('offline')
+  await new Promise((resolve) => setTimeout(resolve, 40))
+  return { success: true, errors: [] }
+})
+
+const entered = Promise.withResolvers<void>()
+const completed = Promise.withResolvers<Awaited<ReturnType<WorkersCache['purge']>>>()
+const inFlight = useCmsHost(undefined, () => {
+  entered.resolve()
+  return completed.promise
+})
+const missingCache = useCmsHost(undefined, async () => ({
+  success: false,
+  errors: [{ code: 1, message: 'refused' }],
+}))
+
+const status = async (
+  fixture: typeof host,
+  permissions: ReadonlyArray<string> = ['cms.pages.view'],
+) => {
+  const response = await fixture.fetchAs(permissions)('https://host.test/api/cache-purges')
+  return {
+    status: response.status,
+    body: Schema.decodeUnknownSync(CachePurgeStatus)(await response.json()),
+  }
+}
+
+test('an immediate purge in flight does not report a retry warning for a successful save', async () => {
+  const created = await inFlight.create(page({ en: '/purge-in-flight' }))
+  expect(created.status).toBe(200)
+  const publishing = inFlight.publish(created.body.id)
+  await entered.promise
+  try {
+    const during = await status(inFlight)
+    expect(during.body.summary).toEqual({ total: 0, failed: 0, staleUntil: null })
+    expect(during.body.rows).toEqual([])
+  } finally {
+    completed.resolve({ success: true, errors: [] })
+    expect((await publishing).status).toBe(200)
+  }
+  expect((await status(inFlight)).body.summary.total).toBe(0)
+})
+
+test('a scheduled invocation without cache retains the failed purge for editors', async () => {
+  const created = await missingCache.create(page({ en: '/missing-scheduled-cache' }))
+  expect((await missingCache.publish(created.body.id)).status).toBe(200)
+  await missingCache.query(
+    "update core.cache_purge set next_attempt_at = now() - interval '1 second'",
+  )
+  await missingCache.worker.scheduled(
+    { scheduledTime: Date.now(), cron: '*/5 * * * *' },
+    missingCache.env(),
+    { waitUntil: () => {} },
+  )
+  const after = await status(missingCache)
+  expect(after.body.summary.total).toBe(1)
+  expect(after.body.rows).toMatchObject([
+    { attempts: 2, state: 'queued', error: 'Cache purge failed.' },
+  ])
+})
+
+test('core exposes safe purge status to media-only staff and rejects anonymous reads', async () => {
+  const created = await statusHost.create(page({ en: '/media-status' }))
+  expect((await statusHost.publish(created.body.id)).status).toBe(200)
+  const response = await statusHost.fetchAs(['media.upload'])('https://host.test/api/cache-purges')
+  expect(response.status).toBe(200)
+  const body = await response.json()
+  expect(body).toMatchObject({
+    summary: { total: 1, failed: 0, staleUntil: expect.any(String) },
+    rows: [
+      {
+        id: expect.any(String),
+        attempts: 1,
+        state: 'queued',
+        error: 'Cache purge was refused.',
+        staleUntil: expect.any(String),
+      },
+    ],
+  })
+  expect(Object.keys(body.rows[0]).sort()).toEqual([
+    'attempts',
+    'error',
+    'id',
+    'staleUntil',
+    'state',
+  ])
+  expect(JSON.stringify(body)).not.toContain('secret provider diagnostic')
+  expect((await refused.publicFetch('https://host.test/api/cache-purges')).status).toBe(401)
+  expect((await refused.call('GET', '/cache-purges')).status).toBe(404)
+})
+
+test('core denies purge status access to staff without a producer access permission', async () => {
+  for (const permissions of [[], ['media.view'], ['core.audit.view']]) {
+    expect((await refused.fetchAs(permissions)('https://host.test/api/cache-purges')).status).toBe(
+      403,
+    )
+  }
+})
+
+test('failed purges survive the request, are editor-readable, and a scheduled retry clears them', async () => {
+  const created = await host.create(page({ en: '/durable-purge' }))
+  expect((await host.publish(created.body.id)).status).toBe(200)
+  const pending = await status(host)
+  expect(pending.status).toBe(200)
+  expect(pending.body.rows).toMatchObject([
+    { state: 'queued', attempts: 1, error: 'Cache purge failed.' },
+  ])
+  expect(JSON.stringify(pending.body)).not.toContain('secret-token')
+  for (const permission of [
+    'cms.collections.view',
+    'cms.site.view',
+    'cms.redirects.view',
+    'media.archive',
+    'cms.pages.edit',
+    'cms.pages.publish',
+  ]) {
+    const allowed = await status(host, [permission])
+    expect(allowed.status).toBe(200)
+    expect(allowed.body.rows[0]).not.toHaveProperty('tags')
+  }
+  expect((await host.fetchAs([])('https://host.test/api/cache-purges')).status).toBe(403)
+  expect((await host.publicFetch('https://host.test/api/cache-purges')).status).toBe(401)
+  await host.sweep()
+  expect(host.purged).toHaveLength(1)
+  failing = false
+  await host.query("update core.cache_purge set next_attempt_at = now() - interval '1 second'")
+  await host.sweep()
+  expect((await status(host)).body.rows).toEqual([])
+})
+
+test('refusals stop after three attempts and remain visible until cached answers expire', async () => {
+  const created = await refused.create(page({ en: '/refused-purge' }))
+  expect((await refused.publish(created.body.id)).status).toBe(200)
+  for (let i = 0; i < 3; i++) {
+    await refused.query("update core.cache_purge set next_attempt_at = now() - interval '1 second'")
+    await refused.sweep()
+  }
+  expect(refused.purged).toHaveLength(3)
+  const pending = await status(refused)
+  expect(pending.body.rows).toMatchObject([
+    { state: 'failed', attempts: 3, error: 'Cache purge was refused.' },
+  ])
+  expect(new Date(pending.body.rows[0]!.staleUntil).getTime()).toBeGreaterThan(Date.now())
+  await refused.query("update core.cache_purge set created_at = now() - interval '1 hour 1 second'")
+  await refused.sweep()
+  expect((await status(refused)).body.rows).toEqual([])
+})
+
+test('concurrent scheduled retries claim a failed purge only once', async () => {
+  const created = await concurrent.create(page({ en: '/concurrent-purge' }))
+  await concurrent.publish(created.body.id)
+  down = false
+  await concurrent.query(
+    "update core.cache_purge set next_attempt_at = now() - interval '1 second'",
+  )
+  await Promise.all([concurrent.sweep(), concurrent.sweep()])
+  expect(concurrent.purged).toHaveLength(2)
+  expect((await status(concurrent)).body.rows).toEqual([])
+})

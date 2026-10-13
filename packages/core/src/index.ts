@@ -14,6 +14,8 @@ export type { Actor, User } from './authz.ts'
 export { Audit, diffFields } from './audit.ts'
 export type { AuditChange, AuditInput } from './audit.ts'
 export { Background, withTransaction } from './background.ts'
+export { CachePurge, CachePurger, CachePurgeFailed } from './cache-purge.ts'
+export { cachePurgeStatusAccess } from './cache-purge-access.ts'
 export { core } from './core.ts'
 export type { CoreOptions } from './core.ts'
 export {

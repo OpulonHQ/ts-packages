@@ -31,7 +31,7 @@ export DATABASE_URL_TEST=postgres://postgres:postgres@127.0.0.1:54317/postgres
 
 ## Package graph
 
-`eslint.config.js` enforces the package graph from ADR 0001 with `no-restricted-imports`: on the server `users` may use `emails`, `cms` may use `media`, and every package may use `core`; in the browser `admin` uses `ui`, and a package's `src/admin/**` entry may use `admin` and `ui`. `@nuxt/ui` may only be imported inside `packages/ui`.
+`eslint.config.js` enforces the package graph from ADR 0001 with `no-restricted-imports`: on the server `users` may use `emails`, `cms` may use `media`, and every package may use `core`; in the browser `admin` uses `ui` and the client-safe `core/api` contract, and a package's `src/admin/**` entry may use `admin` and `ui`. `@nuxt/ui` may only be imported inside `packages/ui`.
 
 ## Database tests
 

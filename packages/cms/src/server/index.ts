@@ -1,6 +1,6 @@
 export { cms } from './module.ts'
 export type { CmsOptions } from './module.ts'
-export { CachePurge, cacheTags, type WorkersCache, workersCachePurge } from './cache.ts'
+export { cacheTags } from './cache.ts'
 export { sitemapSource, SitemapSources } from './sitemap.ts'
 export type { SitemapEntry, SitemapSource } from './sitemap.ts'
 export { Pages, pageTags } from './pages.ts'

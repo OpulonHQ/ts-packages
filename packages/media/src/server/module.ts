@@ -1,4 +1,4 @@
-import { defineModule } from '@opulonjs/core'
+import { cachePurgeStatusAccess, defineModule } from '@opulonjs/core'
 import { Effect, Layer, Option, Stream } from 'effect'
 import * as Multipart from 'effect/http/Multipart'
 import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
@@ -74,6 +74,8 @@ export const media = (options: MediaOptions = {}) => {
   const maxBytes = options.maxBytes ?? defaultMaxBytes
   return defineModule({
     id: 'media',
+    dependsOn: ['core'],
+    contributes: [cachePurgeStatusAccess('media.upload'), cachePurgeStatusAccess('media.archive')],
     groups: [MediaGroup],
     handlers: (api) =>
       HttpApiBuilder.group(api, 'media', (h) =>

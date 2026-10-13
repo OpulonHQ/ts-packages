@@ -4,6 +4,7 @@ import * as HttpRouter from 'effect/http/HttpRouter'
 import * as HttpServer from 'effect/http/HttpServer'
 import * as HttpServerError from 'effect/http/HttpServerError'
 import { Background } from './background.ts'
+import { CachePurger, CachePurgeFailed } from './cache-purge.ts'
 import { BuildId, type ComposedServer } from './compose.ts'
 import { describeError } from './redact.ts'
 import { runDueTasks } from './tasks.ts'
@@ -34,6 +35,40 @@ export interface WorkerContext {
     }>
   }
 }
+
+export type WorkersCache = NonNullable<WorkerContext['cache']>
+
+/** Invocation-local Workers Cache port. Durable retries belong to the core outbox. */
+export const workersCachePurge = (ctx: { readonly cache?: WorkersCache } | undefined) =>
+  Layer.succeed(CachePurger, {
+    purge: Effect.fn('WorkersCache.purge')(function* (tags: ReadonlyArray<string>) {
+      const cache = ctx?.cache
+      if (!ctx) return
+      if (!cache)
+        return yield* new CachePurgeFailed({
+          reason: 'failed',
+          detail: 'Workers Cache is unavailable on this invocation.',
+        })
+      for (let offset = 0; offset < tags.length; offset += 100) {
+        const result = yield* Effect.tryPromise({
+          try: () => cache.purge({ tags: tags.slice(offset, offset + 100) }),
+          catch: (error) =>
+            new CachePurgeFailed({
+              reason: 'failed',
+              detail: JSON.stringify(describeError(error)),
+            }),
+        })
+        if (!result.success)
+          yield* new CachePurgeFailed({
+            reason: 'refused',
+            detail: `Workers Cache refused purge (${result.errors
+              .map((error) => error.code)
+              .join(',')
+              .slice(0, 500)}).`,
+          })
+      }
+    }),
+  })
 
 /** The part of the Workers ScheduledController the adapter uses. */
 export interface ScheduledEvent {

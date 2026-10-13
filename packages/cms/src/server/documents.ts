@@ -1,8 +1,16 @@
-import { Audit, Background, CurrentActor, requirePermission, withTransaction } from '@opulonjs/core'
+import {
+  Audit,
+  Background,
+  CachePurge,
+  CachePurger,
+  CurrentActor,
+  requirePermission,
+  withTransaction,
+} from '@opulonjs/core'
 import { Effect, Schema } from 'effect'
 import { SqlClient } from 'effect/sql/SqlClient'
 import { CmsConflict, type CmsInvalid, CmsNotFound, type PageLocale } from '../api.ts'
-import { CachePurge, cacheTags } from './cache.ts'
+import { cacheTags } from './cache.ts'
 import { uuid } from './document.ts'
 import { Redirects } from './redirects.ts'
 
@@ -90,7 +98,7 @@ export const documentState = (row: DocumentRow<unknown>) => ({
  */
 export const makeDocuments = Effect.gen(function* () {
   const sql = yield* SqlClient
-  const cache = yield* CachePurge
+  const purger = yield* CachePurger
   const background = yield* Background
   const redirects = yield* Redirects
   const withSql = Effect.provideService(SqlClient, sql)
@@ -136,8 +144,9 @@ export const makeDocuments = Effect.gen(function* () {
   return <D>(spec: DocumentSpec<D>) => {
     /** A routed document's published paths may change on every publish family write. */
     const purge = (tags: ReadonlyArray<string>) =>
-      Background.afterCommit(cache.purge(spec.routes ? [...tags, cacheTags.routes] : tags)).pipe(
+      CachePurge.afterCommit(spec.routes ? [...tags, cacheTags.routes] : tags).pipe(
         Effect.provideService(Background, background),
+        Effect.provideService(CachePurger, purger),
       )
     const decodeDocument = Schema.decodeUnknownEffect(spec.schema)
     const toRow = (raw: typeof Row.Type) =>

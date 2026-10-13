@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /** Status and the draft/publish buttons of an item, the site settings or a menu. */
-import { useI18n } from '@opulonjs/admin'
+import { CachePurgeNotice, useI18n } from '@opulonjs/admin'
 import { UButton } from '@opulonjs/ui'
 import StatusBadge from '@opulonjs/ui/components/StatusBadge'
 import type { PageStatus } from '../api.ts'
@@ -20,6 +20,7 @@ const { t } = useI18n()
 </script>
 
 <template>
+  <CachePurgeNotice :pending="pending" />
   <StatusBadge
     :status="status"
     :label="t(`cms.status.${status}`)"
