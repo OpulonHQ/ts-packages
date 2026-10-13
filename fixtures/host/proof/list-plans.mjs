@@ -4,14 +4,17 @@ export default async (db, out, check) => {
   await db.query('analyze users."user"')
   await db.query('analyze cms.document')
   const plans = []
-  for (const sort of ['name', 'email', 'deactivated']) {
+  for (const sort of ['default', 'name', 'email', 'deactivated']) {
     for (const search of ['', 'Paging']) {
       const column = {
         name: 'lower(name)',
         email: 'email',
         deactivated: '(deactivated_at is not null)',
       }[sort]
-      const order = `${column} asc, id asc`
+      const order =
+        sort === 'default'
+          ? '(deactivated_at is not null) asc, lower(name) asc, id asc'
+          : `${column} asc, id asc`
       const where = search
         ? 'true and (strpos(lower(name), lower($1)) > 0 or strpos(lower(email), lower($1)) > 0)'
         : 'true'
@@ -33,7 +36,7 @@ export default async (db, out, check) => {
         .map((row) => row['QUERY PLAN'])
         .join('\n')
       plans.push({ endpoint: 'users', sort, search, sql, params, plan })
-      if (search === '' && sort !== 'deactivated')
+      if (search === '' && (sort === 'default' || sort === 'name'))
         check(
           plan.includes(`using user_list_${sort}`),
           `full users ${sort} statement naturally uses its ordering index`,
@@ -96,7 +99,7 @@ export default async (db, out, check) => {
       .filter(
         (row) =>
           row.search === '' &&
-          ((row.endpoint === 'users' && row.sort !== 'deactivated') ||
+          ((row.endpoint === 'users' && (row.sort === 'default' || row.sort === 'name')) ||
             (row.endpoint === 'items' && row.sort === 'updatedAt')),
       )
       .map(({ sql, params, plan }) => `${sql}\nparams=${JSON.stringify(params)}\n${plan}`)

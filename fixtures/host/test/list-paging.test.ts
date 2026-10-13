@@ -69,3 +69,24 @@ test('a user beyond the first page remains reachable by exact id', async () => {
   expect(result).toMatchObject({ total: 1, users: [{ id: 'paging-31', name: 'Paging 31' }] })
   expect((await list('id=missing')).users).toEqual([])
 })
+
+test('default user order keeps deactivated staff last while an explicit name sort stays alphabetical', async () => {
+  expect((await host.request('POST', '/users/users/paging-1/deactivate', { cookie })).status).toBe(
+    204,
+  )
+  try {
+    const result = await list('search=Paging&perPage=100')
+    expect(result.users.map((user) => user.name)).toEqual([
+      ...Array.from({ length: 30 }, (_, n) => `Paging ${String(n + 2).padStart(2, '0')}`),
+      'Paging 01',
+    ])
+    expect(result.users.at(-1)).toMatchObject({ name: 'Paging 01', deactivated: true })
+    expect((await list('search=Paging&perPage=100&sort=name&direction=asc')).users[0]?.name).toBe(
+      'Paging 01',
+    )
+  } finally {
+    expect(
+      (await host.request('POST', '/users/users/paging-1/reactivate', { cookie })).status,
+    ).toBe(204)
+  }
+})

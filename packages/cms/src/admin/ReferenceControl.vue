@@ -11,7 +11,10 @@ const model = defineModel<unknown>()
 const props = defineProps<{ field: Field; name: string; label: string; disabled?: boolean }>()
 const { t } = useI18n()
 const content = useContent()
-const chosen = shallowRef<ReadonlyMap<string, Pick<ItemSummary, 'title' | 'collection'>>>(new Map())
+type SelectedReference =
+  | { readonly kind: 'item'; readonly title: string; readonly collection: string }
+  | { readonly kind: 'missing'; readonly collection: string }
+const chosen = shallowRef<ReadonlyMap<string, SelectedReference>>(new Map())
 const failed = ref(false)
 const selected = computed<ReadonlyArray<string>>(() =>
   props.field.many
@@ -36,23 +39,31 @@ watch(
     chosen.value = rows
     const missing = [...wanted].filter((id) => !rows.has(id))
     if (missing.length === 0) return
-    try {
-      const result = await content.listItems(collection ?? '', {
-        ids: missing.join(','),
-        perPage: listMaxPerPage,
-        sort: 'title',
-        direction: 'asc',
-      })
-      if (ticket !== latest) return
-      const byId = new Map(result.rows.map((item) => [item.id, item]))
-      for (const id of missing) {
-        const item = byId.get(id.toLowerCase())
-        if (item) rows.set(id, { title: item.title, collection: item.collection })
-        else failed.value = true
+    for (let start = 0; start < missing.length; start += listMaxPerPage) {
+      const batch = missing.slice(start, start + listMaxPerPage)
+      try {
+        const result = await content.listItems(collection ?? '', {
+          ids: batch.join(','),
+          perPage: listMaxPerPage,
+          sort: 'title',
+          direction: 'asc',
+        })
+        if (ticket !== latest) return
+        const byId = new Map(result.rows.map((item) => [item.id, item]))
+        for (const id of batch) {
+          const item = byId.get(id.toLowerCase())
+          rows.set(
+            id,
+            item
+              ? { kind: 'item', title: item.title, collection: item.collection }
+              : { kind: 'missing', collection: collection ?? '' },
+          )
+        }
+        chosen.value = new Map(rows)
+      } catch {
+        if (ticket === latest) failed.value = true
+        return
       }
-      chosen.value = new Map(rows)
-    } catch {
-      if (ticket === latest) failed.value = true
     }
   },
   { immediate: true },
@@ -73,12 +84,20 @@ const load = (query: TableQuery) =>
 function toggle(row: ItemSummary) {
   if (props.disabled) return
   const id = row.id
-  chosen.value = new Map(chosen.value).set(id, { title: row.title, collection: row.collection })
+  chosen.value = new Map(chosen.value).set(id, {
+    kind: 'item',
+    title: row.title,
+    collection: row.collection,
+  })
   model.value = props.field.many
     ? selected.value.includes(id)
       ? selected.value.filter((value) => value !== id)
       : [...selected.value, id]
     : id
+}
+const selectedTitle = (id: string) => {
+  const item = chosen.value.get(id)
+  return item?.kind === 'missing' ? t('cms.reference.missing', { id }) : (item?.title ?? id)
 }
 </script>
 
@@ -96,8 +115,8 @@ function toggle(row: ItemSummary) {
         size="sm"
         color="neutral"
         variant="outline"
-        :label="chosen.get(id)?.title ?? id"
-        :aria-label="t('cms.reference.remove', { title: chosen.get(id)?.title ?? id })"
+        :label="selectedTitle(id)"
+        :aria-label="t('cms.reference.remove', { title: selectedTitle(id) })"
         :disabled="disabled"
         icon="i-lucide-x"
         @click="model = field.many ? selected.filter((value) => value !== id) : null"

@@ -120,6 +120,7 @@ export default {
     remove: 'Odstrániť položku',
   },
   reference: {
+    missing: 'Chýbajúca alebo vymazaná položka ({id})',
     selected: 'Vybrané položky',
     remove: 'Odstrániť {title}',
     empty: 'Žiadne zodpovedajúce položky.',

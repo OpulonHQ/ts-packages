@@ -146,7 +146,10 @@ export class UserManagement extends Context.Service<
               deactivated: sql`(deactivated_at is not null)`,
             }[query.sort ?? 'name']
             const direction = query.direction === 'desc' ? sql`desc` : sql`asc`
-            const order = sql`${orderColumn} ${direction}, id ${direction}`
+            const order =
+              query.sort === undefined
+                ? sql`(deactivated_at is not null) asc, lower(name) ${direction}, id ${direction}`
+                : sql`${orderColumn} ${direction}, id ${direction}`
             const where = sql.and([
               sql`true`,
               ...(query.id !== undefined ? [sql`id = ${query.id}`] : []),

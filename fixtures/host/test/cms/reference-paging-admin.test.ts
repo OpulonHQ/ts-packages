@@ -1,11 +1,41 @@
 import { createAdmin } from '@opulonjs/admin'
 import type { Item, SiteSettings } from '@opulonjs/cms/api'
+import { cmsAdmin } from '@opulonjs/cms/admin'
+import { cms } from '@opulonjs/cms/server'
+import { composeServer } from '@opulonjs/core'
+import { Schema } from 'effect'
 import { expect, onTestFinished, test } from 'vitest'
 import { brand } from '../../admin/brand.ts'
 import { adminModules } from '../../admin/modules.ts'
+import { definitions } from '../../cms/definitions.ts'
+import { server } from '../../server/opulon.ts'
 import { useCmsHost } from './helpers.ts'
 
 const host = useCmsHost()
+const largeDefinitions = {
+  ...definitions,
+  collections: {
+    ...definitions.collections,
+    posts: {
+      ...definitions.collections.posts,
+      fields: {
+        ...definitions.collections.posts.fields,
+        categories: {
+          ...definitions.collections.posts.fields.categories,
+          schema: Schema.Array(Schema.String.check(Schema.isUUID())).check(Schema.isMaxLength(200)),
+        },
+      },
+    },
+  },
+}
+const largeHost = useCmsHost(
+  composeServer({
+    modules: server.modules.map((module) =>
+      module.id === 'cms' ? cms({ definitions: largeDefinitions }) : module,
+    ),
+    contentLocales: ['en', 'it'],
+  }),
+)
 
 test('a reference picker searches beyond page one, retains selections and discards a slow older search', async () => {
   const ids: string[] = []
@@ -145,4 +175,107 @@ test('saved reference labels load together while individual document requests ca
   await expect
     .poll(() => document.querySelector('[aria-label="Odstrániť Batch second"]'))
     .toBeTruthy()
+})
+
+test('a host with larger many-reference fields resolves all 101 saved references without a load error', async () => {
+  const ids: string[] = []
+  for (let n = 1; n <= 101; n++) {
+    const item = await largeHost.call<Item>('POST', '/collections/categories/items', {
+      body: { locales: {}, data: { name: { en: `Bulk ${String(n).padStart(3, '0')}` } } },
+    })
+    expect(item.status).toBe(200)
+    ids.push(item.body.id)
+  }
+  const post = await largeHost.call<Item>('POST', '/collections/posts/items', {
+    body: { locales: {}, data: { title: { en: 'Large reference field' }, categories: ids } },
+  })
+  expect(post.status).toBe(200)
+  history.replaceState(null, '', `/admin/cms/items/${post.body.id}`)
+  document.body.innerHTML = '<div id="app"></div>'
+  const app = createAdmin({
+    brand,
+    modules: adminModules.map((module) =>
+      module.id === 'cms'
+        ? cmsAdmin({
+            definitions: largeDefinitions,
+            widgets: { color: () => import('../../cms/ColorWidget.vue') },
+          })
+        : module,
+    ),
+    buildId: 'build-1',
+    fetch: largeHost.fetch,
+  })
+  app.mount('#app')
+  onTestFinished(() => app.unmount())
+  await expect
+    .poll(() => document.querySelectorAll('[aria-label^="Odstrániť Bulk "]').length)
+    .toBe(101)
+  expect(document.querySelector('[role="alert"]')).toBeNull()
+})
+
+test('a deleted saved reference is marked missing and remains removable without a load-failed alert', async () => {
+  const category = (
+    await host.call<Item>('POST', '/collections/categories/items', {
+      body: { locales: {}, data: { name: { en: 'Deleted reference' } } },
+    })
+  ).body
+  const post = (
+    await host.call<Item>('POST', '/collections/posts/items', {
+      body: {
+        locales: {},
+        data: { title: { en: 'Missing reference field' }, categories: [category.id] },
+      },
+    })
+  ).body
+  expect((await host.call('DELETE', `/items/${category.id}`)).status).toBe(204)
+  history.replaceState(null, '', `/admin/cms/items/${post.id}`)
+  document.body.innerHTML = '<div id="app"></div>'
+  const app = createAdmin({ brand, modules: adminModules, buildId: 'build-1', fetch: host.fetch })
+  app.mount('#app')
+  onTestFinished(() => app.unmount())
+  const remove = () =>
+    document.querySelector<HTMLButtonElement>(
+      `[aria-label="Odstrániť Chýbajúca alebo vymazaná položka (${category.id})"]`,
+    )
+  await expect.poll(remove).toBeTruthy()
+  expect(document.querySelector('[role="alert"]')).toBeNull()
+  remove()?.click()
+  const save = [...document.querySelectorAll('button')].find(
+    (button) => button.textContent?.trim() === 'Uložiť koncept',
+  )
+  save?.click()
+  await expect
+    .poll(
+      async () => (await host.call<Item>('GET', `/items/${post.id}`)).body.draft.data.categories,
+    )
+    .toEqual([])
+})
+
+test('a failed reference summary request shows a load alert without marking the item deleted', async () => {
+  const category = (
+    await host.call<Item>('POST', '/collections/categories/items', {
+      body: { locales: {}, data: { name: { en: 'Available reference' } } },
+    })
+  ).body
+  const post = (
+    await host.call<Item>('POST', '/collections/posts/items', {
+      body: {
+        locales: {},
+        data: { title: { en: 'Unavailable summary request' }, categories: [category.id] },
+      },
+    })
+  ).body
+  const fetch: typeof globalThis.fetch = (input, init) => {
+    const request = new Request(input, init)
+    if (new URL(request.url).searchParams.has('ids'))
+      return Promise.resolve(new Response('', { status: 503 }))
+    return host.fetch(request)
+  }
+  history.replaceState(null, '', `/admin/cms/items/${post.id}`)
+  document.body.innerHTML = '<div id="app"></div>'
+  const app = createAdmin({ brand, modules: adminModules, buildId: 'build-1', fetch })
+  app.mount('#app')
+  onTestFinished(() => app.unmount())
+  await expect.poll(() => document.querySelector('[role="alert"]')).toBeTruthy()
+  expect(document.body.textContent).not.toContain('Chýbajúca alebo vymazaná položka')
 })

@@ -119,6 +119,7 @@ export default {
     remove: 'Remove entry',
   },
   reference: {
+    missing: 'Missing or deleted item ({id})',
     selected: 'Selected items',
     remove: 'Remove {title}',
     empty: 'No matching items.',

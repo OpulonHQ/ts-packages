@@ -150,6 +150,26 @@ export default async (ctx) => {
       forbiddenBatch.status === 403,
       'ID batch remains forbidden to signed-in staff without view permission',
     )
+    const firstUser = (
+      await api('GET', `/users/users?search=${encodeURIComponent(state.users[0].email)}`)
+    ).users[0]
+    await api('POST', `/users/users/${firstUser.id}/deactivate`)
+    try {
+      const defaultFirst = await api('GET', '/users/users?search=Paging&perPage=100')
+      const defaultLast = await api('GET', '/users/users?search=Paging&perPage=100&page=3')
+      const explicit = await api(
+        'GET',
+        '/users/users?search=Paging&perPage=100&sort=name&direction=asc',
+      )
+      check(
+        defaultFirst.users[0].name === 'Paging 002' &&
+          defaultLast.users.at(-1).name === 'Paging 001' &&
+          explicit.users[0].name === 'Paging 001',
+        'default order retains active-first parity; explicit name sort remains alphabetical',
+      )
+    } finally {
+      await api('POST', `/users/users/${firstUser.id}/reactivate`)
+    }
     await captureListPlans(db, process.env.EVIDENCE_DIR, check)
   } finally {
     await db.query(
@@ -317,4 +337,37 @@ export default async (ctx) => {
     'cleared single reference is absent from the persisted draft',
   )
   await shot('single-reference-cleared')
+  const doomed = await api('POST', '/cms/collections/categories/items', {
+    locales: {},
+    data: { name: { en: 'Removed fixture reference' } },
+  })
+  const draft = (await api('GET', `/cms/items/${state.posts[0].id}`)).draft
+  await api('PUT', `/cms/items/${state.posts[0].id}/draft`, {
+    ...draft,
+    data: { ...draft.data, categories: [...draft.data.categories, doomed.id] },
+  })
+  await api('DELETE', `/cms/items/${doomed.id}`)
+  await page.goto(`${base}/admin/cms/items/${state.posts[0].id}`)
+  const missing = page.getByRole('button', {
+    name: `Remove Missing or deleted item (${doomed.id})`,
+    exact: true,
+  })
+  await missing.waitFor()
+  check(
+    (await page.getByRole('alert').count()) === 0,
+    'deleted saved reference is marked missing without a load-failed alert',
+  )
+  await missing.evaluate((element) => element.scrollIntoView({ block: 'center' }))
+  await shot('missing-reference')
+  await missing.click()
+  const removedReference = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/api/cms/items/${state.posts[0].id}/draft`) &&
+      response.request().method() === 'PUT',
+  )
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click()
+  check(
+    (await removedReference).status() === 200,
+    'missing reference chip can be removed and saved',
+  )
 }
