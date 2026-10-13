@@ -238,3 +238,70 @@ test('a failed route load re-checks the build and asks for a reload', async () =
   await expect(router.push('/protected')).rejects.toThrow('chunk deleted by deploy')
   await expect.poll(() => document.body.textContent).toContain('A new admin version is available.')
 })
+
+const sleep = (ms = 75) => new Promise((done) => setTimeout(done, ms))
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (error: Error) => void
+  const promise = new Promise<T>((done, fail) => {
+    resolve = done
+    reject = fail
+  })
+  return { promise, resolve, reject }
+}
+
+test('a late chunk rejection cannot hide a newer screen', async () => {
+  const old = deferred<ReturnType<typeof screen>>()
+  let started = false
+  const app = mount('/', {
+    overrides: {
+      dashboard: () => {
+        started = true
+        return old.promise
+      },
+      'demo.protected': screen('current good screen'),
+    },
+  })
+  const router = app.config.globalProperties.$router
+  await expect.poll(() => started).toBe(true)
+  await router.push('/protected')
+  await expect.poll(() => document.body.textContent).toContain('current good screen')
+  old.reject(new Error('old dashboard chunk failed'))
+  await sleep()
+  expect(document.querySelector('[role="alert"]')).toBeNull()
+  expect(document.body.textContent).toContain('current good screen')
+})
+
+test('a late guard rejection cannot hide a newer screen', async () => {
+  const old = deferred<void>()
+  const app = mount('/', { overrides: { 'demo.protected': screen('guard target') } })
+  const router = app.config.globalProperties.$router
+  await router.isReady()
+  let started = false
+  router.beforeEach(async (to) => {
+    if (to.path === '/protected') {
+      started = true
+      await old.promise
+    }
+  })
+  const navigation = router.push('/protected').catch((error: unknown) => error)
+  await expect.poll(() => started).toBe(true)
+  await router.push('/sign-in')
+  old.reject(new Error('old guard failed'))
+  await navigation
+  await sleep()
+  expect(document.querySelector('[role="alert"]')).toBeNull()
+  expect(document.body.textContent).toContain('sign in')
+})
+
+test.each(['abort', 'redirect'])('an %s guard is not a screen failure', async (kind) => {
+  const app = mount('/', { overrides: { 'demo.protected': screen('protected good') } })
+  const router = app.config.globalProperties.$router
+  await router.isReady()
+  router.beforeEach((to) =>
+    to.path === '/protected' ? (kind === 'abort' ? false : '/sign-in') : true,
+  )
+  await router.push('/protected')
+  await sleep()
+  expect(document.querySelector('[role="alert"]')).toBeNull()
+})

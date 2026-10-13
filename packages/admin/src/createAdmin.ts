@@ -15,7 +15,10 @@ import { createI18n } from 'vue-i18n'
 import {
   createRouter,
   createWebHistory,
+  isNavigationFailure,
+  NavigationFailureType,
   type RouteComponent,
+  type RouteLocationNormalized,
   type RouteRecordSingleView,
 } from 'vue-router'
 import { apiContextKey } from './api-client.ts'
@@ -354,7 +357,10 @@ export const createAdmin = (options: AdminOptions): App => {
         : route
     }),
   })
+  // Only the latest navigation may show or clear a failed screen.
+  let latest: RouteLocationNormalized | undefined
   router.beforeEach(async (to) => {
+    latest = to
     await ready
     const { module, access } = to.meta
     if (access?.public) return true
@@ -381,12 +387,14 @@ export const createAdmin = (options: AdminOptions): App => {
   const failedScreen = shallowRef<string>()
   router.onError((error: unknown, to) => {
     console.error(error)
+    if (to !== latest) return
     failedScreen.value = to.fullPath
     // A screen chunk missing after a deploy surfaces as a failed load.
     recheckBuild()
   })
-  router.afterEach((_to, from) => {
-    failedScreen.value = undefined
+  router.afterEach((to, from, failure) => {
+    if (isNavigationFailure(failure, NavigationFailureType.duplicated)) latest = to
+    if (to === latest) failedScreen.value = undefined
     if (from.matched.length > 0) recheckBuild()
   })
 
