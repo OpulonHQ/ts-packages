@@ -17,6 +17,7 @@ import {
 import { builtinModules } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { build } from 'vite'
 
 // Server-only code a browser bundle of `/api` entries must never reach.
@@ -124,6 +125,7 @@ import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
 import { build, createServer } from 'vite'
 import { opulonAdmin } from '@opulonjs/admin/vite'
+import { packagesLoadedTwice } from '${pathToFileURL(join(import.meta.dirname, 'dev-packages.ts')).href}'
 const { brand } = await import('./host/admin/brand.ts')
 const { components } = await import('./host/admin/override-components.ts')
 const checkOverrides = {
@@ -175,29 +177,7 @@ try {
   if (!table?.code.includes('/overrides/EmptyState.vue')) throw new Error('published DataTable bypassed the host override in dev')
   ;({ adminModules } = await vite.ssrLoadModule('/modules.ts'))
   console.log('ok published admin dev imports use host kit overrides without prebundling')
-  const packageOf = (path) => path.match(/node_modules\\/(?:\\.pnpm\\/[^/]+\\/node_modules\\/)?((?:@[^/]+\\/)?[^/]+)\\//)?.[1]
-  const raw = new Set()
-  const seen = new Set()
-  const queue = ['/main.ts']
-  while (queue.length > 0) {
-    const url = queue.pop()
-    if (seen.has(url)) continue
-    seen.add(url)
-    const code = (await vite.transformRequest(url))?.code ?? ''
-    for (const [, spec] of code.matchAll(/(?:from|import)\\s*\\(?\\s*["'](\\/[^"']+)["']/g)) {
-      const dep = spec.startsWith(vite.config.base) ? spec.slice(vite.config.base.length - 1) : spec
-      if (dep.includes('/.vite/deps/') || (dep.startsWith('/@') && !dep.startsWith('/@fs/'))) continue
-      const name = packageOf(dep)
-      if (name) raw.add(name)
-      queue.push(dep)
-    }
-  }
-  const optimizer = vite.environments.client.depsOptimizer
-  optimizer.run()
-  await Promise.all(Object.values(optimizer.metadata.discovered).map((dep) => dep.processing))
-  const prebundled = [...Object.values(optimizer.metadata.optimized), ...Object.values(optimizer.metadata.chunks)]
-  const bundled = new Set(prebundled.flatMap(({ file }) => [...readFileSync(file, 'utf8').matchAll(/^\\/\\/#region (.+)$/gm)].map((m) => packageOf(m[1]))))
-  const twice = [...raw].filter((name) => bundled.has(name))
+  const { raw, bundled, twice } = await packagesLoadedTwice(vite, '/main.ts')
   if (twice.length > 0) throw new Error('admin dev loads packages both prebundled and raw, as two instances: ' + twice.join(', '))
   console.log('ok admin dev loads', raw.size, 'packages raw and', bundled.size, 'prebundled, none in both')
   const screen = spawn(process.execPath, ['--import', './dev-modules.mjs', 'dev-screen.mjs', 'http://127.0.0.1:' + vite.httpServer.address().port + vite.config.base, vite.config.base + '@fs' + require.resolve('@opulonjs/admin')], { stdio: 'inherit' })
@@ -230,16 +210,17 @@ const { createAdmin } = await import(new URL(adminEntry, origin).href)
 const { adminModules } = await import(origin + 'modules.ts')
 const { brand } = await import(origin + 'brand.ts')
 const me = { buildId: 'pack-check', user: { id: 'u', name: 'U', email: 'u@example.com' }, locale: null, permissions: ['cms.collections.view'], modules: adminModules.map((m) => m.id), permissionCatalog: [], contentLocales: ['en'] }
-const responses = { '/api/me': me, '/api/cms/collections/posts/items': { rows: [], total: 0 } }
+const row = { id: 'i1', collection: 'posts', title: 'Decoded pack-check item', path: '/decoded', status: 'draft', updatedAt: '2026-01-01T00:00:00.000Z', publishedAt: null }
+const responses = { '/api/me': me, '/api/cms/collections/posts/items': { rows: [row], total: 1 } }
 const fetch = async (url) => {
   const body = responses[new URL(url, location.origin).pathname]
   return body ? Response.json(body) : new Response(null, { status: 404 })
 }
 createAdmin({ brand, modules: adminModules, apiPrefix: '/api', buildId: 'pack-check', fetch }).mount('#app')
 const text = () => document.body.textContent
-for (let i = 0; i < 100 && !text().includes('Fixture UI override'); i++) await new Promise((r) => setTimeout(r, 100))
-await new Promise((r) => setTimeout(r, 200))
-if (!text().includes('Fixture UI override') || text().includes('The data could not be loaded.')) {
+const settled = () => text().includes(row.title) || text().includes('The data could not be loaded.')
+for (let i = 0; i < 100 && !settled(); i++) await new Promise((r) => setTimeout(r, 100))
+if (!text().includes(row.title)) {
   console.error(text())
   process.exit(1)
 }
