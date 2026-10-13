@@ -6,8 +6,8 @@ import { build, createLogger, createServer, type InlineConfig } from 'vite'
 import { expect, onTestFinished, test } from 'vitest'
 import { opulonAdmin, type OpulonAdminOptions } from '../src/vite.ts'
 
-function host(version = '1.2.0') {
-  const root = mkdtempSync(join(tmpdir(), 'opulon-overrides-'))
+function host(version = '1.2.0', directory = tmpdir()) {
+  const root = mkdtempSync(join(directory, 'opulon-overrides-'))
   onTestFinished(() => rmSync(root, { recursive: true, force: true }))
   const write = (path: string, source: string) => {
     const file = join(root, path)
@@ -176,6 +176,7 @@ test('dev transforms a published module screen through the host kit override', a
     ),
   )
   onTestFinished(() => server.close())
+  expect(server.config.optimizeDeps.exclude).toContain('effect')
   const entry = await server.transformRequest('/entry.js')
   expect(entry?.code).not.toContain('/.vite/deps/')
   const screen = await server.transformRequest('/node_modules/@opulonjs/screen/index.mjs')
@@ -229,6 +230,55 @@ test('warns once per registered component or conventional screen copy without a 
       ),
     ).toHaveLength(1)
   }
+})
+
+test('a checkout under an overrides directory does not make every host or workspace file a copy', async () => {
+  const parent = mkdtempSync(join(tmpdir(), 'header-scope-'))
+  onTestFinished(() => rmSync(parent, { recursive: true, force: true }))
+  const directory = join(parent, 'overrides')
+  mkdirSync(directory)
+  const fixture = host('1.2.0', directory)
+  fixture.write(
+    'HostEmpty.vue',
+    '<!-- @opulonjs/source @opulonjs/ui@1.2.0 src/components/EmptyState.vue -->\n<template>host empty</template>',
+  )
+  fixture.write('Screen.vue', '<template>ordinary host screen</template>')
+  const workspace = join(directory, 'workspace.js')
+  writeFileSync(workspace, 'export default "workspace source"')
+  fixture.write(
+    'entry.js',
+    `import Screen from './Screen.vue'; import Workspace from '${workspace}'; console.log(Screen, Workspace)`,
+  )
+  const warnings: string[] = []
+  const logger = createLogger('silent')
+  logger.warn = (message) => {
+    warnings.push(message)
+  }
+  await fixture.bundle(
+    { overrides: { components: { EmptyState: 'HostEmpty.vue' } } },
+    { customLogger: logger },
+  )
+  expect(warnings.filter((message) => message.includes('missing @opulonjs/source header'))).toEqual(
+    [],
+  )
+})
+
+test('unrelated overrides directories do not warn when the host has no configured overrides', async () => {
+  const fixture = host()
+  fixture.write('src/i18n/overrides/en.js', 'export default "host translations"')
+  fixture.write(
+    'entry.js',
+    "import Messages from './src/i18n/overrides/en.js'; console.log(Messages)",
+  )
+  const warnings: string[] = []
+  const logger = createLogger('silent')
+  logger.warn = (message) => {
+    warnings.push(message)
+  }
+  await fixture.bundle({}, { customLogger: logger })
+  expect(warnings.filter((message) => message.includes('missing @opulonjs/source header'))).toEqual(
+    [],
+  )
 })
 
 test('reads BOM and CRLF headers and warns for unresolvable package versions once', async () => {

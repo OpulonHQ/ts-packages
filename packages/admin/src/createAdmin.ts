@@ -2,7 +2,15 @@ import 'virtual:opulon-ui.css'
 import { Me as MeSchema } from '@opulonjs/core/api'
 import { Schema } from 'effect'
 import { type Brand, uiPlugin } from '@opulonjs/ui'
-import { computed, createApp, defineAsyncComponent, shallowRef, type App } from 'vue'
+import {
+  computed,
+  createApp,
+  defineAsyncComponent,
+  defineComponent,
+  isVNode,
+  shallowRef,
+  type App,
+} from 'vue'
 import { createI18n } from 'vue-i18n'
 import {
   createRouter,
@@ -68,7 +76,20 @@ const isRouteComponent = (
 
 const lazy =
   (component: () => Promise<RouteComponent | { readonly default: RouteComponent }>) => () =>
-    component().then((loaded) => ('default' in loaded ? loaded.default : loaded))
+    Promise.resolve(component()).then((loaded) => {
+      if (isVNode(loaded))
+        return defineComponent({
+          render: () => {
+            const rendered = component()
+            if (!isVNode(rendered))
+              throw new Error(
+                'createAdmin: functional route override must return a VNode; use defineComponent or displayName',
+              )
+            return rendered
+          },
+        })
+      return 'default' in loaded ? loaded.default : loaded
+    })
 
 const injected = (name: string) =>
   document.querySelector<HTMLMetaElement>(`meta[name="${name}"]`)?.content

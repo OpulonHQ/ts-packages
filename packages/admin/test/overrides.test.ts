@@ -44,6 +44,11 @@ test.each([false, true])(
   },
 )
 
+test('renders a plain functional route override', async () => {
+  mount('/', { overrides: { dashboard: () => h('p', 'functional host screen') } })
+  await expect.poll(() => document.body.textContent).toContain('functional host screen')
+})
+
 function mount(
   path: string,
   options: Partial<AdminOptions> = {},

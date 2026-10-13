@@ -1,6 +1,6 @@
 import { readFileSync, statSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { isAbsolute, join, resolve } from 'node:path'
+import { isAbsolute, join, relative, resolve } from 'node:path'
 import { normalizePath, type Plugin, type ResolvedConfig } from 'vite'
 
 const componentPrefix = '@opulonjs/ui/components/'
@@ -87,6 +87,7 @@ export const adminOverrides = (
           optimizeDeps: {
             exclude: [
               ...new Set([
+                'effect',
                 '@opulonjs/admin',
                 '@opulonjs/ui',
                 ...packages(resolve(user.root ?? '.')),
@@ -155,7 +156,13 @@ export const adminOverrides = (
       )
         return
       const header = provenance(source)
-      if (!header && file.includes('/overrides/') && !missingHeaders.has(file)) {
+      const hostPath = normalizePath(relative(config.root, file))
+      const screenCopy =
+        canonicalToHost.size > 0 &&
+        !isAbsolute(hostPath) &&
+        !hostPath.startsWith('../') &&
+        hostPath.split('/').slice(0, -1).includes('overrides')
+      if (!header && screenCopy && !missingHeaders.has(file)) {
         missingHeaders.add(file)
         this.warn(
           `opulonAdmin: ${file} is missing @opulonjs/source header; record the copied package version.`,
