@@ -2,9 +2,16 @@ import 'virtual:opulon-ui.css'
 import { Me as MeSchema } from '@opulonjs/core/api'
 import { Schema } from 'effect'
 import { type Brand, uiPlugin } from '@opulonjs/ui'
-import { computed, createApp, defineAsyncComponent, shallowRef, type App } from 'vue'
+import {
+  computed,
+  createApp,
+  defineAsyncComponent,
+  shallowRef,
+  type App,
+  type Component,
+} from 'vue'
 import { createI18n } from 'vue-i18n'
-import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
+import { createRouter, createWebHistory, type RouteRecordSingleView } from 'vue-router'
 import { apiContextKey } from './api-client.ts'
 import { shellMessages } from './messages.ts'
 import type { Access, AdminModule, Messages } from './module.ts'
@@ -23,6 +30,8 @@ export interface AdminOptions {
   /** The same brand object the host passes to `opulonAdmin({ brand })` in its Vite config. */
   readonly brand: Brand
   readonly modules: ReadonlyArray<AdminModule>
+  /** Host components by route name; the route's path, access and navigation stay intact. */
+  readonly overrides?: Readonly<Record<string, Component>>
   /** Host messages by admin locale, merged over the shell's; a new locale key adds a locale. */
   readonly messages?: Readonly<Record<string, Messages>>
   /** Host nav groups (`admin.groups.<id>` labels) by order; built-ins are 100, 200, 300. */
@@ -74,6 +83,15 @@ const toI18n = (catalog: Messages, namespace?: string): Messages => {
  * Mount the returned app: `createAdmin({...}).mount('#app')`.
  */
 export const createAdmin = (options: AdminOptions): App => {
+  const routeNames = new Set([
+    'dashboard',
+    'core.audit',
+    'notFound',
+    ...options.modules.flatMap((m) => m.routes.map((r) => r.name)),
+  ])
+  for (const name of Object.keys(options.overrides ?? {})) {
+    if (!routeNames.has(name)) throw new Error(`createAdmin: unknown route override "${name}"`)
+  }
   const ids = new Set<string>()
   for (const m of options.modules) {
     for (const route of m.routes) {
@@ -275,7 +293,7 @@ export const createAdmin = (options: AdminOptions): App => {
       : {}),
   }
 
-  const routes: Array<RouteRecordRaw> = [
+  const routes: Array<RouteRecordSingleView> = [
     { path: '/', name: 'dashboard', component: Dashboard, meta: { access: { signedIn: true } } },
     ...(!auditOverride
       ? [
@@ -297,7 +315,13 @@ export const createAdmin = (options: AdminOptions): App => {
     ),
     { path: '/:rest(.*)*', name: 'notFound', component: NotFound },
   ]
-  const router = createRouter({ history: createWebHistory('/admin/'), routes })
+  const router = createRouter({
+    history: createWebHistory('/admin/'),
+    routes: routes.map((route) => {
+      const component = typeof route.name === 'string' ? options.overrides?.[route.name] : undefined
+      return component ? { ...route, component } : route
+    }),
+  })
   router.beforeEach(async (to) => {
     await ready
     const { module, access } = to.meta

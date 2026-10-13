@@ -6,6 +6,7 @@ import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { PluginOption } from 'vite'
+import { adminOverrides } from './vite-overrides.ts'
 
 export interface OpulonAdminOptions {
   /** The host's brand; pass the same object to `createAdmin({ brand })`. */
@@ -20,6 +21,8 @@ export interface OpulonAdminOptions {
    * (an `./admin` export) add themselves.
    */
   readonly sources?: ReadonlyArray<string>
+  /** Kit components by canonical name (e.g. `EmptyState` or `Field/Text`) to host file paths. */
+  readonly overrides?: { readonly components: Readonly<Record<string, string>> }
 }
 
 const headSha = () => {
@@ -77,6 +80,7 @@ export const opulonAdmin = (options: OpulonAdminOptions = {}): Array<PluginOptio
   const apiPrefix = options.apiPrefix ?? '/api'
   const shellDir = dirname(fileURLToPath(import.meta.url))
   return [
+    adminOverrides(options.overrides?.components ?? {}),
     vue(),
     ...opulonUi({
       ...(options.brand ? { brand: options.brand } : {}),
