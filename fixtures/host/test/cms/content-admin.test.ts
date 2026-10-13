@@ -4,11 +4,17 @@ import { cmsAdmin } from '@opulonjs/cms/admin'
 import { expect, onTestFinished, test } from 'vitest'
 import { brand } from '../../admin/brand.ts'
 import { adminModules } from '../../admin/modules.ts'
-import { page, useCmsHost } from './helpers.ts'
+import { files } from '../media/helpers.ts'
+import { useCmsHost } from './helpers.ts'
 
 // Runs in the `admin` vitest project (happy-dom); the admin's fetch goes into the test Worker.
 // The editor's admin locale is sk.
 const host = useCmsHost()
+
+const failed = useCmsHost(undefined, async () => ({
+  success: false,
+  errors: [{ code: 1, message: 'private diagnostic' }],
+}))
 
 function mountAdmin(path: string, fetch = host.fetch) {
   history.replaceState(null, '', path)
@@ -20,15 +26,23 @@ function mountAdmin(path: string, fetch = host.fetch) {
 }
 
 test('the composed admin shows an editor the real failed purge from a media edit', async () => {
-  const failed = useCmsHost(undefined, async () => ({
-    success: false,
-    errors: [{ code: 1, message: 'private diagnostic' }],
-  }))
-  const created = await failed.create(page({ en: '/stale-notice' }))
-  expect((await failed.publish(created.body.id)).status).toBe(200)
+  const id = await failed.upload(files.png(800, 600), 'notice.png')
+  const changed = await failed.fetch(`https://host.test/api/media/items/${id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ alt: { en: 'Edited alt' }, caption: { en: 'Edited caption' } }),
+  })
+  expect(changed.status).toBe(200)
   const text = mountAdmin('/admin/cms/pages', failed.fetch)
   await expect.poll(text).toContain('Živý web môže zobrazovať predchádzajúcu verziu')
   expect(text()).toContain('vymazanie vyrovnávacej pamäte')
+  expect(text()).not.toContain('private diagnostic')
+})
+
+test('a collection-only editor can see the real pending purge on their content screen', async () => {
+  await failed.upload(files.png(800, 600), 'collection-notice.png', { en: 'Collection image' })
+  const text = mountAdmin('/admin/cms/collections/posts', failed.fetchAs(['cms.collections.view']))
+  await expect.poll(text).toContain('Živý web môže zobrazovať predchádzajúcu verziu')
   expect(text()).not.toContain('private diagnostic')
 })
 

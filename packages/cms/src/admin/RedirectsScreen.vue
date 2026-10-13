@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import StalePurgeNotice from './StalePurgeNotice.vue'
 /** Content > Redirects: list, create, edit, delete and CSV import of exact-path redirects. */
 import { useI18n } from '@opulonjs/admin'
 import { queryRows, type TableQuery, UButton, UCard } from '@opulonjs/ui'
@@ -111,6 +112,7 @@ async function importFile(event: Event) {
         <UButton icon="i-lucide-plus" :label="t('cms.redirects.create')" @click="startCreate" />
       </template>
     </PageHeader>
+    <StalePurgeNotice class="mb-4" />
 
     <p v-if="canEdit" class="mb-4 text-sm text-muted">{{ t('cms.redirects.importHelp') }}</p>
     <p

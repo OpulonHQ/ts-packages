@@ -1,4 +1,5 @@
 import { ContentLocales } from '@opulonjs/core'
+import { mediaCacheTag } from '@opulonjs/media/api'
 import { MediaLibrary, type ResolvedMedia } from '@opulonjs/media/server'
 import { Effect, Option, Predicate, Schema } from 'effect'
 import { SqlClient } from 'effect/sql/SqlClient'
@@ -108,7 +109,7 @@ export const makeReader = (definitions: CmsDefinitions) =>
           ),
           media: mediaOf,
           href: linked.href,
-          tags: linked.tags,
+          tags: [...linked.tags, ...mediaIds.map(mediaCacheTag)],
         }
       })
 

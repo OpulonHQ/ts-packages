@@ -1,6 +1,24 @@
 // Client-safe entry for module `/api` files (HttpApi groups), imported by browser builds too.
 // Keep server-only code (composition, migrations, SQL) out of this graph; CI checks it.
 import { Schema } from 'effect'
+
+/** Editor-safe summary of a durable cache purge. Provider diagnostics are never returned. */
+export const PendingCachePurge = Schema.Struct({
+  id: Schema.String,
+  tags: Schema.Array(Schema.String),
+  attempts: Schema.Number,
+  state: Schema.Literals(['queued', 'failed']),
+  error: Schema.NullOr(Schema.String),
+  staleUntil: Schema.String,
+})
+export type PendingCachePurge = typeof PendingCachePurge.Type
+
+export const CachePurgeSummary = Schema.Struct({
+  total: Schema.Number,
+  failed: Schema.Number,
+  staleUntil: Schema.NullOr(Schema.String),
+})
+export type CachePurgeSummary = typeof CachePurgeSummary.Type
 import * as HttpApiEndpoint from 'effect/http-api/HttpApiEndpoint'
 import * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
 import { Authorization, Policy } from './authz.ts'

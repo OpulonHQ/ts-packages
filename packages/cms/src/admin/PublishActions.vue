@@ -4,6 +4,7 @@ import { useI18n } from '@opulonjs/admin'
 import { UButton } from '@opulonjs/ui'
 import StatusBadge from '@opulonjs/ui/components/StatusBadge'
 import type { PageStatus } from '../api.ts'
+import StalePurgeNotice from './StalePurgeNotice.vue'
 
 defineProps<{
   status: PageStatus
@@ -20,6 +21,7 @@ const { t } = useI18n()
 </script>
 
 <template>
+  <StalePurgeNotice :pending="pending" />
   <StatusBadge
     :status="status"
     :label="t(`cms.status.${status}`)"

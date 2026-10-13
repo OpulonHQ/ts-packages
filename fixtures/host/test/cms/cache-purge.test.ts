@@ -1,9 +1,8 @@
-import { CachePurge, type WorkersCache, workersCachePurge } from '@opulonjs/cms/server'
-import { Effect, Fiber, Logger } from 'effect'
-import * as TestClock from 'effect/testing/TestClock'
+import { CachePurger } from '@opulonjs/core'
+import { type WorkersCache, workersCachePurge } from '@opulonjs/core/workers'
+import { Effect } from 'effect'
 import { expect, test } from 'vitest'
 
-/** A fake Workers Cache (`ctx.cache`): records purges and answers with `reply`. */
 const fakeCache = (reply: () => ReturnType<WorkersCache['purge']>) => {
   const purged: Array<Array<string>> = []
   const cache: WorkersCache = {
@@ -18,7 +17,7 @@ const fakeCache = (reply: () => ReturnType<WorkersCache['purge']>) => {
 const purge = (ctx: { cache?: WorkersCache }, tags: Array<string>) =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const cache = yield* CachePurge
+      const cache = yield* CachePurger
       yield* cache.purge(tags)
     }).pipe(Effect.provide(workersCachePurge(ctx))),
   )
@@ -36,100 +35,23 @@ test('does nothing where the invocation has no Workers Cache', async () => {
   await expect(purge({}, ['cms'])).resolves.toBeUndefined()
 })
 
-test('a failed purge is logged, never failing the caller, and not retried', async () => {
+test('an adapter rejection fails the port so the outbox can retain it', async () => {
   const down = fakeCache(() => Promise.reject(new Error('cache down')))
-  await expect(purge({ cache: down.cache }, ['cms'])).resolves.toBeUndefined()
+  await expect(purge({ cache: down.cache }, ['cms'])).rejects.toMatchObject({
+    _tag: 'CachePurgeFailed',
+    reason: 'failed',
+  })
   expect(down.purged).toHaveLength(1)
 })
 
-test('a stalled purge ends at its 25 s deadline', async () => {
-  const called = Promise.withResolvers<void>()
-  const stalled = fakeCache(() => {
-    called.resolve()
-    return new Promise(() => {})
+test('a refused purge fails the port without retrying inside the invocation', async () => {
+  const refused = fakeCache(async () => ({
+    success: false,
+    errors: [{ code: 1, message: 'rate limited' }],
+  }))
+  await expect(purge({ cache: refused.cache }, ['cms'])).rejects.toMatchObject({
+    _tag: 'CachePurgeFailed',
+    reason: 'refused',
   })
-  await Effect.runPromise(
-    Effect.gen(function* () {
-      const cache = yield* CachePurge
-      const fiber = yield* Effect.forkChild(cache.purge(['cms']))
-      yield* Effect.promise(() => called.promise)
-      yield* TestClock.adjust('25 seconds')
-      yield* Fiber.join(fiber)
-    }).pipe(
-      Effect.provide(workersCachePurge({ cache: stalled.cache })),
-      Effect.provide(TestClock.layer()),
-    ),
-  )
-  expect(stalled.purged).toHaveLength(1)
-})
-
-const refusedReply = async () => ({
-  success: false,
-  errors: [{ code: 1, message: 'rate limited' }],
-})
-
-/** Purges `cms` under the test clock, advancing it `steps` times by 12 seconds. */
-const purgeOverTime = (cache: WorkersCache, steps: number) =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const purger = yield* CachePurge
-      const fiber = yield* Effect.forkChild(purger.purge(['cms']))
-      for (let i = 0; i < steps; i++) yield* TestClock.adjust('12 seconds')
-      yield* Fiber.join(fiber)
-    }).pipe(Effect.provide(workersCachePurge({ cache })), Effect.provide(TestClock.layer())),
-  )
-
-test('a refused (rate-limited) purge is retried as a token refills (12 s), at most twice', async () => {
-  let calls = 0
-  const flaky = fakeCache(() => (calls++ === 0 ? refusedReply() : ok()))
-  await purgeOverTime(flaky.cache, 2)
-  expect(flaky.purged).toEqual([['cms'], ['cms']])
-
-  // Still refused after both retries: logged, the caller does not fail.
-  const refused = fakeCache(refusedReply)
-  await expect(purgeOverTime(refused.cache, 4)).resolves.toBeUndefined()
-  expect(refused.purged).toHaveLength(3)
-})
-
-test('one 25 s deadline covers calls, retries and sleeps; the failure is logged within it', async () => {
-  // Refusals that take 8 s to arrive: per-attempt deadlines would log at 56 s, long after
-  // Workers stopped keeping the Worker alive for waitUntil (30 s).
-  let now = 0
-  const pending: Array<{ start: number; resolve: () => void }> = []
-  const slow = fakeCache(
-    () =>
-      new Promise((resolve) => {
-        pending.push({
-          start: now,
-          resolve: () =>
-            resolve({ success: false, errors: [{ code: 1, message: 'rate limited' }] }),
-        })
-      }),
-  )
-  const logged: Array<number> = []
-  const errors = Logger.make(({ logLevel, date }) => {
-    if (logLevel === 'Error') logged.push(date.getTime())
-  })
-  await Effect.runPromise(
-    Effect.gen(function* () {
-      const purger = yield* CachePurge
-      const fiber = yield* Effect.forkChild(purger.purge(['cms']))
-      for (let second = 0; second < 60; second++) {
-        yield* Effect.yieldNow
-        yield* TestClock.adjust('1 second')
-        now += 1000
-        for (const call of pending.splice(0)) {
-          if (now - call.start >= 8000) call.resolve()
-          else pending.push(call)
-        }
-      }
-      yield* Fiber.join(fiber)
-    }).pipe(
-      Effect.provide(workersCachePurge({ cache: slow.cache })),
-      Effect.provide(TestClock.layer()),
-      Effect.provide(Logger.layer([errors])),
-    ),
-  )
-  expect(logged).toHaveLength(1)
-  expect(logged[0]).toBeLessThanOrEqual(25_000)
+  expect(refused.purged).toHaveLength(1)
 })

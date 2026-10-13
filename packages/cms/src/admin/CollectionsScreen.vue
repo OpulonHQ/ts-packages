@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import StalePurgeNotice from './StalePurgeNotice.vue'
 /** Content > Collections: the host's collections as tabs, the chosen one's items below. */
 import { useI18n } from '@opulonjs/admin'
 import { queryRows, type TableQuery, UButton } from '@opulonjs/ui'
@@ -73,6 +74,7 @@ async function create() {
         />
       </template>
     </PageHeader>
+    <StalePurgeNotice class="mb-4" />
     <nav class="mb-4 flex flex-wrap gap-2" :aria-label="t('cms.collections.title')">
       <UButton
         v-for="key in keys"

@@ -5,7 +5,7 @@ import {
   serveAdmin,
   type WorkerContext,
 } from '@opulonjs/core/workers'
-import { workersCachePurge } from '@opulonjs/cms/server'
+import { workersCachePurge } from '@opulonjs/core/workers'
 import { Mailer } from '@opulonjs/emails/server'
 import {
   type R2BucketLike,

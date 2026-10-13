@@ -1,4 +1,4 @@
-import { ContentLocales } from '@opulonjs/core'
+import { Background, ContentLocales } from '@opulonjs/core'
 import { PgFromHyperdrive } from '@opulonjs/core/workers'
 import { ImageUrl, MediaLibrary, R2MediaStorage, srcset } from '@opulonjs/media/server'
 import { Effect, Layer } from 'effect'
@@ -30,6 +30,7 @@ const resolve = (ids: ReadonlyArray<string>, locale: string) =>
     Effect.flatMap(MediaLibrary, (library) => library.resolve(ids, locale)).pipe(
       Effect.provide(
         MediaLibrary.layer({ maxBytes: 1024, widths: [320, 640, 1280] }).pipe(
+          Layer.provide(Layer.succeed(Background, { run: () => {} })),
           Layer.provide(ImageUrl.layer()),
           Layer.provide(R2MediaStorage(host.bucket)),
           Layer.provide(PgFromHyperdrive({ connectionString: host.db.url })),

@@ -1,5 +1,8 @@
 import {
   Audit,
+  Background,
+  CachePurge,
+  CachePurger,
   ContentLocales,
   CurrentActor,
   diffFields,
@@ -11,6 +14,8 @@ import { Context, Effect, Layer, Schema } from 'effect'
 import { SqlClient } from 'effect/sql/SqlClient'
 import {
   LocalizedText,
+  mediaCacheTag,
+  mediaCacheTags,
   type MediaItem,
   MediaNotFound,
   MediaRejected,
@@ -171,6 +176,13 @@ export class MediaLibrary extends Context.Service<
       MediaLibrary,
       Effect.gen(function* () {
         const sql = yield* SqlClient
+        const background = yield* Background
+        const purger = yield* CachePurger
+        const purge = (id: string) =>
+          CachePurge.afterCommit([mediaCacheTag(id), mediaCacheTags.all]).pipe(
+            Effect.provideService(Background, background),
+            Effect.provideService(CachePurger, purger),
+          )
         const storage = yield* MediaStorage
         const imageUrl = yield* ImageUrl
 
@@ -203,6 +215,7 @@ export class MediaLibrary extends Context.Service<
                   action: archived ? 'media.item.archived' : 'media.item.restored',
                   subject: subject(updated!),
                 })
+                yield* purge(id)
                 return toItem(updated!)
               }),
             )
@@ -309,6 +322,7 @@ export class MediaLibrary extends Context.Service<
                     subject: subject(after!),
                     changes: diffFields(before, after!, ['version', 'filename', 'mime', 'size']),
                   })
+                  yield* purge(id)
                   return toItem(after!)
                 }),
               )
@@ -348,6 +362,7 @@ export class MediaLibrary extends Context.Service<
                       subject: subject(after!),
                       changes,
                     })
+                  yield* purge(id)
                   return toItem(after!)
                 }),
               )

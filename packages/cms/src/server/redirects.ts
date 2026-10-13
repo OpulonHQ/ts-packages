@@ -1,6 +1,8 @@
 import {
   Audit,
   Background,
+  CachePurge,
+  CachePurger,
   ContentLocales,
   diffFields,
   requirePermission,
@@ -19,7 +21,7 @@ import {
   redirectImportLimits,
   RedirectStatus,
 } from '../api.ts'
-import { CachePurge, cacheTags, purgeAfterCommit } from './cache.ts'
+import { cacheTags } from './cache.ts'
 import { parseCsv } from './csv.ts'
 import { maxPathLength, uuid } from './document.ts'
 
@@ -195,9 +197,9 @@ export class Redirects extends Context.Service<
       const locales = yield* ContentLocales
       const defaultLocale = locales[0]!
       // Cached redirect and not-found answers carry `cms:routes`.
-      const purge = purgeAfterCommit([cacheTags.routes]).pipe(
+      const purge = CachePurge.afterCommit([cacheTags.routes]).pipe(
         Effect.provideService(Background, yield* Background),
-        Effect.provideService(CachePurge, yield* CachePurge),
+        Effect.provideService(CachePurger, yield* CachePurger),
       )
 
       /** Loads the redirects and published paths of `of` under a lock that serializes

@@ -5,8 +5,10 @@ import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import { CoreGroup, corePermissions } from './api.ts'
 import { purgeAudit } from './audit.ts'
 import { CurrentUser } from './authz.ts'
+import { CachePurge } from './cache-purge.ts'
 import { BuildId, Composed, ContentLocales } from './compose.ts'
 import createAuditEvent from './migrations/0001_create_audit_event.ts'
+import createCachePurge from './migrations/0002_create_cache_purge.ts'
 import { defineModule } from './module.ts'
 
 export interface CoreOptions {
@@ -49,9 +51,13 @@ export const core = (options: CoreOptions = {}) =>
           )
         }),
       ),
-    migrations: { '0001_create_audit_event': createAuditEvent },
+    migrations: {
+      '0001_create_audit_event': createAuditEvent,
+      '0002_create_cache_purge': createCachePurge,
+    },
     permissions: corePermissions,
     tasks: [
+      { name: 'cache_purge_sweep', every: '5m', run: CachePurge.sweep() },
       {
         name: 'audit_purge',
         every: '1d',

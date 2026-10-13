@@ -8,6 +8,7 @@ import { UButton, UCard } from '@opulonjs/ui'
 import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
 import FieldSelect from '@opulonjs/ui/components/Field/Select'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
+import StalePurgeNotice from './StalePurgeNotice.vue'
 import StatusBadge from '@opulonjs/ui/components/StatusBadge'
 import { computed, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -161,6 +162,7 @@ function move(index: number, by: -1 | 1) {
           />
         </template>
       </PageHeader>
+      <StalePurgeNotice :pending="pending" class="mb-4" />
 
       <p
         v-if="status && status.message"

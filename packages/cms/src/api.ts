@@ -1,7 +1,13 @@
 // Client-safe: the cms HttpApi group, its catalogs, document schemas and the definitions
 // builders (TSPACK-11). Imported by the admin build and the host's definitions file, so no
 // server-only imports here.
-import { Authorization, Policy, Public } from '@opulonjs/core/api'
+import {
+  Authorization,
+  CachePurgeSummary,
+  PendingCachePurge,
+  Policy,
+  Public,
+} from '@opulonjs/core/api'
 import { ResolvedMedia } from '@opulonjs/media/api'
 import { Schema } from 'effect'
 import * as HttpApiEndpoint from 'effect/http-api/HttpApiEndpoint'
@@ -28,6 +34,13 @@ export const cmsPermissions = [
   'cms.redirects.view',
   /** Create, edit, delete and import redirects. */
   'cms.redirects.edit',
+] as const
+
+export const cachePurgeViewPermissions = [
+  'cms.pages.view',
+  'cms.collections.view',
+  'cms.site.view',
+  'cms.redirects.view',
 ] as const
 
 /** The publish family (TSPACK-11); drafts are not audited. */
@@ -300,6 +313,22 @@ export const CmsGroup = HttpApiGroup.make('cms')
     HttpApiEndpoint.get('listPages', '/pages', {
       success: Schema.Struct({ rows: Schema.Array(PageSummary), total: Schema.Number }),
     }).annotate(Policy, 'cms.pages.view'),
+  )
+  .add(
+    HttpApiEndpoint.get('cachePurges', '/cache-purges', {
+      success: Schema.Struct({
+        summary: CachePurgeSummary,
+        rows: Schema.Array(
+          Schema.Struct({
+            id: PendingCachePurge.fields.id,
+            attempts: PendingCachePurge.fields.attempts,
+            state: PendingCachePurge.fields.state,
+            error: PendingCachePurge.fields.error,
+            staleUntil: PendingCachePurge.fields.staleUntil,
+          }),
+        ),
+      }),
+    }).annotate(Policy, 'signedIn'),
   )
   .add(
     HttpApiEndpoint.get('getPage', '/pages/:id', {

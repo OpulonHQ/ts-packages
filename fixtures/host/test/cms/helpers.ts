@@ -1,5 +1,5 @@
 import type { Page, PageDocument, PageLocale } from '@opulonjs/cms/api'
-import { type WorkersCache, workersCachePurge } from '@opulonjs/cms/server'
+import { type WorkersCache, workersCachePurge } from '@opulonjs/core/workers'
 import { createWorker, PgFromHyperdrive } from '@opulonjs/core/workers'
 import { Mailer } from '@opulonjs/emails/server'
 import { R2MediaStorage } from '@opulonjs/media/server'
@@ -93,18 +93,22 @@ export const useCmsHost = (composed = server, reply?: WorkersCache['purge']) => 
   }
 
   /** A `fetch` routed into the test Worker as the editor, for admin screens. */
-  const hostFetch: typeof fetch = async (input, init) => {
-    const request = new Request(input, init)
-    request.headers.set('origin', origin)
-    request.headers.set('cookie', await session(editor, editorName))
-    return send(request)
-  }
+  const fetchAs =
+    (permissions: ReadonlyArray<string>): typeof fetch =>
+    async (input, init) => {
+      const request = new Request(input, init)
+      request.headers.set('origin', origin)
+      request.headers.set('cookie', await session(permissions, editorName))
+      return send(request)
+    }
+  const hostFetch = fetchAs(editor)
 
   return {
     db,
     purged,
     call,
     fetch: hostFetch,
+    fetchAs,
     /** An anonymous `fetch` into the test Worker, as a public site's browser makes it. */
     publicFetch: (async (input, init) => send(new Request(input, init))) as typeof fetch,
     /** The test Worker and its env, for code that calls `worker.fetch(request, env, ctx)`. */

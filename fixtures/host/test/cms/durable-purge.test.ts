@@ -7,6 +7,17 @@ const host = useCmsHost(undefined, async () => {
   return { success: true, errors: [] }
 })
 
+const refused = useCmsHost(undefined, async () => ({
+  success: false,
+  errors: [{ code: 1, message: 'secret provider diagnostic' }],
+}))
+let down = true
+const concurrent = useCmsHost(undefined, async () => {
+  if (down) throw new Error('offline')
+  await new Promise((resolve) => setTimeout(resolve, 40))
+  return { success: true, errors: [] }
+})
+
 test('failed purges survive the request, are editor-readable, and a scheduled retry clears them', async () => {
   const created = await host.create(page({ en: '/durable-purge' }))
   expect((await host.publish(created.body.id)).status).toBe(200)
@@ -18,8 +29,17 @@ test('failed purges survive the request, are editor-readable, and a scheduled re
     { state: 'queued', attempts: 1, error: 'Cache purge failed.' },
   ])
   expect(JSON.stringify(pending.body)).not.toContain('secret-token')
+  for (const permission of ['cms.collections.view', 'cms.site.view', 'cms.redirects.view']) {
+    const allowed = await host.call<{ rows: unknown[] }>('GET', '/cache-purges', {
+      as: [permission],
+    })
+    expect(allowed.status).toBe(200)
+    expect(allowed.body.rows[0]).not.toHaveProperty('tags')
+  }
   expect((await host.call('GET', '/cache-purges', { as: [] })).status).toBe(403)
   expect((await host.call('GET', '/cache-purges', { as: null })).status).toBe(401)
+  await host.sweep()
+  expect(host.purged).toHaveLength(1)
   failing = false
   await host.query("update core.cache_purge set next_attempt_at = now() - interval '1 second'")
   await host.sweep()
@@ -27,10 +47,6 @@ test('failed purges survive the request, are editor-readable, and a scheduled re
 })
 
 test('refusals stop after three attempts and remain visible until cached answers expire', async () => {
-  const refused = useCmsHost(undefined, async () => ({
-    success: false,
-    errors: [{ code: 1, message: 'secret provider diagnostic' }],
-  }))
   const created = await refused.create(page({ en: '/refused-purge' }))
   expect((await refused.publish(created.body.id)).status).toBe(200)
   for (let i = 0; i < 3; i++) {
@@ -51,12 +67,6 @@ test('refusals stop after three attempts and remain visible until cached answers
 })
 
 test('concurrent scheduled retries claim a failed purge only once', async () => {
-  let down = true
-  const concurrent = useCmsHost(undefined, async () => {
-    if (down) throw new Error('offline')
-    await new Promise((resolve) => setTimeout(resolve, 40))
-    return { success: true, errors: [] }
-  })
   const created = await concurrent.create(page({ en: '/concurrent-purge' }))
   await concurrent.publish(created.body.id)
   down = false

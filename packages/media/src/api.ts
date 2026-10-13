@@ -160,3 +160,7 @@ export const MediaGroup = HttpApiGroup.make('media')
     }).annotate(Policy, 'media.archive'),
   )
   .middleware(Authorization)
+
+/** Tags shared by media mutations and any cached answer resolving a media id. */
+export const mediaCacheTag = (id: string) => `media:${id}`
+export const mediaCacheTags = { all: 'media' } as const

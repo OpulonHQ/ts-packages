@@ -1,4 +1,5 @@
-import { defineModule } from '@opulonjs/core'
+import { CachePurge, CurrentUser, defineModule } from '@opulonjs/core'
+import { Forbidden } from 'effect/http-api/HttpApiError'
 import { Effect, Layer } from 'effect'
 import * as HttpEffect from 'effect/http/HttpEffect'
 import type * as HttpServerRequest from 'effect/http/HttpServerRequest'
@@ -8,6 +9,7 @@ import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import { cacheTagHeader } from '../public.ts'
 import {
   cmsAuditActions,
+  cachePurgeViewPermissions,
   type CmsDefinitions,
   CmsGroup,
   cmsPermissions,
@@ -129,6 +131,27 @@ const handlers = (api: HttpApi.HttpApi<'opulon', typeof CmsGroup | typeof CmsRea
       const menus = yield* Menus
       const redirects = yield* Redirects
       return h
+        .handle('cachePurges', () =>
+          Effect.gen(function* () {
+            const user = yield* CurrentUser
+            if (
+              !cachePurgeViewPermissions.some((permission) => user.permissions.includes(permission))
+            )
+              return yield* new Forbidden()
+            return {
+              summary: yield* CachePurge.summary().pipe(Effect.orDie),
+              rows: (yield* CachePurge.pending().pipe(Effect.orDie)).map(
+                ({ id, attempts, state, error, staleUntil }) => ({
+                  id,
+                  attempts,
+                  state,
+                  error,
+                  staleUntil,
+                }),
+              ),
+            }
+          }),
+        )
         .handle('listPages', () => pages.list())
         .handle('getPage', ({ params }) => pages.get(params.id))
         .handle('createPage', ({ payload }) => pages.create(payload))
