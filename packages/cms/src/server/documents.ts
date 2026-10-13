@@ -9,7 +9,13 @@ import {
 } from '@opulonjs/core'
 import { Effect, Schema } from 'effect'
 import { SqlClient } from 'effect/sql/SqlClient'
-import { CmsConflict, type CmsInvalid, CmsNotFound, type PageLocale } from '../api.ts'
+import {
+  CmsConflict,
+  type CmsInvalid,
+  CmsNotFound,
+  type PageLocale,
+  revisionPageSize,
+} from '../api.ts'
 import { cacheTags } from './cache.ts'
 import { uuid } from './document.ts'
 import { Redirects } from './redirects.ts'
@@ -44,6 +50,7 @@ export interface DocumentSpec<D> {
   readonly singleton?: { readonly empty: D }
   readonly permissions: { readonly view: string; readonly edit: string; readonly publish: string }
   readonly actions: {
+    readonly restored: string
     readonly published: string
     readonly unpublished: string
     readonly deleted?: string
@@ -198,7 +205,86 @@ export const makeDocuments = Effect.gen(function* () {
         .filter(([, l]) => l.available && l.path !== '')
         .map(([locale, l]) => ({ locale, path: l.path }))
 
+    const RevisionRow = Schema.Struct({
+      id: Schema.String,
+      created_at: Schema.Date,
+      created_by: Schema.NullOr(Schema.String),
+      created_by_name: Schema.String,
+    })
+    const summary = (row: typeof RevisionRow.Type) => ({
+      id: row.id,
+      createdAt: row.created_at.toISOString(),
+      author: { id: row.created_by, name: row.created_by_name },
+    })
+    const revision = (documentId: string, revisionId: string) =>
+      Effect.gen(function* () {
+        if (!uuid.test(revisionId)) return yield* new CmsNotFound({ id: revisionId })
+        const [row] = yield* Schema.decodeUnknownEffect(
+          Schema.Array(Schema.Struct({ ...RevisionRow.fields, document: Schema.Unknown })),
+        )(
+          yield* sql`select id, created_at, created_by, created_by_name, document
+          from cms.revision where id = ${revisionId} and document_id = ${documentId}`,
+        )
+        if (!row) return yield* new CmsNotFound({ id: revisionId })
+        return { ...summary(row), document: yield* decodeDocument(row.document) }
+      })
+
     return {
+      listRevisions: Effect.fn('Documents.listRevisions')(
+        function* (ref: string, page = 1) {
+          yield* requirePermission(spec.permissions.view)
+          const row = yield* find(ref)
+          const revisions = yield* Schema.decodeUnknownEffect(Schema.Array(RevisionRow))(
+            yield* sql`select id, created_at, created_by, created_by_name from cms.revision
+              where document_id = ${row.id} order by created_at desc, id desc
+              limit ${revisionPageSize} offset ${(page - 1) * revisionPageSize}`,
+          )
+          const [count] = yield* sql<{ total: number }>`select count(*)::int as total
+            from cms.revision where document_id = ${row.id}`
+          return { rows: revisions.map(summary), total: count?.total ?? 0 }
+        },
+        Effect.catchTags({ SqlError: Effect.die, SchemaError: Effect.die }),
+        withSql,
+      ),
+
+      getRevision: Effect.fn('Documents.getRevision')(
+        function* (ref: string, revisionId: string) {
+          yield* requirePermission(spec.permissions.view)
+          const row = yield* find(ref)
+          return yield* revision(row.id, revisionId)
+        },
+        Effect.catchTags({ SqlError: Effect.die, SchemaError: Effect.die }),
+        withSql,
+      ),
+
+      restoreRevision: Effect.fn('Documents.restoreRevision')(
+        function* (ref: string, revisionId: string) {
+          yield* requirePermission(spec.permissions.publish)
+          return yield* withTransaction(
+            Effect.gen(function* () {
+              const row = yield* find(ref, true)
+              const snapshot = yield* revision(row.id, revisionId)
+              const draft = yield* spec.normalize(row.key, snapshot.document)
+              if (spec.routes) yield* checkPaths(row.id, spec.routes(draft))
+              const restored = yield* one(
+                sql`update cms.document
+              set draft = ${JSON.stringify(draft)}::jsonb, updated_at = now()
+              where id = ${row.id} returning ${sql.literal(columns)}`,
+                ref,
+              )
+              yield* Audit.record({
+                action: spec.actions.restored,
+                subject: spec.subject(restored),
+                context: { revisionId },
+              })
+              return restored
+            }),
+          )
+        },
+        Effect.catchTags({ SqlError: Effect.die, SchemaError: Effect.die }),
+        withSql,
+      ),
+
       /** All documents of the kind, or of one key (an item's collection). */
       list: Effect.fn('Documents.list')(
         function* (key: string | null) {
@@ -290,6 +376,7 @@ export const makeDocuments = Effect.gen(function* () {
           return yield* withTransaction(
             Effect.gen(function* () {
               const row = yield* find(ref, true)
+
               // Again, as the definitions may have changed since the draft was saved.
               const draft = yield* spec.normalize(row.key, row.draft)
               yield* spec.checkRequired(row.key, draft)
@@ -309,6 +396,7 @@ export const makeDocuments = Effect.gen(function* () {
               )
               if (spec.routes) {
                 const { previous, next } = yield* replacePaths(row.id, publishedPaths(draft))
+
                 // Old paths redirect to the new ones (TSPACK-34).
                 yield* redirects.pathsChanged(row.id, previous, next)
               }

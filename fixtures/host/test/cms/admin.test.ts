@@ -4,7 +4,7 @@ import { cmsAdmin } from '@opulonjs/cms/admin'
 import { expect, onTestFinished, test } from 'vitest'
 import { brand } from '../../admin/brand.ts'
 import { adminModules } from '../../admin/modules.ts'
-import { page, section, useCmsHost } from './helpers.ts'
+import { page, section, trackRequests, useCmsHost } from './helpers.ts'
 
 // Runs in the `admin` vitest project (happy-dom); the admin's fetch goes into the test Worker.
 const host = useCmsHost()
@@ -12,9 +12,18 @@ const host = useCmsHost()
 function mountAdmin(path: string) {
   history.replaceState(null, '', path)
   document.body.innerHTML = '<div id="app"></div>'
-  const app = createAdmin({ brand, modules: adminModules, buildId: 'build-1', fetch: host.fetch })
+  const requests = trackRequests(host.fetch)
+  const app = createAdmin({
+    brand,
+    modules: adminModules,
+    buildId: 'build-1',
+    fetch: requests.fetch,
+  })
   app.mount('#app')
-  onTestFinished(() => app.unmount())
+  onTestFinished(async () => {
+    app.unmount()
+    await requests.drain()
+  })
   return () => document.body.textContent ?? ''
 }
 
@@ -91,4 +100,5 @@ test('a system page offers no delete', async () => {
   const text = mountAdmin(`/admin/cms/pages/${home.id}`)
   await expect.poll(text).toContain('Uložiť koncept')
   expect(button('Vymazať')).toBeUndefined()
+  await expect.poll(text).toContain('Zatiaľ žiadne publikované revízie.')
 })

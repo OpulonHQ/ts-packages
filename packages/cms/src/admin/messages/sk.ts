@@ -1,4 +1,19 @@
 export default {
+  revisions: {
+    title: 'História revízií',
+    description:
+      'Predchádzajúce publikované verzie. Obnovenie nahradí koncept; živý web aktualizujete samostatným publikovaním.',
+    date: 'Publikované',
+    author: 'Autor',
+    empty: 'Zatiaľ žiadne publikované revízie.',
+    view: 'Zobraziť revíziu',
+    restore: 'Obnoviť do konceptu',
+    restored: 'Revízia bola obnovená do konceptu.',
+    warning:
+      'Nahradí aktuálny koncept vrátane neuložených úprav. Publikovaný obsah zostane rovnaký až do ďalšieho publikovania.',
+    loading: 'Načítava sa revízia…',
+    snapshot: 'Úplná snímka',
+  },
   nav: {
     collections: 'Kolekcie',
     menus: 'Menu',
@@ -128,14 +143,18 @@ export default {
     'cms.redirects.edit': 'Vytvárať, upravovať a importovať presmerovania',
   },
   audit: {
+    'cms.page.restored': 'Stránka obnovená do konceptu',
     'cms.page.published': 'Stránka zverejnená',
     'cms.page.unpublished': 'Zverejnenie stránky zrušené',
     'cms.page.deleted': 'Stránka vymazaná',
+    'cms.item.restored': 'Položka obnovená do konceptu',
     'cms.item.published': 'Položka zverejnená',
     'cms.item.unpublished': 'Zverejnenie položky zrušené',
     'cms.item.deleted': 'Položka vymazaná',
+    'cms.settings.restored': 'Nastavenia webu obnovené do konceptu',
     'cms.settings.published': 'Nastavenia webu zverejnené',
     'cms.settings.unpublished': 'Zverejnenie nastavení webu zrušené',
+    'cms.menu.restored': 'Menu obnovené do konceptu',
     'cms.menu.published': 'Menu zverejnené',
     'cms.menu.unpublished': 'Zverejnenie menu zrušené',
     'cms.redirect.created': 'Presmerovanie vytvorené',

@@ -1,4 +1,19 @@
 export default {
+  revisions: {
+    title: 'Revision history',
+    description:
+      'Past published snapshots. Restoring replaces the draft; publish separately to update the live site.',
+    date: 'Published',
+    author: 'Author',
+    empty: 'No published revisions yet.',
+    view: 'View revision',
+    restore: 'Restore to draft',
+    restored: 'Revision restored to draft.',
+    warning:
+      'This replaces the current draft, including unsaved edits. Published content stays as it is until you publish.',
+    loading: 'Loading revision…',
+    snapshot: 'Full snapshot',
+  },
   nav: {
     collections: 'Collections',
     menus: 'Menus',
@@ -127,14 +142,18 @@ export default {
     'cms.redirects.edit': 'Create, edit and import redirects',
   },
   audit: {
+    'cms.page.restored': 'Page restored to draft',
     'cms.page.published': 'Page published',
     'cms.page.unpublished': 'Page unpublished',
     'cms.page.deleted': 'Page deleted',
+    'cms.item.restored': 'Item restored to draft',
     'cms.item.published': 'Item published',
     'cms.item.unpublished': 'Item unpublished',
     'cms.item.deleted': 'Item deleted',
+    'cms.settings.restored': 'Site settings restored to draft',
     'cms.settings.published': 'Site settings published',
     'cms.settings.unpublished': 'Site settings unpublished',
+    'cms.menu.restored': 'Menu restored to draft',
     'cms.menu.published': 'Menu published',
     'cms.menu.unpublished': 'Menu unpublished',
     'cms.redirect.created': 'Redirect created',

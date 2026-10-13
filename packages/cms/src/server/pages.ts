@@ -5,6 +5,8 @@ import { SqlClient } from 'effect/sql/SqlClient'
 import {
   CmsConflict,
   type CmsDefinitions,
+  type PageRevision,
+  type RevisionList,
   type CmsInvalid,
   type CmsNotFound,
   labelText,
@@ -29,6 +31,15 @@ export class Pages extends Context.Service<
       { rows: ReadonlyArray<PageSummary>; total: number },
       Forbidden
     >
+    readonly listRevisions: (id: string, page?: number) => Effect.Effect<RevisionList, PagesError>
+    readonly getRevision: (
+      id: string,
+      revisionId: string,
+    ) => Effect.Effect<PageRevision, PagesError>
+    readonly restoreRevision: (
+      id: string,
+      revisionId: string,
+    ) => Effect.Effect<Page, PagesError | CmsInvalid | CmsConflict>
     readonly get: (id: string) => Effect.Effect<Page, PagesError>
     readonly create: (
       draft: PageDocument,
@@ -81,6 +92,7 @@ export class Pages extends Context.Service<
             publish: 'cms.pages.publish',
           },
           actions: {
+            restored: 'cms.page.restored',
             published: 'cms.page.published',
             unpublished: 'cms.page.unpublished',
             deleted: 'cms.page.deleted',
@@ -125,6 +137,10 @@ export class Pages extends Context.Service<
         }).pipe(Effect.orDie)
 
         return {
+          listRevisions: (id, page) => documents.listRevisions(id, page),
+          getRevision: (id, revisionId) => documents.getRevision(id, revisionId),
+          restoreRevision: (id, revisionId) =>
+            documents.restoreRevision(id, revisionId).pipe(Effect.map(toPage)),
           list: () =>
             Effect.gen(function* () {
               yield* requirePermission('cms.pages.view')
