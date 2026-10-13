@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dev": "./scripts/dev.sh",
     "typecheck": "vue-tsc --noEmit",
     "build": "vite build"
   },

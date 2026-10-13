@@ -10,3 +10,4 @@ fixtures/host/public/admin/
 .vitest/
 .nuxt/
 .output/
+.verify/
