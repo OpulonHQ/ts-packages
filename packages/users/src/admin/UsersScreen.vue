@@ -1,12 +1,12 @@
 <script setup lang="ts">
-/** Users > Users: every staff user with roles and status, and the invitation form. */
 import { useI18n, useRouter } from '@opulonjs/admin'
-import { UButton, UCard, UCheckbox, UForm } from '@opulonjs/ui'
+import { listDefaultPerPage, listMaxOffset } from '@opulonjs/core/api'
+import { type TableQuery, UButton, UCard, UCheckbox, UForm } from '@opulonjs/ui'
 import DataTable from '@opulonjs/ui/components/DataTable'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
 import StatusBadge from '@opulonjs/ui/components/StatusBadge'
 import FieldText from '@opulonjs/ui/components/Field/Text'
-import { computed, ref, shallowRef } from 'vue'
+import { computed, onBeforeUnmount, ref, shallowRef } from 'vue'
 import type { UserInfo } from '../api.ts'
 import { failureKey, useUsersClient } from './client.ts'
 
@@ -17,18 +17,30 @@ const list = shallowRef<{
   users: ReadonlyArray<UserInfo>
   roles: ReadonlyArray<{ id: string; name: string }>
 }>()
-const failed = ref(false)
 const inviting = ref(false)
 const invite = ref({ email: null as string | null, roleIds: [] as string[] })
 const notice = ref<{ error: boolean; text: string }>()
 const busy = ref(false)
 
-const load = () =>
-  users((client) => client.users()).then(
-    (result) => (list.value = result),
-    () => (failed.value = true),
+let latest = 0
+onBeforeUnmount(() => latest++)
+const load = async (query: TableQuery) => {
+  const ticket = ++latest
+  const sort = query.sort?.column
+  const result = await users((client) =>
+    client.users({
+      query: {
+        page: query.page,
+        perPage: query.perPage,
+        search: query.search,
+        ...(sort === 'name' || sort === 'email' || sort === 'deactivated' ? { sort } : {}),
+        ...(query.sort ? { direction: query.sort.direction } : {}),
+      },
+    }),
   )
-void load()
+  if (ticket === latest) list.value = result
+  return { rows: result.users, total: result.total }
+}
 
 const roleName = (id: string) =>
   id === 'super_admin'
@@ -117,16 +129,20 @@ async function send() {
         <UButton type="submit" :loading="busy" :label="t('users.invite.submit')" />
       </UForm>
     </UCard>
-    <p v-if="failed" role="alert" class="text-error">{{ t('users.errors.failed') }}</p>
     <DataTable
-      v-else-if="list"
-      :rows="list.users"
+      :load="load"
+      :per-page="listDefaultPerPage"
+      :max-page="Math.floor(listMaxOffset / listDefaultPerPage) + 1"
       :columns="columns"
       :caption="t('users.users.title')"
       :empty-title="t('users.users.empty')"
       searchable
       :on-row-click="(row: UserInfo) => router.push({ name: 'users.user', params: { id: row.id } })"
     >
+      <template #error
+        ><p role="alert" class="text-sm text-error">{{ t('users.errors.failed') }}</p></template
+      >
+      <template #pagination-limit>{{ t('users.users.paginationLimit') }}</template>
       <template #deactivated-cell="{ row }">
         <StatusBadge
           :status="row.original.deactivated ? 'disabled' : 'enabled'"

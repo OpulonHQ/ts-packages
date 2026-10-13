@@ -41,6 +41,7 @@ export default {
   nav: { users: 'Users', roles: 'Roles' },
   status: { active: 'Active', deactivated: 'Deactivated' },
   users: {
+    paginationLimit: 'Refine your search to reach results beyond the paging limit.',
     title: 'Users',
     description: 'Staff who can sign in to the admin. Users are deactivated, never deleted.',
     empty: 'No users yet.',

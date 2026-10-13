@@ -40,6 +40,25 @@ export { Authorization, CurrentUser, Policy, Public } from './authz.ts'
 
 export const corePermissions = ['core.audit.view'] as const
 
+export const listDefaultPerPage = 25
+export const listMaxOffset = 10_000
+
+export const ListQuery = Schema.Struct({
+  page: Schema.optionalKey(
+    Schema.NumberFromString.check(
+      Schema.isInt(),
+      Schema.isBetween({ minimum: 1, maximum: listMaxOffset + 1 }),
+    ),
+  ),
+  perPage: Schema.optionalKey(
+    Schema.NumberFromString.check(Schema.isInt(), Schema.isBetween({ minimum: 1, maximum: 100 })),
+  ),
+  search: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(500))),
+  direction: Schema.optionalKey(Schema.Literals(['asc', 'desc'])),
+})
+export const listOffsetWithinLimit = (query: typeof ListQuery.Type) =>
+  ((query.page ?? 1) - 1) * (query.perPage ?? listDefaultPerPage) <= listMaxOffset
+
 /** What `<apiPrefix>/me` returns to a signed-in staff user. */
 export const Me = Schema.Struct({
   /** The server's build id; the admin compares it with its own to ask for a reload. */

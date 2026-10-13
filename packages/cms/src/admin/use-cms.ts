@@ -7,6 +7,7 @@ import {
   CmsInvalid,
   type Field,
   type ItemDocument,
+  type ItemQuery,
   labelText,
   type MenuDocument,
   type PageDocument,
@@ -81,8 +82,8 @@ export const useContent = () => {
   const cms = useApiClient(CmsGroup)
   const admin = useAdmin()
   return {
-    listItems: (collection: string) =>
-      cms((client) => client.listItems({ params: { collection } })),
+    listItems: (collection: string, query: ItemQuery = {}) =>
+      cms((client) => client.listItems({ params: { collection }, query })),
     getItem: (id: string) => cms((client) => client.getItem({ params: { id } })),
     createItem: (collection: string, draft: ItemDocument) =>
       cms((client) => client.createItem({ params: { collection }, payload: draft })),

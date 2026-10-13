@@ -1,0 +1,229 @@
+import { readFile, writeFile } from 'node:fs/promises'
+import pg from 'pg'
+import signedIn from '../../../.claude/skills/verify-host/journeys/signed-in.mjs'
+
+export default async (ctx) => {
+  const { page, base, shot, check } = ctx
+  await signedIn(ctx)
+  const db = new pg.Client({ connectionString: process.env.VERIFY_DATABASE_URL })
+  await db.connect()
+  const api = async (method, path, data) => {
+    const result = await page.request.fetch(`${base}/api${path}`, {
+      method,
+      headers: { Origin: base },
+      ...(data === undefined ? {} : { data }),
+    })
+    check(result.ok(), `${method} ${path} ${result.status()}`)
+    return result.status() === 204 ? null : result.json()
+  }
+  const manifestPath = '.verify/paging-data.json'
+  let state = { run: Date.now().toString(36), users: [], posts: [], categories: [] }
+  try {
+    state = JSON.parse(await readFile(manifestPath, 'utf8'))
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error
+  }
+  const save = () => writeFile(manifestPath, JSON.stringify(state))
+  await save()
+  await db.query(`create table if not exists public.verify_invitation_mail (email text primary key, html text);
+    create or replace function public.verify_invitation_mail_capture() returns trigger language plpgsql as $$
+    begin if new.template_key = 'users.invitation' then insert into public.verify_invitation_mail values (new.recipients ->> 0, new.message ->> 'html') on conflict (email) do update set html = excluded.html; end if; return new; end $$;
+    drop trigger if exists verify_invitation_mail_capture on emails.email_log;
+    create trigger verify_invitation_mail_capture after insert on emails.email_log for each row execute function public.verify_invitation_mail_capture();`)
+  let ip = 1
+  const publicCall = async (path, data) => {
+    const response = await fetch(`${base}/api/users${path}`, {
+      method: 'POST',
+      headers: {
+        Origin: base,
+        'Content-Type': 'application/json',
+        'CF-Connecting-IP': `198.51.${Math.floor(ip / 250)}.${(ip++ % 250) + 1}`,
+      },
+      body: JSON.stringify(data),
+    })
+    check(response.ok, `public ${path} ${response.status}`)
+    return response
+  }
+  async function staff(number) {
+    const email = `paging-${state.run}-${String(number).padStart(3, '0')}@example.test`
+    const password = 'paging fixture password'
+    const existing = await api('GET', `/users/users?search=${encodeURIComponent(email)}`)
+    if (existing.users.some((user) => user.email === email)) return { email, password }
+    await api('POST', '/users/invitations', { email, roleIds: [] })
+    const { rows } = await db.query(
+      'select html from public.verify_invitation_mail where email = $1',
+      [email],
+    )
+    const match = /#token=([^"&<\s]+)/.exec(rows[0]?.html ?? '')
+    check(Boolean(match), 'invitation delivered to email log')
+    await publicCall('/invitations/accept', {
+      token: decodeURIComponent(match[1]),
+      name: `Paging ${String(number).padStart(3, '0')}`,
+      password,
+    })
+    return { email, password }
+  }
+  try {
+    for (let n = state.users.length + 1; n <= 240; n++) {
+      state.users.push(await staff(n))
+      await save()
+    }
+    for (const [collection, count] of [
+      ['posts', 600],
+      ['categories', 45],
+    ]) {
+      for (let n = state[collection].length + 1; n <= count; n++) {
+        const title = `Paging ${String(n).padStart(3, '0')}`
+        const item = await api('POST', `/cms/collections/${collection}/items`, {
+          locales: {},
+          data: collection === 'posts' ? { title: { en: title } } : { name: { en: title } },
+        })
+        state[collection].push(item)
+        await save()
+      }
+    }
+    const first = await api('GET', '/users/users?perPage=25&search=Paging&sort=name&direction=asc')
+    const second = await api(
+      'GET',
+      '/users/users?perPage=25&page=2&search=Paging&sort=name&direction=asc',
+    )
+    check(
+      first.users.length === 25 && second.users[0].name === 'Paging 026' && first.total === 240,
+      'users API returns separate pages of 25 and total 240',
+    )
+    const items = await api(
+      'GET',
+      '/cms/collections/posts/items?perPage=25&page=2&search=Paging&sort=title&direction=asc',
+    )
+    check(
+      items.rows.length === 25 && items.rows[0].title === 'Paging 026' && items.total === 600,
+      'items API returns page two and total 600',
+    )
+    const denySession = await publicCall('/auth/sign-in', state.users[0])
+    const cookie = denySession.headers
+      .getSetCookie()
+      .map((value) => value.split(';')[0])
+      .join('; ')
+    for (const path of [
+      '/users/users?page=2&search=Paging',
+      '/cms/collections/posts/items?page=2&search=Paging',
+    ]) {
+      const result = await fetch(`${base}/api${path}`, {
+        headers: { Origin: base, Cookie: cookie },
+      })
+      check(result.status === 403, `signed-in staff without permission GET ${path} 403`)
+    }
+    await db.query('analyze users."user"')
+    await db.query('analyze cms.document')
+    const plans = []
+    for (const [name, sql] of [
+      ['user_list_name', 'select * from users."user" order by lower(name), id limit 25 offset 25'],
+      ['user_list_email', 'select * from users."user" order by email, id limit 25 offset 25'],
+      [
+        'document_item_list',
+        "select id, draft from cms.document where kind = 'item' and key = 'posts' order by updated_at desc, id desc limit 25 offset 25",
+      ],
+    ]) {
+      const plan = (await db.query(`explain (analyze, buffers) ${sql}`)).rows
+        .map((row) => row['QUERY PLAN'])
+        .join('\n')
+      plans.push(`${sql}\n${plan}`)
+      await writeFile(`${process.env.EVIDENCE_DIR}/explain.log`, plans.join('\n\n'))
+      check(plan.includes(`using ${name}`), `natural planner uses ${name}`)
+    }
+    await writeFile(`${process.env.EVIDENCE_DIR}/explain.log`, plans.join('\n\n'))
+  } finally {
+    await db.query(
+      'drop trigger if exists verify_invitation_mail_capture on emails.email_log; drop function if exists public.verify_invitation_mail_capture(); drop table if exists public.verify_invitation_mail',
+    )
+    await db.end()
+  }
+  await page.goto(`${base}/admin/users`)
+  const usersTable = page.getByRole('table', { name: 'Users', exact: true })
+  await usersTable.getByRole('row').filter({ hasText: 'Paging 001' }).waitFor()
+  check((await usersTable.locator('tbody tr').count()) === 25, 'users SPA only renders one page')
+  await shot('users-page-one')
+  await page.getByRole('button', { name: 'Page 2', exact: true }).click()
+  await usersTable.getByRole('row').filter({ hasText: 'Paging 026' }).waitFor()
+  await shot('users-page-two')
+  await page.getByRole('textbox', { name: 'Search…', exact: true }).fill('Paging 240')
+  await usersTable.getByRole('row').filter({ hasText: 'Paging 240' }).waitFor()
+  await usersTable.getByRole('row').filter({ hasText: 'Paging 026' }).waitFor({ state: 'hidden' })
+  check((await usersTable.locator('tbody tr').count()) === 1, 'users search resets to page one')
+  await usersTable.getByRole('row').filter({ hasText: 'Paging 240' }).click()
+  await page.getByRole('heading', { name: 'Paging 240', exact: true }).waitFor()
+  await shot('user-beyond-first-page')
+  await page.goto(`${base}/admin/cms/collections/posts`)
+  const table = page.getByRole('table', { name: 'Posts', exact: true })
+  await table.getByRole('row').filter({ hasText: 'Paging 600' }).waitFor()
+  await table.getByRole('button', { name: 'Title', exact: true }).click()
+  await table.getByRole('row').filter({ hasText: 'Paging 001' }).waitFor()
+  await shot('items-title-sort')
+  await page.getByRole('button', { name: 'Page 2', exact: true }).click()
+  await table.getByRole('row').filter({ hasText: 'Paging 026' }).waitFor()
+  await shot('items-page-two')
+  await page.getByRole('textbox', { name: 'Search…', exact: true }).fill('Paging 600')
+  await table.getByRole('row').filter({ hasText: 'Paging 600' }).waitFor()
+  check((await table.locator('tbody tr').count()) === 1, 'item search resets to page one')
+  await page.goto(`${base}/admin/cms/items/${state.posts[0].id}`)
+  const picker = page.getByRole('group', { name: 'Categories', exact: true })
+  const pickerTable = picker.getByRole('table', { name: 'Categories', exact: true })
+  await pickerTable.getByRole('row').filter({ hasText: 'Paging 001' }).waitFor()
+  await shot('reference-first-page')
+  await picker.getByRole('button', { name: 'Page 2', exact: true }).click()
+  await pickerTable.getByRole('row').filter({ hasText: 'Paging 026' }).waitFor()
+  await pickerTable.getByRole('row').filter({ hasText: 'Paging 026' }).click()
+  await picker.getByRole('button', { name: 'Remove Paging 026', exact: true }).waitFor()
+  let release
+  const blocked = new Promise((resolve) => {
+    release = resolve
+  })
+  let oldSeen
+  const oldStarted = new Promise((resolve) => {
+    oldSeen = resolve
+  })
+  await page.route('**/api/cms/collections/categories/items?*', async (route) => {
+    if (new URL(route.request().url()).searchParams.get('search') === 'Paging 001') {
+      const response = await route.fetch()
+      oldSeen()
+      await blocked
+      await route.fulfill({ response })
+    } else await route.continue()
+  })
+  const search = picker.getByRole('textbox', { name: 'Search items…', exact: true })
+  await search.fill('Paging 001')
+  await oldStarted
+  await search.fill('Paging 045')
+  await pickerTable.getByRole('row').filter({ hasText: 'Paging 045' }).waitFor()
+  release()
+  await page.waitForResponse(
+    (response) => new URL(response.url()).searchParams.get('search') === 'Paging 001',
+  )
+  await page.waitForTimeout(100)
+  check(
+    (await pickerTable.getByRole('row').filter({ hasText: 'Paging 045' }).count()) === 1 &&
+      (await pickerTable.getByRole('row').filter({ hasText: 'Paging 001' }).count()) === 0,
+    'slow older picker response cannot overwrite newer search',
+  )
+  await pickerTable.getByRole('row').filter({ hasText: 'Paging 045' }).click()
+  await picker.getByRole('button', { name: 'Remove Paging 045', exact: true }).waitFor()
+  await shot('reference-search-and-selection')
+  const savedDraft = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/api/cms/items/${state.posts[0].id}/draft`) &&
+      response.request().method() === 'PUT',
+  )
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click()
+  check((await savedDraft).status() === 200, 'selected references save through the item draft API')
+  const stored = await api('GET', `/cms/items/${state.posts[0].id}`)
+  check(
+    stored.draft.data.categories.includes(state.categories[25].id) &&
+      stored.draft.data.categories.includes(state.categories[44].id),
+    'both references remain selected across page and search changes',
+  )
+  await page.reload()
+  await picker.getByRole('button', { name: 'Remove Paging 045', exact: true }).waitFor()
+  await shot('reference-persisted')
+  await page.setViewportSize({ width: 390, height: 844 })
+  await shot('reference-phone')
+}

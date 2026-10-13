@@ -43,6 +43,7 @@ export default {
   nav: { users: 'Používatelia', roles: 'Roly' },
   status: { active: 'Aktívny', deactivated: 'Deaktivovaný' },
   users: {
+    paginationLimit: 'Spresnite vyhľadávanie, aby ste našli výsledky za limitom stránkovania.',
     title: 'Používatelia',
     description:
       'Zamestnanci, ktorí sa môžu prihlásiť do administrácie. Používatelia sa deaktivujú, nikdy nemažú.',

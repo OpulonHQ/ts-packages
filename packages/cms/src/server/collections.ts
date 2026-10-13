@@ -1,5 +1,6 @@
 import { ContentLocales } from '@opulonjs/core'
 import { Context, Effect, Layer } from 'effect'
+import { SqlClient } from 'effect/sql/SqlClient'
 import type { Forbidden } from 'effect/http-api/HttpApiError'
 import {
   type CmsConflict,
@@ -13,11 +14,14 @@ import {
   ItemDocument,
   type ItemPreview,
   type ItemSummary,
+  type ItemPage,
+  type ItemQuery,
   labelText,
   titleFieldOf,
 } from '../api.ts'
 import { checkFields, cleanData, cleanLocales, emptyLocale, localizeData } from './document.ts'
 import { type DocumentRow, documentState, makeDocuments } from './documents.ts'
+import { listItems } from './item-query.ts'
 
 /** Cache-Tags of one item's public responses and of its collection's lists. */
 export const itemTags = (id: string, collection: string) => [
@@ -31,9 +35,7 @@ type Failure = Forbidden | CmsNotFound
 export class Items extends Context.Service<
   Items,
   {
-    readonly list: (
-      collection: string,
-    ) => Effect.Effect<{ rows: ReadonlyArray<ItemSummary>; total: number }, Failure>
+    readonly list: (collection: string, query: ItemQuery) => Effect.Effect<ItemPage, Failure>
     readonly listRevisions: (id: string, page?: number) => Effect.Effect<RevisionList, Failure>
     readonly getRevision: (id: string, revisionId: string) => Effect.Effect<ItemRevision, Failure>
     readonly restoreRevision: (
@@ -60,6 +62,7 @@ export class Items extends Context.Service<
       Items,
       Effect.gen(function* () {
         const locales = yield* ContentLocales
+        const sql = yield* SqlClient
         const defaultLocale = locales[0]!
         const collectionOf = (key: string | null): Collection | undefined =>
           key !== null && Object.hasOwn(definitions.collections, key)
@@ -158,10 +161,12 @@ export class Items extends Context.Service<
           getRevision: (id, revisionId) => documents.getRevision(id, revisionId),
           restoreRevision: (id, revisionId) =>
             documents.restoreRevision(id, revisionId).pipe(Effect.map(toItem)),
-          list: (collection) =>
+          list: (collection, query) =>
             known(collection).pipe(
-              Effect.andThen(documents.list(collection)),
-              Effect.map((rows) => ({ rows: rows.map(toSummary), total: rows.length })),
+              Effect.flatMap((definition) =>
+                listItems({ collection, definition, locale: defaultLocale, query }),
+              ),
+              Effect.provideService(SqlClient, sql),
             ),
           get: (id) => documents.get(id).pipe(Effect.map(toItem)),
           create: (collection, draft) =>

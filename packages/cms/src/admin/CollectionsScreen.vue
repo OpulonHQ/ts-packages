@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /** Content > Collections: the host's collections as tabs, the chosen one's items below. */
 import { CachePurgeNotice, useI18n } from '@opulonjs/admin'
-import { queryRows, type TableQuery, UButton } from '@opulonjs/ui'
+import { listDefaultPerPage, listMaxOffset } from '@opulonjs/core/api'
+import { type TableQuery, UButton } from '@opulonjs/ui'
 import DataTable from '@opulonjs/ui/components/DataTable'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
 import StatusBadge from '@opulonjs/ui/components/StatusBadge'
@@ -27,18 +28,28 @@ const collection = computed(() =>
   current.value === undefined ? undefined : definitions.collections[current.value],
 )
 
-const load = async (query: TableQuery) =>
-  queryRows(
-    current.value ? (await content.listItems(current.value)).rows : [],
-    ['title', 'path'],
-    query,
-  )
+const load = async (query: TableQuery) => {
+  if (!current.value) return { rows: [], total: 0 }
+  const sort = query.sort?.column
+  return content.listItems(current.value, {
+    page: query.page,
+    perPage: query.perPage,
+    search: query.search,
+    ...(sort === 'title' || sort === 'path' || sort === 'status' || sort === 'updatedAt'
+      ? { sort }
+      : {}),
+    ...(query.sort ? { direction: query.sort.direction } : {}),
+  })
+}
 const columns = computed(() => [
-  { key: 'title', label: t('cms.columns.title') },
-  ...(collection.value?.routed ? [{ key: 'path', label: t('cms.columns.path') }] : []),
-  { key: 'status', label: t('cms.columns.status') },
+  { key: 'title', label: t('cms.columns.title'), sortable: true },
+  ...(collection.value?.routed
+    ? [{ key: 'path', label: t('cms.columns.path'), sortable: true }]
+    : []),
+  { key: 'status', label: t('cms.columns.status'), sortable: true },
   {
     key: 'updatedAt',
+    sortable: true,
     label: t('cms.columns.updatedAt'),
     format: (v: unknown) => new Date(String(v)).toLocaleDateString(locale.value),
   },
@@ -91,11 +102,17 @@ async function create() {
       :key="current"
       :columns="columns"
       :load="load"
+      :per-page="listDefaultPerPage"
+      :max-page="Math.floor(listMaxOffset / listDefaultPerPage) + 1"
       :caption="labelText(collection.label, locale)"
       :empty-title="t('cms.collections.empty')"
       searchable
       :on-row-click="open"
     >
+      <template #error
+        ><p role="alert" class="text-sm text-error">{{ t('cms.errors.failed') }}</p></template
+      >
+      <template #pagination-limit>{{ t('cms.collections.paginationLimit') }}</template>
       <template #title-cell="{ row }">
         <span class="font-medium text-highlighted">{{ row.original.title }}</span>
       </template>
