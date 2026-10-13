@@ -193,6 +193,29 @@ test('an HTML Cache-Tag union over the bound after collapsing is not edge-cached
   expect(response.headers['cache-control']).toBe('private, no-store')
 })
 
+test('a page rendered with the cms is not streamed, so its tags can still go on its headers', () => {
+  const { event } = request('https://example.com/about')
+  const route = { canStream: true, prefersStream: true }
+  hooks.renderRoute(route, { event })
+  expect(route.prefersStream).toBe(false)
+
+  const plain = { canStream: true, prefersStream: true }
+  hooks.renderRoute(plain, { event: { path: '/', headers: new Headers(), context: {} } })
+  expect(plain.prefersStream).toBe(true)
+})
+
+test('a streamed page is not edge-cached: reads after the headers went out are not in its tags', async () => {
+  const { event } = request('https://example.com/streamed')
+  await (await ssrClient(event)).site()
+  const response = {
+    statusCode: 200,
+    headers: { 'cache-control': 'public, s-maxage=60' } as Record<string, string>,
+    body: new ReadableStream(),
+  }
+  hooks.renderResponse(response, { event })
+  expect(response.headers).toEqual({ 'cache-control': 'private, no-store' })
+})
+
 test('outside Workers (no cloudflare context) nothing is installed or added', () => {
   const event: CmsEvent = { path: '/', headers: new Headers(), context: {} }
   hooks.request(event)

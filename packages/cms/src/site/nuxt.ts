@@ -38,6 +38,9 @@ export interface CmsEvent {
       readonly context: { waitUntil(promise: Promise<unknown>): void }
     }
     cms?: CmsRequestContext
+    // H3's context shares none of the optional keys above until set, so without this TypeScript
+    // rejects the hooks in a Nuxt app as having "no properties in common" (a weak type).
+    [key: string]: unknown
   }
   readonly node?: { readonly res?: { getHeader(name: string): unknown } }
 }
@@ -46,16 +49,24 @@ export interface CmsEvent {
 export interface CmsRenderResponse {
   statusCode?: number
   headers?: Record<string, string>
+  /** A `ReadableStream` when Nuxt streamed the page (`experimental.ssrStreaming`). */
+  body?: unknown
+}
+
+/** Nuxt's `render:route` context (Nuxt 4 with `experimental.ssrStreaming`). */
+export interface CmsRenderRoute {
+  prefersStream: boolean
 }
 
 /**
  * Nitro runtime hooks for a public site on Workers. `request` gives every request an in-process
  * cms fetch (no subrequest; the request's own env and ctx); `renderResponse` copies the Cache-Tags
  * the page read onto its HTML with the Read API's `s-maxage` (a Cache-Control the host already set
- * is kept), or, for `?preview` or when a cms answer was not publicly cacheable, answers
- * `private, no-store` without tags. Only `?preview` requests forward the visitor's cookie to the
- * cms (credentials the page passes itself are dropped), so a draft is never read for a cacheable
- * page.
+ * is kept), or, for `?preview`, when a cms answer was not publicly cacheable or when the page was
+ * streamed, answers `private, no-store` without tags. A streamed page sends its headers before its
+ * reads finish, so `renderRoute` (Nuxt's `render:route`) renders cms pages whole instead. Only
+ * `?preview` requests forward the visitor's cookie to the cms (credentials the page passes itself
+ * are dropped), so a draft is never read for a cacheable page.
  *
  * ```ts
  * // server/plugins/cms.ts
@@ -63,6 +74,7 @@ export interface CmsRenderResponse {
  *   const cms = cmsNitroHooks(worker)
  *   nitro.hooks.hook('request', cms.request)
  *   nitro.hooks.hook('render:response', cms.renderResponse)
+ *   nitro.hooks.hook('render:route', cms.renderRoute)
  * })
  * ```
  */
@@ -106,7 +118,9 @@ export const cmsNitroHooks = <Env>(worker: CmsWorker<Env>) => ({
     if (!cms) return
     // A union too large for one Cache-Tag header could not be purged: not edge-cached either.
     const tag = cacheTagHeader(cms.tags)
-    if (cms.preview || cms.uncacheable || tag === undefined) {
+    // A streamed body left before the page finished reading: its tags would be incomplete.
+    const streamed = response.body instanceof ReadableStream
+    if (cms.preview || cms.uncacheable || streamed || tag === undefined) {
       response.headers = { ...response.headers, 'cache-control': 'private, no-store' }
       delete response.headers['cache-tag']
       return
@@ -118,6 +132,9 @@ export const cmsNitroHooks = <Env>(worker: CmsWorker<Env>) => ({
       headers['cache-control'] = readCacheControl
     }
   },
+  renderRoute: (route: CmsRenderRoute, { event }: { event: CmsEvent }) => {
+    if (event.context.cms) route.prefersStream = false
+  },
 })
 
 /**
@@ -126,10 +143,10 @@ export const cmsNitroHooks = <Env>(worker: CmsWorker<Env>) => ({
  * an absolute `baseUrl` there.
  */
 export const useCmsClient = (options: { baseUrl?: string } = {}): CmsClient => {
-  const ssr =
-    typeof window === 'undefined'
-      ? (useSSRContext<{ event?: CmsEvent }>()?.event?.context.cms ?? undefined)
-      : undefined
+  // `in`, not `typeof window`: also typechecks in server code without the DOM lib (Nitro's).
+  const ssr = !('window' in globalThis)
+    ? (useSSRContext<{ event?: CmsEvent }>()?.event?.context.cms ?? undefined)
+    : undefined
   return createCmsClient({
     fetch: ssr?.fetch ?? ((input, init) => globalThis.fetch(input, init)),
     ...options,
