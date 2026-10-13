@@ -43,6 +43,8 @@ export default defineConfig(
       'fixtures/host/public/',
       '**/.nuxt/',
       '**/.output/',
+      '**/.wrangler/',
+      '.verify/',
       '.claude/',
       '.vitest/',
     ],

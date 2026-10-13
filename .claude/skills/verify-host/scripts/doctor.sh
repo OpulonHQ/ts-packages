@@ -4,7 +4,8 @@ set -uo pipefail
 source "$(dirname "$0")/env.sh"
 fail() { echo "doctor: FAIL $*"; exit 1; }
 
-(cd "$root/fixtures/host" && wtdev list) | grep -q "localhost:$port" || fail "no wtdev server on $port (cd fixtures/host && wtdev)"
+servers=$(cd "$root/fixtures/host" && wtdev list) || fail "wtdev list failed"
+grep -Fwq "localhost:$port" <<<"$servers" || fail "no wtdev server on $port (cd fixtures/host && wtdev)"
 code=$(curl -s -o /dev/null -w '%{http_code}' "$base/api/me") || fail "nothing answers on $base"
 [ "$code" = 401 ] || fail "GET /api/me answered $code, expected 401 signed out (port owned by something else?)"
 built=$(curl -s "$base/admin/" | grep -o 'build-id" content="[^"]*"' | cut -d'"' -f3)
