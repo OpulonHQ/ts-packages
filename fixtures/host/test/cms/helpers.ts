@@ -44,15 +44,12 @@ export const useCmsHost = () => {
     buildId: () => 'build-1',
   })
 
+  const env = () => ({ url: db.url, ...usersEnv })
   const send = async (request: Request) => {
     const pending: Array<Promise<unknown>> = []
-    const response = await worker.fetch(
-      request,
-      { url: db.url, ...usersEnv },
-      {
-        waitUntil: (p) => pending.push(p),
-      },
-    )
+    const response = await worker.fetch(request, env(), {
+      waitUntil: (p) => pending.push(p),
+    })
     const body = await response.arrayBuffer()
     await Promise.all(pending)
     return new Response(response.status === 204 ? null : body, response)
@@ -99,6 +96,13 @@ export const useCmsHost = () => {
     purged,
     call,
     fetch: hostFetch,
+    /** An anonymous `fetch` into the test Worker, as a public site's browser makes it. */
+    publicFetch: (async (input, init) => send(new Request(input, init))) as typeof fetch,
+    /** The test Worker and its env, for code that calls `worker.fetch(request, env, ctx)`. */
+    worker,
+    env,
+    /** The editor's session cookie. */
+    cookie: () => session(editor, editorName),
     query: <R extends Record<string, unknown>>(sql: string) => adminQuery<R>(db.url, sql),
     create: (draft: PageDocument) => call<Page>('POST', '/pages', { body: draft }),
     save: (id: string, draft: PageDocument) =>

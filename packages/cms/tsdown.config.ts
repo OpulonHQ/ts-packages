@@ -2,7 +2,14 @@ import { defineConfig } from 'tsdown'
 import vue from 'unplugin-vue/rolldown'
 
 export default defineConfig({
-  entry: ['src/index.ts', 'src/api.ts', 'src/server/index.ts', 'src/admin/index.ts'],
+  entry: [
+    'src/index.ts',
+    'src/api.ts',
+    'src/server/index.ts',
+    'src/admin/index.ts',
+    'src/site/index.ts',
+    'src/site/nuxt.ts',
+  ],
   format: 'esm',
   plugins: [vue({ isProduction: true })],
   dts: { vue: true },
