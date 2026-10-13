@@ -2,7 +2,7 @@ import { Effect } from 'effect'
 import type { SitemapEntry } from './sitemap.ts'
 
 export const maxUrls = 50_000
-const maxBytes = 50_000_000
+const maxBytes = 10_000_000
 const urlsetStart =
   '<?xml version="1.0" encoding="UTF-8"?>\n' +
   '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" ' +

@@ -48,7 +48,7 @@ test.each(cases)(
       expect(response.status).toBe(200)
       expect(response.headers.get('content-type')).toMatch(/^application\/xml/)
       const body = await response.text()
-      expect(Buffer.byteLength(body, 'utf8')).toBeLessThanOrEqual(50_000_000)
+      expect(Buffer.byteLength(body, 'utf8')).toBeLessThanOrEqual(10_000_000)
       const urls = locs(body)
       expect(urls.length).toBeGreaterThan(0)
       expect(urls.length).toBeLessThanOrEqual(50_000)

@@ -14,7 +14,7 @@ const verify = (entries: ReadonlyArray<SitemapEntry>) => {
   const actual: string[] = []
   for (const child of children) {
     const body = xml.body(child.entries)
-    expect(Buffer.byteLength(body, 'utf8')).toBeLessThanOrEqual(50_000_000)
+    expect(Buffer.byteLength(body, 'utf8')).toBeLessThanOrEqual(10_000_000)
     const urls = locs(body)
     expect(urls.length).toBeLessThanOrEqual(50_000)
     actual.push(...urls)
@@ -36,11 +36,13 @@ test('escaped XML and alternate links force a byte split below 50,000 URLs', () 
     const path = `/escaped/${i}/${'é&'.repeat(40)}`
     return { path, lastmod: '2026-10-01T00:00:00Z', alternates: [{ locale: 'en', path }] }
   })
-  expect(Buffer.byteLength(xml.body(entries))).toBeGreaterThan(50_000_000)
+  expect(Buffer.byteLength(xml.body(entries))).toBeGreaterThan(10_000_000)
   const children = verify(entries)
-  expect(children).toHaveLength(2)
+  expect(children).toHaveLength(7)
   expect(children[0]!.entries.length).toBeLessThan(50_000)
-  expect(children.map((f) => f.name)).toEqual(['bulk.pages-1.xml', 'bulk.pages-2.xml'])
+  expect(children.map((f) => f.name)).toEqual(
+    Array.from({ length: 7 }, (_, i) => `bulk.pages-${i + 1}.xml`),
+  )
 })
 
 test.each([-1, 0, 1])('serialized sitemap splits at the byte cap %+i', (delta) => {
@@ -50,23 +52,23 @@ test.each([-1, 0, 1])('serialized sitemap splits at the byte cap %+i', (delta) =
     lastmod: '2026-10-01T00:00:00Z',
   })
   const entryBytes = Buffer.byteLength(xml.body([entry(0, 0)])) - wrapperBytes
-  const width = Math.floor((50_000_000 - wrapperBytes) / 50_000)
-  const remainder = 50_000_000 - wrapperBytes - width * 50_000 + delta
+  const width = Math.floor((10_000_000 - wrapperBytes) / 50_000)
+  const remainder = 10_000_000 - wrapperBytes - width * 50_000 + delta
   const entries = Array.from({ length: 50_000 }, (_, i) =>
     entry(i, width - entryBytes + (i < remainder ? 1 : 0)),
   )
-  expect(Buffer.byteLength(xml.body(entries))).toBe(50_000_000 + delta)
+  expect(Buffer.byteLength(xml.body(entries))).toBe(10_000_000 + delta)
   const children = verify(entries)
   expect(children.map((f) => f.name)).toEqual(
     delta <= 0 ? ['bulk.pages.xml'] : ['bulk.pages-1.xml', 'bulk.pages-2.xml'],
   )
   expect(children.reduce((bytes, f) => bytes + Buffer.byteLength(xml.body(f.entries)), 0)).toBe(
-    50_000_000 + delta + (children.length - 1) * wrapperBytes,
+    10_000_000 + delta + (children.length - 1) * wrapperBytes,
   )
 })
 
 test('an entry larger than a whole sitemap fails instead of producing invalid XML', () => {
-  expect(() => files([{ path: `/oversized/${'x'.repeat(50_000_000)}` }])).toThrow(
+  expect(() => files([{ path: `/oversized/${'x'.repeat(10_000_000)}` }])).toThrow(
     /Sitemap entry exceeds byte limit: bulk.pages/,
   )
 })

@@ -20,7 +20,7 @@ export interface SitemapEntry {
 export interface SitemapSource {
   /** Inside the contributing module's prefix, e.g. `shop.products`. */
   readonly key: string
-  /** Every URL; only public, indexable content. Runs with the request's SqlClient. */
+  /** Every public, indexable URL in deterministic order. Runs with the request's SqlClient. */
   readonly list: Effect.Effect<ReadonlyArray<SitemapEntry>, unknown, SqlClient>
 }
 
