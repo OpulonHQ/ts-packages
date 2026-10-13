@@ -197,7 +197,7 @@ test('checks indirectly installed UI versions through the preset package', async
   logger.warn = (message) => {
     warnings.push(message)
   }
-  await fixture.bundle({}, { customLogger: logger })
+  await fixture.bundle({ overrides: {} }, { customLogger: logger })
   expect(
     warnings.some(
       (message) =>
@@ -246,7 +246,7 @@ test.each(['1.0.0-01', '1.0', 'v1.0.0', '1.2.0 extra'])(
     logger.warn = (message) => {
       warnings.push(message)
     }
-    await fixture.bundle({}, { customLogger: logger })
+    await fixture.bundle({ overrides: {} }, { customLogger: logger })
     const provenance = warnings.filter((message) => message.includes('@opulonjs/source'))
     expect(provenance).toHaveLength(1)
     expect(provenance[0]).toContain('Screen.vue')
@@ -303,6 +303,29 @@ test('unrelated overrides directories do not warn when the host has no configure
   )
 })
 
+test('without the overrides option, stale and invalid headers do not warn', async () => {
+  const fixture = host('1.3.0')
+  fixture.write(
+    'Stale.vue',
+    '<!-- @opulonjs/source @opulonjs/ui@1.2.0 src/components/EmptyState.vue -->\n<template>stale</template>',
+  )
+  fixture.write(
+    'Invalid.vue',
+    '<!-- @opulonjs/source @opulonjs/ui@1.0 src/components/EmptyState.vue -->\n<template>invalid</template>',
+  )
+  fixture.write(
+    'entry.js',
+    "import Stale from './Stale.vue'; import Invalid from './Invalid.vue'; console.log(Stale, Invalid)",
+  )
+  const warnings: string[] = []
+  const logger = createLogger('silent')
+  logger.warn = (message) => {
+    warnings.push(message)
+  }
+  await fixture.bundle({}, { customLogger: logger })
+  expect(warnings.filter((message) => message.includes('@opulonjs/source'))).toEqual([])
+})
+
 test('reads BOM and CRLF headers and warns for unresolvable package versions once', async () => {
   const fixture = host()
   fixture.write(
@@ -326,7 +349,7 @@ test('reads BOM and CRLF headers and warns for unresolvable package versions onc
   logger.warn = (message) => {
     warnings.push(message)
   }
-  await fixture.bundle({}, { customLogger: logger })
+  await fixture.bundle({ overrides: {} }, { customLogger: logger })
   expect(
     warnings.filter((message) => message.includes('installed version 1.2.0 is newer')),
   ).toHaveLength(1)
@@ -379,7 +402,9 @@ test.each([
   logger.warn = (message) => {
     warnings.push(message)
   }
-  expect(await fixture.bundle({}, { customLogger: logger })).toContain('copied screen')
+  expect(await fixture.bundle({ overrides: {} }, { customLogger: logger })).toContain(
+    'copied screen',
+  )
   const provenance = warnings.filter((message) => message.includes('@opulonjs/source'))
   expect(provenance.length).toBe(warns ? 1 : 0)
   if (warns) {
@@ -416,7 +441,7 @@ test.each([
     logger.warn = (message) => {
       warnings.push(message)
     }
-    await fixture.bundle({}, { customLogger: logger })
+    await fixture.bundle({ overrides: {} }, { customLogger: logger })
     const provenance = warnings.filter((message) => message.includes('@opulonjs/source'))
     expect(provenance).toHaveLength(1)
     expect(provenance[0]).toContain(file)

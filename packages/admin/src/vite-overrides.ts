@@ -36,9 +36,10 @@ const provenance = (source: string): SourceProvenance | 'invalid' | undefined =>
 }
 
 export const adminOverrides = (
-  components: Readonly<Record<string, string>>,
+  overrides: { readonly components?: Readonly<Record<string, string>> } | undefined,
   packages: (root: string) => ReadonlyArray<string>,
 ): Plugin => {
+  const components = overrides?.components ?? {}
   let config: ResolvedConfig
   const canonicalToHost = new Map<string, string>()
   const canonicalToOriginal = new Map<string, string>()
@@ -126,6 +127,7 @@ export const adminOverrides = (
           : canonical
     },
     transform(source, id) {
+      if (!overrides) return
       const file = normalizePath(id)
       if (
         file.includes('?') ||
@@ -136,7 +138,6 @@ export const adminOverrides = (
       const header = provenance(source)
       const hostPath = normalizePath(relative(config.root, file))
       const screenCopy =
-        canonicalToHost.size > 0 &&
         !isAbsolute(hostPath) &&
         !hostPath.startsWith('../') &&
         hostPath.split('/').slice(0, -1).includes('overrides')

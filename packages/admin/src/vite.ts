@@ -21,8 +21,11 @@ export interface OpulonAdminOptions {
    * (an `./admin` export) add themselves.
    */
   readonly sources?: ReadonlyArray<string>
-  /** Kit components by canonical name (e.g. `EmptyState` or `Field/Text`) to host file paths. */
-  readonly overrides?: { readonly components: Readonly<Record<string, string>> }
+  /**
+   * Kit components by canonical name (e.g. `EmptyState` or `Field/Text`) to host file paths. Any
+   * `overrides`, even `{}` for screen copies only, turns on the copied files' source-header checks.
+   */
+  readonly overrides?: { readonly components?: Readonly<Record<string, string>> }
 }
 
 const headSha = () => {
@@ -79,7 +82,7 @@ export const opulonAdmin = (options: OpulonAdminOptions = {}): Array<PluginOptio
   const apiPrefix = options.apiPrefix ?? '/api'
   const shellDir = dirname(fileURLToPath(import.meta.url))
   return [
-    adminOverrides(options.overrides?.components ?? {}, (root) => hostPackages(root)?.names ?? []),
+    adminOverrides(options.overrides, (root) => hostPackages(root)?.names ?? []),
     vue(),
     ...opulonUi({
       ...(options.brand ? { brand: options.brand } : {}),
