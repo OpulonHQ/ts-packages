@@ -41,6 +41,7 @@ export { Authorization, CurrentUser, Policy, Public } from './authz.ts'
 export const corePermissions = ['core.audit.view'] as const
 
 export const listDefaultPerPage = 25
+export const listMaxPerPage = 100
 export const listMaxOffset = 10_000
 
 export const ListQuery = Schema.Struct({
@@ -51,7 +52,10 @@ export const ListQuery = Schema.Struct({
     ),
   ),
   perPage: Schema.optionalKey(
-    Schema.NumberFromString.check(Schema.isInt(), Schema.isBetween({ minimum: 1, maximum: 100 })),
+    Schema.NumberFromString.check(
+      Schema.isInt(),
+      Schema.isBetween({ minimum: 1, maximum: listMaxPerPage }),
+    ),
   ),
   search: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(500))),
   direction: Schema.optionalKey(Schema.Literals(['asc', 'desc'])),

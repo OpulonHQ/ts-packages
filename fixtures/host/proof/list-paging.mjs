@@ -3,6 +3,7 @@ import process from 'node:process'
 import { URL } from 'node:url'
 import pg from 'pg'
 import signedIn from '../../../.claude/skills/verify-host/journeys/signed-in.mjs'
+import captureListPlans from './list-plans.mjs'
 
 export default async (ctx) => {
   const { page, base, shot, check } = ctx
@@ -115,25 +116,41 @@ export default async (ctx) => {
       })
       check(result.status === 403, `signed-in staff without permission GET ${path} 403`)
     }
-    await db.query('analyze users."user"')
-    await db.query('analyze cms.document')
-    const plans = []
-    for (const [name, sql] of [
-      ['user_list_name', 'select * from users."user" order by lower(name), id limit 25 offset 25'],
-      ['user_list_email', 'select * from users."user" order by email, id limit 25 offset 25'],
-      [
-        'document_item_list',
-        "select id, draft from cms.document where kind = 'item' and key = 'posts' order by updated_at desc, id desc limit 25 offset 25",
-      ],
+    const batch = await api(
+      'GET',
+      `/cms/collections/posts/items?ids=${encodeURIComponent([state.posts[30].id, state.categories[0].id, state.posts[0].id, state.posts[0].id.toUpperCase()].join(','))}&perPage=100&sort=title&direction=asc`,
+    )
+    check(
+      batch.total === 2 &&
+        batch.rows.map((row) => row.title).join(',') === 'Paging 001,Paging 031' &&
+        batch.rows.every((row) => !('draft' in row)),
+      'ID batch deduplicates case variants, keeps defined order, returns summaries, and excludes foreign-collection IDs',
+    )
+    const foreign = await api('GET', `/cms/collections/posts/items?ids=${state.categories[0].id}`)
+    check(foreign.total === 0 && foreign.rows.length === 0, 'foreign collection ID returns no rows')
+    for (const value of [
+      '',
+      'not-a-uuid',
+      Array.from({ length: 101 }, () => state.posts[0].id).join(','),
     ]) {
-      const plan = (await db.query(`explain (analyze, buffers) ${sql}`)).rows
-        .map((row) => row['QUERY PLAN'])
-        .join('\n')
-      plans.push(`${sql}\n${plan}`)
-      await writeFile(`${process.env.EVIDENCE_DIR}/explain.log`, plans.join('\n\n'))
-      check(plan.includes(`using ${name}`), `natural planner uses ${name}`)
+      const response = await page.request.get(
+        `${base}/api/cms/collections/posts/items?ids=${encodeURIComponent(value)}`,
+        { headers: { Origin: base } },
+      )
+      check(
+        response.status() === 400,
+        `invalid ID batch with ${value ? value.split(',').length : 0} values returns 400`,
+      )
     }
-    await writeFile(`${process.env.EVIDENCE_DIR}/explain.log`, plans.join('\n\n'))
+    const forbiddenBatch = await globalThis.fetch(
+      `${base}/api/cms/collections/posts/items?ids=${state.posts[0].id}`,
+      { headers: { Origin: base, Cookie: cookie } },
+    )
+    check(
+      forbiddenBatch.status === 403,
+      'ID batch remains forbidden to signed-in staff without view permission',
+    )
+    await captureListPlans(db, process.env.EVIDENCE_DIR, check)
   } finally {
     await db.query(
       'drop trigger if exists verify_invitation_mail_capture on emails.email_log; drop function if exists public.verify_invitation_mail_capture(); drop table if exists public.verify_invitation_mail',
@@ -232,7 +249,24 @@ export default async (ctx) => {
       stored.draft.data.categories.includes(state.categories[44].id),
     'both references remain selected across page and search changes',
   )
+  await page.route('**/api/cms/items/*', async (route) => {
+    const id = new URL(route.request().url()).pathname.split('/').pop()
+    if (route.request().method() === 'GET' && state.categories.some((item) => item.id === id))
+      await route.abort()
+    else await route.continue()
+  })
+  const coldBatch = page.waitForResponse(
+    (response) =>
+      response.url().includes('/api/cms/collections/categories/items?') &&
+      new URL(response.url()).searchParams.has('ids'),
+  )
   await page.reload()
+  const coldResult = await coldBatch
+  check(
+    coldResult.status() === 200 && (await coldResult.json()).rows.length === 2,
+    'cold saved selections load in one bounded summary batch while individual document requests are unavailable',
+  )
+  await picker.getByRole('button', { name: 'Remove Paging 026', exact: true }).waitFor()
   await picker.getByRole('button', { name: 'Remove Paging 045', exact: true }).waitFor()
   await picker.evaluate((element) => element.scrollIntoView({ block: 'start' }))
   await shot('reference-persisted')
@@ -252,7 +286,26 @@ export default async (ctx) => {
     .filter({ hasText: 'Paging 001' })
     .waitFor()
   await shot('single-reference-beyond-first-page')
-  await clearLink.click()
+  await page.route('**/api/cms/items/*', async (route) => {
+    if (
+      route.request().method() === 'GET' &&
+      new URL(route.request().url()).pathname.endsWith(`/items/${state.posts[0].id}`)
+    )
+      await route.abort()
+    else await route.fallback()
+  })
+  await page
+    .getByRole('table', { name: 'Target', exact: true })
+    .getByRole('row')
+    .filter({ hasText: 'Paging 001' })
+    .click()
+  const chosenLink = page.getByRole('button', { name: 'Remove Paging 001', exact: true })
+  await chosenLink.waitFor()
+  check(
+    (await page.getByRole('alert').count()) === 0,
+    'changing the known item target uses its row summary without another full-document request',
+  )
+  await chosenLink.click()
   const savedSettings = page.waitForResponse(
     (response) =>
       response.url().endsWith('/api/cms/settings/draft') && response.request().method() === 'PUT',

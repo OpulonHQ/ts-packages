@@ -4,8 +4,8 @@
 import { useI18n } from '@opulonjs/admin'
 import FieldSelect from '@opulonjs/ui/components/Field/Select'
 import FieldText from '@opulonjs/ui/components/Field/Text'
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { labelText, type Link } from '../api.ts'
+import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { labelText, type ItemSummary, type Link } from '../api.ts'
 import { pageTitle, useCmsContext, useContent } from './use-cms.ts'
 import ReferenceControl from './ReferenceControl.vue'
 
@@ -18,6 +18,7 @@ const content = useContent()
 const pages = ref<Array<{ value: string; label: string }>>([])
 const failure = ref(false)
 const itemCollection = ref<string | null>(null)
+const knownItem = shallowRef<Pick<ItemSummary, 'id' | 'collection'>>()
 const routed = computed(() =>
   Object.entries(definitions.collections)
     .filter(([, collection]) => collection.routed)
@@ -68,8 +69,11 @@ const target = computed({
       return
     }
     if (l.type === 'system') model.value = { type: 'system', key: String(value) }
-    else if (l.type === 'page' || l.type === 'item')
+    else if (l.type === 'page' || l.type === 'item') {
+      if (l.type === 'item' && itemCollection.value)
+        knownItem.value = { id: String(value), collection: itemCollection.value }
       model.value = { type: l.type, id: String(value) }
+    }
   },
 })
 const url = computed({
@@ -78,11 +82,17 @@ const url = computed({
 })
 
 watch(
-  () => link.value,
-  async (value) => {
+  [
+    () => link.value?.type,
+    () =>
+      link.value?.type === 'item' && link.value.id !== knownItem.value?.id
+        ? link.value.id
+        : undefined,
+  ],
+  async ([kind, unresolvedId]) => {
     const ticket = ++latest
     failure.value = false
-    if (value?.type === 'page') {
+    if (kind === 'page') {
       try {
         const result = await content.listPages()
         if (ticket === latest)
@@ -93,14 +103,17 @@ watch(
       } catch {
         if (ticket === latest) failure.value = true
       }
-    } else if (value?.type === 'item') {
-      if (!value.id) {
+    } else if (kind === 'item') {
+      if (!unresolvedId) {
         if (!itemCollection.value) itemCollection.value = routed.value[0]?.value ?? null
         return
       }
       try {
-        const item = await content.getItem(value.id)
-        if (ticket === latest) itemCollection.value = item.collection
+        const item = await content.getItem(unresolvedId)
+        if (ticket === latest) {
+          knownItem.value = { id: item.id, collection: item.collection }
+          itemCollection.value = item.collection
+        }
       } catch {
         if (ticket === latest) failure.value = true
       }
@@ -111,6 +124,7 @@ watch(
 function selectCollection(value: string | number | null) {
   latest++
   itemCollection.value = value === null ? null : String(value)
+  knownItem.value = undefined
   model.value = { type: 'item', id: '' }
 }
 </script>

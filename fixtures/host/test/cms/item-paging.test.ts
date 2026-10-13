@@ -4,6 +4,7 @@ import { locale, useCmsHost } from './helpers.ts'
 
 const host = useCmsHost()
 const ids: string[] = []
+let foreignId: string
 beforeAll(async () => {
   for (let n = 1; n <= 31; n++) {
     const number = String(n).padStart(2, '0')
@@ -16,9 +17,11 @@ beforeAll(async () => {
     expect(result.status).toBe(200)
     ids.push(result.body.id)
   }
-  await host.call('POST', '/collections/categories/items', {
-    body: { data: { name: { en: 'Paging outside' } }, locales: {} },
-  })
+  foreignId = (
+    await host.call<Item>('POST', '/collections/categories/items', {
+      body: { data: { name: { en: 'Paging outside' } }, locales: {} },
+    })
+  ).body.id
 })
 
 const list = async (query: string) => {
@@ -70,4 +73,37 @@ test('item paging denies signed-in staff lacking collections.view', async () => 
       })
     ).status,
   ).toBe(403)
+  expect(
+    (await host.call('GET', `/collections/posts/items?ids=${ids[0]}`, { as: ['cms.pages.view'] }))
+      .status,
+  ).toBe(403)
+})
+
+test('item ID batches are scoped to the path collection, deduplicated and ordered', async () => {
+  const query = new URLSearchParams({
+    ids: [ids[30], foreignId, ids[0], ids[0]?.toUpperCase()].join(','),
+    perPage: '100',
+    sort: 'title',
+    direction: 'asc',
+  })
+  const result = await list(query.toString())
+  expect(result.total).toBe(2)
+  expect(result.rows.map((row) => row.title)).toEqual(['Paging 01', 'Paging 31'])
+  expect(result.rows.every((row) => !('draft' in row) && !('published' in row))).toBe(true)
+  expect(await list(`ids=${foreignId}`)).toEqual({ rows: [], total: 0 })
+  expect(await list(`ids=${Array.from({ length: 100 }, () => ids[0]).join(',')}`)).toMatchObject({
+    total: 1,
+    rows: [{ id: ids[0] }],
+  })
+})
+
+test.each([
+  '',
+  'not-a-uuid',
+  '00000000-0000-0000-0000-00000000000z',
+  Array.from({ length: 101 }, () => '12345678-1234-4123-8123-123456789abc').join(','),
+])('item ID batches reject empty, malformed or over-cap inputs %s', async (ids) => {
+  expect(
+    (await host.call('GET', `/collections/posts/items?ids=${encodeURIComponent(ids)}`)).status,
+  ).toBe(400)
 })

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from '@opulonjs/admin'
-import { listDefaultPerPage, listMaxOffset } from '@opulonjs/core/api'
+import { listDefaultPerPage, listMaxOffset, listMaxPerPage } from '@opulonjs/core/api'
 import { type TableQuery, UButton, UCheckbox } from '@opulonjs/ui'
 import DataTable from '@opulonjs/ui/components/DataTable'
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
@@ -34,22 +34,25 @@ watch(
       [...chosen.value].filter(([id, item]) => wanted.has(id) && item.collection === collection),
     )
     chosen.value = rows
-    for (const id of ids) {
-      if (rows.has(id)) continue
-      try {
-        const item = await content.getItem(id)
-        if (ticket !== latest) return
-        rows.set(
-          id,
-          item.collection === collection
-            ? { title: item.title, collection: item.collection }
-            : { title: id, collection: collection ?? '' },
-        )
-      } catch {
-        if (ticket !== latest) return
-        failed.value = true
+    const missing = [...wanted].filter((id) => !rows.has(id))
+    if (missing.length === 0) return
+    try {
+      const result = await content.listItems(collection ?? '', {
+        ids: missing.join(','),
+        perPage: listMaxPerPage,
+        sort: 'title',
+        direction: 'asc',
+      })
+      if (ticket !== latest) return
+      const byId = new Map(result.rows.map((item) => [item.id, item]))
+      for (const id of missing) {
+        const item = byId.get(id.toLowerCase())
+        if (item) rows.set(id, { title: item.title, collection: item.collection })
+        else failed.value = true
       }
-      if (ticket === latest) chosen.value = new Map(rows)
+      chosen.value = new Map(rows)
+    } catch {
+      if (ticket === latest) failed.value = true
     }
   },
   { immediate: true },

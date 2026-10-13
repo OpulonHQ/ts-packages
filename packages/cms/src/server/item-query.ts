@@ -31,6 +31,8 @@ export const listItems = Effect.fn('Items.list')(
     const perPage = query.perPage ?? listDefaultPerPage
     const page = query.page ?? 1
     const search = query.search?.trim()
+    const ids =
+      query.ids === undefined ? undefined : [...new Set(query.ids.toLowerCase().split(','))]
     const direction = query.direction === 'asc' ? sql`asc` : sql`desc`
     const column = {
       title: sql`lower(title)`,
@@ -45,6 +47,7 @@ export const listItems = Effect.fn('Items.list')(
         case when published is null then 'draft' when draft = published then 'published' else 'changed' end as status,
         updated_at, published_at
       from cms.document where kind = 'item' and key = ${collection}
+        ${ids ? sql`and id = any(string_to_array(${ids.join(',')}, ',')::uuid[])` : sql``}
     ), filtered as not materialized (
       select * from summaries ${search ? sql`where strpos(lower(title), lower(${search})) > 0 or strpos(lower(path), lower(${search})) > 0` : sql``}
     ), paged as (

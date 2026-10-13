@@ -112,3 +112,37 @@ test('a single item link resolves a target beyond page one and can be cleared an
     .poll(async () => (await host.call<SiteSettings>('GET', '/settings')).body.draft.data.cta)
     .toBeUndefined()
 })
+
+test('saved reference labels load together while individual document requests cannot settle', async () => {
+  const ids: string[] = []
+  for (const title of ['Batch first', 'Batch second']) {
+    const result = await host.call<Item>('POST', '/collections/categories/items', {
+      body: { locales: {}, data: { name: { en: title } } },
+    })
+    ids.push(result.body.id)
+  }
+  const post = (
+    await host.call<Item>('POST', '/collections/posts/items', {
+      body: { locales: {}, data: { title: { en: 'Batch picker' }, categories: ids } },
+    })
+  ).body
+  const gate = Promise.withResolvers<void>()
+  onTestFinished(() => gate.resolve())
+  const fetch: typeof globalThis.fetch = async (input, init) => {
+    const request = new Request(input, init)
+    const response = await host.fetch(request)
+    if (ids.some((id) => new URL(request.url).pathname.endsWith(`/items/${id}`))) await gate.promise
+    return response
+  }
+  history.replaceState(null, '', `/admin/cms/items/${post.id}`)
+  document.body.innerHTML = '<div id="app"></div>'
+  const app = createAdmin({ brand, modules: adminModules, buildId: 'build-1', fetch })
+  app.mount('#app')
+  onTestFinished(() => app.unmount())
+  await expect
+    .poll(() => document.querySelector('[aria-label="Odstrániť Batch first"]'))
+    .toBeTruthy()
+  await expect
+    .poll(() => document.querySelector('[aria-label="Odstrániť Batch second"]'))
+    .toBeTruthy()
+})
