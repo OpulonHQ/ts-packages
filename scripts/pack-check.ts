@@ -124,6 +124,16 @@ const { brand } = await import('./host/admin/brand.ts')
 const config = { root: 'host/admin', configFile: false, logLevel: 'warn', plugins: opulonAdmin({ brand }) }
 await build({ ...config, build: { outDir: '../../admin-dist', emptyOutDir: true } })
 console.log('ok admin build from the packed tarballs')
+// Every icon a screen names is in the offline bundle (as an icon or an alias): package screens
+// are found without sources.
+const { readdirSync, readFileSync } = await import('node:fs')
+const js = readdirSync('admin-dist/assets').filter((f) => f.endsWith('.js'))
+  .map((f) => readFileSync('admin-dist/assets/' + f, 'utf8')).join('\\n')
+const used = new Set([...js.matchAll(/i-lucide-([a-z0-9]+(?:-[a-z0-9]+)*)/g)].map((m) => m[1]))
+const bundled = new Set([...js.matchAll(/[{,](?:"([a-z0-9-]+)"|([a-z0-9]+)):\\{(?:body|parent):/g)].map((m) => m[1] ?? m[2]))
+const missingIcons = [...used].filter((name) => !bundled.has(name))
+if (missingIcons.length > 0) throw new Error('icons missing from the admin bundle: ' + missingIcons.join(', '))
+console.log('ok admin bundles all', used.size, 'icons its screens use')
 const vite = await createServer({
   ...config,
   server: { middlewareMode: true },

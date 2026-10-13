@@ -1,7 +1,9 @@
 import { type Brand, opulonUi } from '@opulonjs/ui/vite'
 import vue from '@vitejs/plugin-vue'
 import { execFileSync } from 'node:child_process'
-import { dirname } from 'node:path'
+import { existsSync, readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { PluginOption } from 'vite'
 
@@ -13,8 +15,9 @@ export interface OpulonAdminOptions {
   /** Default: `OPULON_BUILD_ID` (set once in CI, passed to the Worker too), else `HEAD`'s SHA. */
   readonly buildId?: string
   /**
-   * Package directories with admin screens outside the Vite root (installed module packages):
-   * scanned for Tailwind classes and Lucide icons. The shell and the UI kit add themselves.
+   * More directories with admin screens outside the Vite root, scanned for Tailwind classes and
+   * Lucide icons. The shell, the UI kit and every `@opulonjs/*` dependency with admin screens
+   * (an `./admin` export) add themselves.
    */
   readonly sources?: ReadonlyArray<string>
 }
@@ -25,6 +28,29 @@ const headSha = () => {
   } catch {
     return 'dev' // not a checkout (e.g. a tarball build); the reload check then never fires
   }
+}
+
+/**
+ * The built (and, in a workspace, source) directories of the host's `@opulonjs/*` dependencies
+ * that ship admin screens, read from the package.json in `root` (where the build runs). Their
+ * screens are code-split chunks across `dist/`, so the whole directory is scanned.
+ */
+const moduleSources = (root: string): Array<string> => {
+  const manifest = join(root, 'package.json')
+  if (!existsSync(manifest)) return []
+  const host = JSON.parse(readFileSync(manifest, 'utf8')) as {
+    dependencies?: Record<string, string>
+    devDependencies?: Record<string, string>
+  }
+  const require = createRequire(manifest)
+  return Object.keys({ ...host.dependencies, ...host.devDependencies })
+    .filter((name) => name.startsWith('@opulonjs/'))
+    .flatMap((name) => {
+      const path = require.resolve(`${name}/package.json`)
+      const pkg = JSON.parse(readFileSync(path, 'utf8')) as { exports?: Record<string, unknown> }
+      if (!pkg.exports?.['./admin']) return []
+      return ['dist', 'src'].map((dir) => join(dirname(path), dir)).filter(existsSync)
+    })
 }
 
 /**
@@ -40,7 +66,7 @@ export const opulonAdmin = (options: OpulonAdminOptions = {}): Array<PluginOptio
     vue(),
     ...opulonUi({
       ...(options.brand ? { brand: options.brand } : {}),
-      sources: [shellDir, ...(options.sources ?? [])],
+      sources: [shellDir, ...moduleSources(process.cwd()), ...(options.sources ?? [])],
     }),
     {
       name: '@opulonjs/admin',
