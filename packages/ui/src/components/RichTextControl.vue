@@ -11,7 +11,7 @@ import UEditor from '@nuxt/ui/components/Editor.vue'
 import UEditorToolbar from '@nuxt/ui/components/EditorToolbar.vue'
 import UInput from '@nuxt/ui/components/Input.vue'
 import UPopover from '@nuxt/ui/components/Popover.vue'
-import { computed, ref } from 'vue'
+import { computed, ref, useTemplateRef } from 'vue'
 import { defaultRichTextToolbar, type RichTextButton } from '../fields.ts'
 import { useKitText } from '../text.ts'
 
@@ -23,6 +23,14 @@ const props = withDefaults(
   { toolbar: () => defaultRichTextToolbar, disabled: false },
 )
 const text = useKitText()
+
+const editorRef = useTemplateRef<{ editor: Editor | undefined }>('editor')
+defineExpose({
+  /** Inserts HTML or text at the cursor, e.g. a `{{placeholder}}` token. */
+  insert: (content: string) => {
+    editorRef.value?.editor?.chain().focus().insertContent(content).run()
+  },
+})
 
 const html = computed({
   get: () => model.value ?? '',
@@ -80,6 +88,7 @@ function removeLink(editor: Editor) {
 
 <template>
   <UEditor
+    ref="editor"
     v-slot="{ editor }"
     v-model="html"
     content-type="html"

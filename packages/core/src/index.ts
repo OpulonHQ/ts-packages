@@ -16,7 +16,13 @@ export type { AuditChange, AuditInput } from './audit.ts'
 export { Background, withTransaction } from './background.ts'
 export { core } from './core.ts'
 export type { CoreOptions } from './core.ts'
-export { Composed, composeServer, CompositionError, defineExtensionPoint } from './compose.ts'
+export {
+  Composed,
+  composeServer,
+  CompositionError,
+  ContentLocales,
+  defineExtensionPoint,
+} from './compose.ts'
 export type { ComposedServer, Unprovided } from './compose.ts'
 export { migrate } from './migrate.ts'
 export type { Applied } from './migrate.ts'

@@ -15,18 +15,19 @@ export const run = (statement: string) =>
     yield* sql.unsafe(statement)
   })
 
-export const media = migrationsOnly('media', {
-  '1_create_file': run('create table media.file (id integer primary key)'),
-  '2_seed_file': run('insert into media.file values (1)'),
+export const files = migrationsOnly('files', {
+  '1_create_file': run('create table files.file (id integer primary key)'),
+  '2_seed_file': run('insert into files.file values (1)'),
 })
 
-// References media.file, so it only migrates after media.
-export const cms = migrationsOnly(
-  'cms',
+// References files.file, so it only migrates after files. (Ids avoid package ids: the test
+// template already holds the real packages' schemas.)
+export const pages = migrationsOnly(
+  'pages',
   {
     '1_create_page': run(
-      'create table cms.page (id integer primary key, file integer references media.file)',
+      'create table pages.page (id integer primary key, file integer references files.file)',
     ),
   },
-  ['media'],
+  ['files'],
 )

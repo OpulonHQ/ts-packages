@@ -7,8 +7,15 @@ import { hashPassword } from '@opulonjs/users/server'
 import { Schema } from 'effect'
 import pg from 'pg'
 import { type Env, hostWorker } from '../../worker.ts'
+import { memoryBucket } from '../memory-bucket.ts'
 
 export const origin = 'https://host.test'
+
+/** users' Config for a test Worker env. */
+export const usersEnv = {
+  USERS_BASE_URL: origin,
+  USERS_AUTH_SECRET: 'test-secret-test-secret-test-secret-0123',
+} as const
 
 export interface HostResponse {
   readonly status: number
@@ -20,12 +27,13 @@ export interface HostResponse {
 export function makeHost(databaseUrl: () => string, options: { buildId?: string } = {}) {
   const mailer = captureMailer()
   const worker = hostWorker(mailer.layer)
+  const bucket = memoryBucket()
   const env = (): Env => ({
     HYPERDRIVE: { connectionString: databaseUrl() },
     OPULON_BUILD_ID: options.buildId ?? 'build-1',
-    USERS_BASE_URL: origin,
-    USERS_AUTH_SECRET: 'test-secret-test-secret-test-secret-0123',
+    ...usersEnv,
     ASSETS: { fetch: async () => new Response('not found', { status: 404 }) },
+    MEDIA_BUCKET: bucket,
   })
 
   /** One request through the Worker; resolves after every waitUntil promise settled. */
@@ -100,6 +108,37 @@ export function makeHost(databaseUrl: () => string, options: { buildId?: string 
     Schema.decodeUnknownSync(Me)((await request('GET', '/me', { cookie })).body)
 
   return { worker, mailer, env, fetch, request, signIn, browserFetch, me }
+}
+
+/**
+ * Session cookies of seeded users holding given permissions, signed in for real through
+ * `send` (a test Worker's fetch). One user per permission set, cached.
+ */
+export const sessions = (
+  databaseUrl: () => string,
+  send: (request: Request) => Promise<Response>,
+) => {
+  const cache = new Map<string, Promise<string>>()
+  return (permissions: ReadonlyArray<string>, o: { name?: string; locale?: string } = {}) => {
+    const key = JSON.stringify([permissions, o])
+    let cookie = cache.get(key)
+    if (!cookie) {
+      cookie = (async () => {
+        const user = await seedUser(databaseUrl(), { permissions, ...o })
+        const response = await send(
+          new Request(`${origin}/api/users/auth/sign-in`, {
+            method: 'POST',
+            headers: { origin, 'content-type': 'application/json', 'cf-connecting-ip': randomIp() },
+            body: JSON.stringify({ email: user.email, password: user.password }),
+          }),
+        )
+        if (response.status !== 200) throw new Error(`sign-in failed: ${response.status}`)
+        return cookieHeader(response.headers)
+      })()
+      cache.set(key, cookie)
+    }
+    return cookie
+  }
 }
 
 /** The Cookie header a browser would send back after `headers`' Set-Cookie. */

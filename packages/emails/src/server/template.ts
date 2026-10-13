@@ -1,4 +1,7 @@
 import { type Contribution, defineExtensionPoint } from '@opulonjs/core'
+import xss from 'xss'
+import type * as Xss from 'xss'
+import { type EmailComponent, escapeHtml } from './components.ts'
 
 /** Who a template is written for: staff (admin locales) or public visitors (content locales). */
 export type EmailAudience = 'staff' | 'public'
@@ -7,7 +10,10 @@ export type EmailAudience = 'staff' | 'public'
 export interface EmailContent {
   /** Plain text. */
   readonly subject: string
-  /** Restricted HTML (paragraphs, bold/italic, links, lists); values are HTML-escaped. */
+  /**
+   * Restricted HTML (paragraphs, headings, bold/italic, links, lists, quotes) with email
+   * components as `[[name prop="value"]]` alone in a paragraph; values are HTML-escaped.
+   */
   readonly body: string
 }
 
@@ -70,17 +76,6 @@ export interface LayoutInput {
 /** Wraps a rendered body into the full HTML document. Hosts may pass their own to `emails()`. */
 export type EmailLayout = (input: LayoutInput) => string
 
-const htmlEscapes: Record<string, string> = {
-  '&': '&amp;',
-  '<': '&lt;',
-  '>': '&gt;',
-  '"': '&quot;',
-  "'": '&#039;',
-}
-
-export const escapeHtml = (value: string): string =>
-  value.replace(/[&<>"']/g, (c) => htmlEscapes[c] ?? c)
-
 /** The package's layout: a branded header, the body in a card, and a footer line. */
 export const defaultLayout: EmailLayout = ({ locale, subject, body, brand }) => {
   const color = escapeHtml(brand.primaryColor ?? '#2563eb')
@@ -106,12 +101,6 @@ ${body}
 </html>`
 }
 
-const fill = (text: string, vars: Readonly<Record<string, string>>, escape: boolean) =>
-  text.replace(placeholderPattern, (_, name: string) => {
-    const value = vars[name] ?? ''
-    return escape ? escapeHtml(value) : value
-  })
-
 const entities: Record<string, string> = {
   amp: '&',
   lt: '<',
@@ -127,12 +116,101 @@ export const htmlToText = (html: string): string =>
     .replace(/<a\s[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, '$2 ($1)')
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<li[^>]*>/gi, '- ')
-    .replace(/<\/(p|div|h[1-6]|li|tr|ul|ol)>/gi, '\n')
+    .replace(/<\/(p|div|h[1-6]|li|tr|ul|ol|table)>/gi, '\n')
+    .replace(/<\/td>/gi, ' ')
+    .replace(/<hr[^>]*>/gi, '\n---\n')
     .replace(/<[^>]+>/g, '')
     .replace(/&(amp|lt|gt|quot|#039|nbsp);/g, (_, e: string) => entities[e] ?? '')
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
+
+/** http(s) and mailto URLs only. */
+const isSafeUrl = (value: string) => {
+  try {
+    return ['http:', 'https:', 'mailto:'].includes(new URL(value).protocol)
+  } catch {
+    return false
+  }
+}
+
+// xss is CommonJS without detectable named exports, so Node's ESM loader only offers the default
+// (module.exports, which carries them all); its typings declare them as named exports only.
+const { escapeAttrValue, FilterXSS, friendlyAttrValue } = xss as unknown as typeof Xss
+const exactPlaceholder = /^\{\{\s*[A-Za-z][A-Za-z0-9_]*\s*\}\}$/
+const allowedTags = ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'a', 'ul', 'ol', 'li']
+const allowedBlocks = ['h2', 'h3', 'blockquote']
+
+const sanitizer = new FilterXSS({
+  whiteList: Object.fromEntries(
+    [...allowedTags, ...allowedBlocks].map((tag) => [tag, tag === 'a' ? ['href'] : []]),
+  ),
+  stripIgnoreTag: true,
+  stripIgnoreTagBody: ['script', 'style'],
+  onTagAttr: (_tag, name, value) => {
+    if (name !== 'href') return undefined
+    // A safe URL or exactly one placeholder (whose value is checked at send time).
+    const href = friendlyAttrValue(value).trim()
+    return exactPlaceholder.test(href) || isSafeUrl(href) ? `href="${escapeAttrValue(href)}"` : ''
+  },
+})
+
+/**
+ * Reduces staff-authored HTML to the restricted body format: paragraphs, h2/h3, bold, italic,
+ * underline, strike, lists, quotes and links (http(s), mailto or a placeholder). Other tags and
+ * attributes are dropped, script and style with their contents.
+ */
+export const sanitizeBody = (html: string): string => sanitizer.process(html)
+
+const placeholder = String.raw`\{\{\s*([A-Za-z][A-Za-z0-9_]*)\s*\}\}`
+const token = String.raw`\[\[([a-z][a-z0-9_]*)([^\[\]<>]*)\]\]`
+const tokenPattern = new RegExp(token, 'g')
+// One pass, so an inserted value is never scanned again: a component token (with the paragraph
+// it fills), a placeholder as a whole link target, or a placeholder in text.
+const bodyPattern = new RegExp(
+  String.raw`(<p>\s*)?${token}(\s*</p>)?|href="${placeholder}"|${placeholder}`,
+  'g',
+)
+
+const argEntities: Record<string, string> = { quot: '"', '#34': '"', '#039': "'", '#39': "'" }
+const argPattern = /([A-Za-z][A-Za-z0-9_]*)="([^"]*)"/g
+
+/** Parses a token's `prop="value"` list (as the editor escaped it); null on anything else. */
+const parseArgs = (raw: string): Record<string, string> | null => {
+  const text = raw
+    .replace(/&(quot|#34|#0?39);/g, (_, e: string) => argEntities[e] ?? '')
+    .replace(/&amp;/g, '&')
+  if (text.replace(argPattern, '').trim() !== '') return null
+  return Object.fromEntries([...text.matchAll(argPattern)].map(([, k, v]) => [k!, v!]))
+}
+
+const fill = (text: string, vars: Readonly<Record<string, string>>) =>
+  text.replace(new RegExp(placeholder, 'g'), (_, name: string) => vars[name] ?? '')
+
+/** The first rule `content` breaks, or undefined. Pass a sanitized body. */
+export const contentError = (
+  template: EmailTemplate,
+  content: EmailContent,
+  components: ReadonlyMap<string, EmailComponent>,
+): string | undefined => {
+  if (content.subject.trim() === '') return 'the subject is empty'
+  if (content.subject.length > 255) return 'the subject is longer than 255 characters'
+  if (content.body.length > 65_536) return 'the body is longer than 64 KiB'
+  const text = `${content.subject} ${content.body}`
+  for (const [, name] of text.matchAll(placeholderPattern))
+    if (!(name! in template.placeholders)) return `undeclared placeholder "${name}"`
+  const rest = text.replace(placeholderPattern, '')
+  if (rest.includes('{{') || rest.includes('}}')) return 'a malformed placeholder'
+  for (const [, name, raw] of content.body.matchAll(tokenPattern)) {
+    const component = components.get(name!)
+    if (!component) return `unknown email component "${name}"`
+    const args = parseArgs(raw!)
+    if (!args) return `malformed email component "${name}"`
+    for (const prop of Object.keys(args))
+      if (!(prop in component.props)) return `email component "${name}" has no prop "${prop}"`
+  }
+  return undefined
+}
 
 export interface RenderedEmail {
   readonly subject: string
@@ -140,21 +218,59 @@ export interface RenderedEmail {
   readonly text: string
 }
 
-/** Renders one locale's wording with the given values into subject, HTML and text. */
+/**
+ * Renders one locale's wording with the given values into subject, HTML and text. The body is
+ * sanitized first, components are rendered, values are HTML-escaped, and a value used as a
+ * whole link target must be an http(s) or mailto URL.
+ */
 export const renderEmail = (o: {
   readonly content: EmailContent
   readonly locale: string
   readonly vars: Readonly<Record<string, string>>
   readonly brand: EmailBrand
   readonly layout: EmailLayout
+  readonly components: ReadonlyMap<string, EmailComponent>
 }): RenderedEmail => {
   // A subject is one line: control characters (e.g. a newline in a value) become spaces.
-  const subject = fill(o.content.subject, o.vars, false)
+  const subject = fill(o.content.subject, o.vars)
     // eslint-disable-next-line no-control-regex -- matching control characters is the point
     .replace(/[\u0000-\u001f\u007f]+/g, ' ')
     .trim()
     .slice(0, 255)
-  const body = fill(o.content.body, o.vars, true)
+  const value = (name: string) => o.vars[name] ?? ''
+  const component = (name: string, raw: string) => {
+    const definition = o.components.get(name)
+    const args = parseArgs(raw)
+    if (!definition || !args) return ''
+    const props = Object.fromEntries(
+      Object.entries(definition.props).map(([prop, kind]) => {
+        const filled = args[prop] === undefined ? undefined : fill(args[prop], o.vars)
+        return [prop, kind === 'url' && filled && !isSafeUrl(filled) ? undefined : filled]
+      }),
+    )
+    return definition.render(props, { brand: o.brand, locale: o.locale })
+  }
+  const body = sanitizeBody(o.content.body).replace(
+    bodyPattern,
+    (
+      _match,
+      open: string | undefined,
+      name: string | undefined,
+      raw: string | undefined,
+      close: string | undefined,
+      href: string | undefined,
+      text: string | undefined,
+    ) => {
+      if (text !== undefined) return escapeHtml(value(text))
+      if (href !== undefined) {
+        const url = value(href).trim()
+        return `href="${isSafeUrl(url) ? escapeHtml(url) : ''}"`
+      }
+      const html = component(name!, raw!)
+      // Alone in its paragraph, a component replaces it (blocks may not nest in a <p>).
+      return open !== undefined && close !== undefined ? html : `${open ?? ''}${html}${close ?? ''}`
+    },
+  )
   return {
     subject,
     html: o.layout({ locale: o.locale, subject, body, brand: o.brand }),

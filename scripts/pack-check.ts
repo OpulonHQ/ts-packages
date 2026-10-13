@@ -186,7 +186,7 @@ for (const name of names) {
   run('node', ['check.mjs'], scratch)
 
   // The fixture host's module files, resolving @opulonjs/* to the tarballs from here on.
-  for (const dir of ['server', 'modules', 'admin']) {
+  for (const dir of ['server', 'modules', 'admin', 'cms']) {
     cpSync(join(root, 'fixtures/host', dir), join(scratch, 'host', dir), { recursive: true })
   }
   await checkBrowserApi(scratch, tarballs)

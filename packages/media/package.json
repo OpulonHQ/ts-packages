@@ -2,7 +2,7 @@
   "name": "@opulonjs/media",
   "version": "0.0.0",
   "private": true,
-  "description": "@opulonjs/media (placeholder)",
+  "description": "Media library on R2 for @opulonjs host apps: uploads, immutable serving, resized URLs",
   "license": "MIT",
   "type": "module",
   "repository": {
@@ -19,6 +19,21 @@
       "types": "./dist/index.d.mts",
       "default": "./dist/index.mjs"
     },
+    "./api": {
+      "@opulonjs/source": "./src/api.ts",
+      "types": "./dist/api.d.mts",
+      "default": "./dist/api.mjs"
+    },
+    "./server": {
+      "@opulonjs/source": "./src/server/index.ts",
+      "types": "./dist/server/index.d.mts",
+      "default": "./dist/server/index.mjs"
+    },
+    "./admin": {
+      "@opulonjs/source": "./src/admin/index.ts",
+      "types": "./dist/admin/index.d.mts",
+      "default": "./dist/admin/index.mjs"
+    },
     "./package.json": "./package.json"
   },
   "publishConfig": {
@@ -27,9 +42,19 @@
   },
   "scripts": {
     "build": "tsdown",
-    "typecheck": "tsgo --noEmit"
+    "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {
-    "@opulonjs/core": "workspace:*"
+    "@opulonjs/admin": "workspace:*",
+    "@opulonjs/core": "workspace:*",
+    "@opulonjs/ui": "workspace:*",
+    "image-size": "2.0.4"
+  },
+  "peerDependencies": {
+    "effect": "4.0.3",
+    "vue": "^3.5.0"
+  },
+  "devDependencies": {
+    "effect": "4.0.3"
   }
 }

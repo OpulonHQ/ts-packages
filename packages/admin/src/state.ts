@@ -13,6 +13,8 @@ export interface Me {
   readonly permissions: ReadonlyArray<string>
   readonly modules: ReadonlyArray<string>
   readonly permissionCatalog: ReadonlyArray<string>
+  /** The host's content locales, first = default (for localized fields, e.g. `LocaleTabs`). */
+  readonly contentLocales: ReadonlyArray<string>
 }
 
 export type Status = 'loading' | 'ready' | 'signedOut' | 'failed'

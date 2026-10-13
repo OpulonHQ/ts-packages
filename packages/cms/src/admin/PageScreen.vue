@@ -1,0 +1,335 @@
+<script setup lang="ts">
+/**
+ * One page: path, availability and SEO per content locale, its ordered sections with forms
+ * generated from the definitions, and save draft / publish / unpublish / delete.
+ */
+import { useI18n } from '@opulonjs/admin'
+import { MediaPicker } from '@opulonjs/media/admin'
+import { UButton, UCard } from '@opulonjs/ui'
+import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
+import FieldSelect from '@opulonjs/ui/components/Field/Select'
+import FieldText from '@opulonjs/ui/components/Field/Text'
+import FieldTextarea from '@opulonjs/ui/components/Field/Textarea'
+import FieldToggle from '@opulonjs/ui/components/Field/Toggle'
+import LocaleTabs from '@opulonjs/ui/components/LocaleTabs'
+import PageHeader from '@opulonjs/ui/components/PageHeader'
+import StatusBadge from '@opulonjs/ui/components/StatusBadge'
+import { computed, ref, shallowRef, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { labelText, type Page, type PageDocument, type PageLocale } from '../api.ts'
+import FieldControl from './FieldControl.vue'
+import { failureMessage, pageTitle, useCmsContext, usePages } from './use-cms.ts'
+
+/** The draft as edited: plain mutable copies of the document's parts. */
+interface Draft {
+  locales: Record<string, PageLocale>
+  sections: Array<{ id: string; type: string; data: Record<string, unknown> }>
+}
+
+const { t, locale } = useI18n()
+const pages = usePages()
+const { definitions } = useCmsContext()
+const route = useRoute()
+const router = useRouter()
+
+const page = shallowRef<Page>()
+const draft = ref<Draft>()
+const missing = ref(false)
+const pending = ref(false)
+const confirming = ref(false)
+const status = ref<{ kind: 'ok' | 'error'; message: string }>()
+const newType = ref<string | number | null>(null)
+
+const locales = computed(() => pages.contentLocales.value)
+const canEdit = computed(() => pages.can('cms.pages.edit'))
+const title = computed(() => (page.value ? pageTitle(definitions, page.value, locale.value) : ''))
+const typeLabel = (type: string) => labelText(definitions.sections[type]?.label, locale.value)
+const typeItems = computed(() =>
+  Object.keys(definitions.sections).map((key) => ({ value: key, label: typeLabel(key) })),
+)
+
+const blankLocale = (): PageLocale => ({
+  path: '',
+  available: false,
+  seo: { title: '', description: '', image: null, noindex: false },
+})
+const toDraft = (document: PageDocument): Draft => {
+  // A deep, mutable copy: JSON documents only.
+  const copy = structuredClone(document) as Draft
+  for (const code of locales.value) copy.locales[code] ??= blankLocale()
+  return copy
+}
+const show = (next: Page) => {
+  page.value = next
+  draft.value = toDraft(next.draft)
+}
+
+watch(
+  () => String(route.params.id),
+  async (id) => {
+    missing.value = false
+    try {
+      show(await pages.get(id))
+    } catch {
+      missing.value = true
+    }
+  },
+  { immediate: true },
+)
+
+async function run(action: () => Promise<Page | void>, done: string) {
+  pending.value = true
+  status.value = undefined
+  try {
+    const next = await action()
+    if (next) show(next)
+    status.value = { kind: 'ok', message: done }
+  } catch (error) {
+    status.value = { kind: 'error', message: failureMessage(error, t('cms.errors.failed')) }
+  } finally {
+    pending.value = false
+  }
+}
+
+const save = () => run(() => pages.save(page.value!.id, draft.value!), t('cms.page.saved'))
+// Publishing publishes what is on screen: the draft is saved first.
+const publish = () =>
+  run(async () => {
+    await pages.save(page.value!.id, draft.value!)
+    return pages.publish(page.value!.id)
+  }, t('cms.page.published'))
+const unpublish = () => run(() => pages.unpublish(page.value!.id), t('cms.page.unpublished'))
+async function remove() {
+  confirming.value = false
+  await run(() => pages.remove(page.value!.id), '')
+  if (status.value?.kind === 'ok') await router.push({ name: 'cms.pages' })
+}
+
+function addSection() {
+  if (!newType.value || !draft.value) return
+  draft.value.sections.push({ id: crypto.randomUUID(), type: String(newType.value), data: {} })
+  newType.value = null
+}
+function move(index: number, by: -1 | 1) {
+  const sections = draft.value!.sections
+  const [section] = sections.splice(index, 1)
+  sections.splice(index + by, 0, section!)
+}
+
+/** A localized field's `{ [locale]: value }` in a section, created on first use. */
+const localized = (data: Record<string, unknown>, field: string) => {
+  const current = data[field]
+  if (current !== null && typeof current === 'object') return current as Record<string, unknown>
+  return (data[field] = {}) as Record<string, unknown>
+}
+</script>
+
+<template>
+  <section>
+    <p v-if="missing" role="alert" class="text-sm text-error">{{ t('cms.errors.notFound') }}</p>
+    <template v-else-if="page && draft">
+      <PageHeader
+        :title="title"
+        :breadcrumbs="[{ label: t('cms.page.back'), to: { name: 'cms.pages' } }, { label: title }]"
+      >
+        <template #actions>
+          <StatusBadge
+            :status="page.status"
+            :label="t(`cms.status.${page.status}`)"
+            :color="page.status === 'changed' ? 'warning' : undefined"
+          />
+          <UButton
+            v-if="canEdit"
+            :label="t('cms.page.save')"
+            color="neutral"
+            variant="outline"
+            :loading="pending"
+            @click="save"
+          />
+          <UButton
+            v-if="canEdit && pages.can('cms.pages.publish')"
+            :label="t('cms.page.publish')"
+            icon="i-lucide-globe"
+            :loading="pending"
+            @click="publish"
+          />
+          <UButton
+            v-if="pages.can('cms.pages.publish') && page.published"
+            :label="t('cms.page.unpublish')"
+            color="neutral"
+            variant="ghost"
+            :disabled="pending"
+            @click="unpublish"
+          />
+          <UButton
+            v-if="canEdit && !page.systemKey"
+            :label="t('cms.page.delete')"
+            color="error"
+            variant="ghost"
+            icon="i-lucide-trash-2"
+            :disabled="pending"
+            @click="confirming = true"
+          />
+        </template>
+      </PageHeader>
+
+      <p
+        v-if="status && status.message"
+        :role="status.kind === 'error' ? 'alert' : 'status'"
+        :class="status.kind === 'error' ? 'text-error' : 'text-success'"
+        class="mb-4 text-sm"
+      >
+        {{ status.message }}
+      </p>
+
+      <form class="space-y-6" @submit.prevent="save">
+        <UCard>
+          <template #header>
+            <h2 class="font-semibold text-highlighted">{{ t('cms.page.details') }}</h2>
+          </template>
+          <LocaleTabs :locales="locales">
+            <template v-for="code in locales" :key="code" #[code]>
+              <FieldText
+                v-model="draft.locales[code]!.path"
+                :name="`locales.${code}.path`"
+                :label="t('cms.page.path')"
+                :help="t('cms.page.pathHelp')"
+                :disabled="!canEdit"
+              />
+              <FieldToggle
+                v-model="draft.locales[code]!.available"
+                :name="`locales.${code}.available`"
+                :label="t('cms.page.available')"
+                :disabled="!canEdit"
+              />
+              <FieldText
+                v-model="draft.locales[code]!.seo.title"
+                :name="`locales.${code}.seo.title`"
+                :label="t('cms.page.seoTitle')"
+                :disabled="!canEdit"
+              />
+              <FieldTextarea
+                v-model="draft.locales[code]!.seo.description"
+                :name="`locales.${code}.seo.description`"
+                :label="t('cms.page.seoDescription')"
+                :rows="2"
+                :disabled="!canEdit"
+              />
+              <MediaPicker
+                v-model="draft.locales[code]!.seo.image"
+                :label="t('cms.page.seoImage')"
+                accept="image"
+                :disabled="!canEdit"
+              />
+              <FieldToggle
+                v-model="draft.locales[code]!.seo.noindex"
+                :name="`locales.${code}.seo.noindex`"
+                :label="t('cms.page.noindex')"
+                :disabled="!canEdit"
+              />
+            </template>
+          </LocaleTabs>
+        </UCard>
+
+        <div class="space-y-4">
+          <h2 class="font-semibold text-highlighted">{{ t('cms.page.sections') }}</h2>
+          <p v-if="draft.sections.length === 0" class="text-sm text-muted">
+            {{ t('cms.page.noSections') }}
+          </p>
+          <UCard v-for="(section, index) in draft.sections" :key="section.id">
+            <template #header>
+              <div class="flex items-center justify-between gap-2">
+                <h3 class="font-medium text-highlighted">
+                  {{ index + 1 }}. {{ typeLabel(section.type) }}
+                </h3>
+                <div v-if="canEdit" class="flex gap-1">
+                  <UButton
+                    icon="i-lucide-arrow-up"
+                    color="neutral"
+                    variant="ghost"
+                    :aria-label="t('cms.page.moveUp')"
+                    :disabled="index === 0"
+                    @click="move(index, -1)"
+                  />
+                  <UButton
+                    icon="i-lucide-arrow-down"
+                    color="neutral"
+                    variant="ghost"
+                    :aria-label="t('cms.page.moveDown')"
+                    :disabled="index === draft.sections.length - 1"
+                    @click="move(index, 1)"
+                  />
+                  <UButton
+                    icon="i-lucide-x"
+                    color="error"
+                    variant="ghost"
+                    :aria-label="t('cms.page.removeSection')"
+                    @click="draft.sections.splice(index, 1)"
+                  />
+                </div>
+              </div>
+            </template>
+            <div class="space-y-4">
+              <template
+                v-for="(field, key) in definitions.sections[section.type]?.fields ?? {}"
+                :key="key"
+              >
+                <fieldset v-if="field.localized" class="space-y-2">
+                  <legend class="text-sm font-medium text-highlighted">
+                    {{ labelText(field.label, locale) }}
+                  </legend>
+                  <LocaleTabs :locales="locales">
+                    <template v-for="code in locales" :key="code" #[code]>
+                      <FieldControl
+                        v-model="localized(section.data, String(key))[code]"
+                        :field="field"
+                        :name="`sections.${index}.${key}.${code}`"
+                        :label="labelText(field.label, locale)"
+                        :disabled="!canEdit"
+                      />
+                    </template>
+                  </LocaleTabs>
+                </fieldset>
+                <FieldControl
+                  v-else
+                  v-model="section.data[key]"
+                  :field="field"
+                  :name="`sections.${index}.${key}`"
+                  :label="labelText(field.label, locale)"
+                  :disabled="!canEdit"
+                />
+              </template>
+            </div>
+          </UCard>
+          <div v-if="canEdit" class="flex items-end gap-2">
+            <FieldSelect
+              v-model="newType"
+              name="newSection"
+              :label="t('cms.page.sectionType')"
+              :items="typeItems"
+              class="min-w-60"
+            />
+            <UButton
+              icon="i-lucide-plus"
+              color="neutral"
+              variant="outline"
+              :label="t('cms.page.addSection')"
+              :disabled="!newType"
+              @click="addSection"
+            />
+          </div>
+        </div>
+      </form>
+
+      <ConfirmDialog
+        v-model:open="confirming"
+        :title="t('cms.page.deleteTitle')"
+        :description="t('cms.page.deleteWarning')"
+        :confirm-label="t('cms.page.delete')"
+        :loading="pending"
+        danger
+        @confirm="remove"
+      />
+    </template>
+  </section>
+</template>

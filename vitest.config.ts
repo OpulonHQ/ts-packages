@@ -14,8 +14,10 @@ const server = { deps: { inline: [/better-auth/, /@opentelemetry\/semantic-conve
 // Nuxt UI and the offline icons as `opulonAdmin()` adds them. The preset is assembled from
 // source here because a bare package import in this config would load the package's dist.
 const adminTests = [
-  'fixtures/host/test/{shell,packages,email-log,users-admin}.test.ts',
+  'fixtures/host/test/{shell,packages,email-log,email-templates,users-admin}.test.ts',
   'packages/{ui,admin}/test/**/*.test.ts',
+  'fixtures/host/test/media/admin.test.ts',
+  'fixtures/host/test/cms/admin.test.ts',
 ]
 
 export default defineConfig({
@@ -37,7 +39,13 @@ export default defineConfig({
         plugins: [
           vue(),
           ...opulonUi({
-            sources: ['packages/admin/src', 'packages/emails/src', 'packages/users/src'],
+            sources: [
+              'packages/admin/src',
+              'packages/emails/src',
+              'packages/media/src/admin',
+              'packages/cms/src/admin',
+              'packages/users/src/admin',
+            ],
           }),
         ],
         resolve,

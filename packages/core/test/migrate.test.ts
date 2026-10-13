@@ -13,7 +13,7 @@ const schemas = async (url: string) =>
   (
     await adminQuery<{ name: string }>(
       url,
-      "select nspname as name from pg_namespace where nspname in ('media', 'cms', 'broken', 'downstream') order by 1",
+      "select nspname as name from pg_namespace where nspname in ('files', 'pages', 'broken', 'downstream') order by 1",
     )
   ).map((r) => r.name)
 
@@ -22,19 +22,19 @@ describe('opulon migrate', () => {
     const db = await createTestDatabase()
     try {
       const { stdout } = await migrateWith(db.url, 'ordered')
-      expect(stdout).toBe('media: 1_create_file, 2_seed_file\ncms: 1_create_page\n')
+      expect(stdout).toBe('files: 1_create_file, 2_seed_file\npages: 1_create_page\n')
       const ledger = await adminQuery<{ module: string; id: number; name: string }>(
         db.url,
-        `select 'media' as module, migration_id as id, name from media.migrations
-         union all select 'cms', migration_id, name from cms.migrations order by 1, 2`,
+        `select 'files' as module, migration_id as id, name from files.migrations
+         union all select 'pages', migration_id, name from pages.migrations order by 1, 2`,
       )
       expect(ledger).toEqual([
-        { module: 'cms', id: 1, name: 'create_page' },
-        { module: 'media', id: 1, name: 'create_file' },
-        { module: 'media', id: 2, name: 'seed_file' },
+        { module: 'files', id: 1, name: 'create_file' },
+        { module: 'files', id: 2, name: 'seed_file' },
+        { module: 'pages', id: 1, name: 'create_page' },
       ])
       expect((await migrateWith(db.url, 'ordered')).stdout).toBe(
-        'media: up to date\ncms: up to date\n',
+        'files: up to date\npages: up to date\n',
       )
     } finally {
       await db.drop()
@@ -51,7 +51,7 @@ describe('opulon migrate', () => {
         code: 1,
         stderr: expect.stringContaining('Migration "2_fails" failed'),
       })
-      expect(await schemas(db.url)).toEqual(['broken', 'media'])
+      expect(await schemas(db.url)).toEqual(['broken', 'files'])
       expect(await adminQuery(db.url, "select to_regclass('broken.ok') as t")).toEqual([
         { t: null },
       ])
@@ -73,7 +73,7 @@ describe('opulon migrate', () => {
       expect(await schemas(db.url)).toEqual([])
       await holder.query("select pg_advisory_unlock(hashtext('opulon.migrate'))")
       await run
-      expect(await schemas(db.url)).toEqual(['cms', 'media'])
+      expect(await schemas(db.url)).toEqual(['files', 'pages'])
     } finally {
       await holder.end()
       await db.drop()

@@ -6,7 +6,9 @@
 // set `wrangler secret put USERS_AUTH_SECRET` (32+ random characters). The first user comes from
 // `opulon users invite-super-admin --server server/opulon.ts --email <address>`.
 // The Worker runs first for every path: serveAdmin answers /admin/** from ASSETS (SPA fallback
-// with no-store, immutable hashed assets), everything else goes to the composed API.
+// with no-store, immutable hashed assets), serveMedia answers /media/** from the R2 bucket
+// (immutable originals), everything else goes to the composed API. Resized media URLs
+// (/cdn-cgi/image/...) need Image Transformations enabled on the zone.
 {
   "name": "tspack-fixture-host",
   "main": "worker.ts",
@@ -19,6 +21,7 @@
     "run_worker_first": true,
     "html_handling": "none",
   },
+  "r2_buckets": [{ "binding": "MEDIA_BUCKET", "bucket_name": "tspack-fixture-media" }],
   "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "<hyperdrive-id>" }],
   "triggers": { "crons": ["*/5 * * * *"] },
   "observability": { "enabled": true },

@@ -24,4 +24,4 @@ export type { Brand } from '@opulonjs/ui'
 // Module screens use the shell's i18n instance and router through these, so they never pin
 // vue-i18n or vue-router.
 export { useI18n } from 'vue-i18n'
-export { useRoute, useRouter } from 'vue-router'
+export { RouterLink, useRoute, useRouter } from 'vue-router'
