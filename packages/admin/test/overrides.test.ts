@@ -76,6 +76,7 @@ function mount(
   })
   app.mount('#app')
   onTestFinished(() => app.unmount())
+  return app
 }
 
 test('rejects unknown route overrides before fetching or starting the app', () => {
@@ -189,4 +190,17 @@ test('a rejected route loader shows an error and retries', async () => {
   await expect.poll(() => document.body.textContent).toContain('retry host')
   expect(attempts).toBe(2)
   expect(document.querySelector('[role="alert"]')).toBeNull()
+})
+
+test('returning to the current screen clears a failed screen error', async () => {
+  const app = mount('/', {
+    overrides: { 'demo.protected': () => Promise.reject(new Error('screen download failed')) },
+  })
+  const router = app.config.globalProperties.$router
+  await expect.poll(() => document.body.textContent).toContain('Nothing to show here yet.')
+  await expect(router.push('/protected')).rejects.toThrow('screen download failed')
+  await expect.poll(() => document.querySelector('[role="alert"]')).not.toBeNull()
+  await router.push('/')
+  await expect.poll(() => document.querySelector('[role="alert"]')).toBeNull()
+  expect(document.body.textContent).toContain('Nothing to show here yet.')
 })

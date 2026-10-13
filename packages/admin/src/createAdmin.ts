@@ -373,8 +373,8 @@ export const createAdmin = (options: AdminOptions): App => {
     failedScreen.value = to.fullPath
   })
   // Re-check the build after each navigation, so an open tab learns about a deploy.
-  router.afterEach((_to, from, failure) => {
-    if (!failure) failedScreen.value = undefined
+  router.afterEach((_to, from) => {
+    failedScreen.value = undefined
     if (from.matched.length === 0 || !me.value) return
     getMe().then(
       (next) => {
