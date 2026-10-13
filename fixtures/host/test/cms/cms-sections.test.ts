@@ -1,15 +1,13 @@
 import { CmsSections, createCmsClient, sectionComponents } from '@opulonjs/cms/site'
 import { createApp, defineComponent, h, type PropType } from 'vue'
-import { expect, onTestFinished, vi } from 'vitest'
+import { expect, onTestFinished, test, vi } from 'vitest'
 import type { definitions } from '../../cms/definitions.ts'
-import { test as adminTest } from '../admin-scope.ts'
+import { useAdminLifetime } from '../admin-scope.ts'
 import { page, section, useCmsHost } from './helpers.ts'
 
 // Runs in the `admin` vitest project (happy-dom): a public page rendered from the Read API.
-const cmsHost = useCmsHost()
-const test = adminTest.extend<{ host: typeof cmsHost }>({
-  host: async ({ scope }, use) => use(scope.host(cmsHost)),
-})
+const admin = useAdminLifetime()
+const host = admin.track(useCmsHost())
 
 const Hero = defineComponent({
   props: { data: { type: Object as PropType<Record<string, unknown>>, required: true } },
@@ -30,9 +28,7 @@ const render = (
   return el
 }
 
-test('renders a resolved page’s sections in order, rich text as sanitized HTML', async ({
-  host,
-}) => {
+test('renders a resolved page’s sections in order, rich text as sanitized HTML', async () => {
   const created = await host.create(
     page({ en: '/home-page' }, [
       section('hero', { title: { en: 'Welcome' } }),

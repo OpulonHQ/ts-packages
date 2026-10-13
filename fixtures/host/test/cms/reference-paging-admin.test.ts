@@ -3,14 +3,15 @@ import { cmsAdmin } from '@opulonjs/cms/admin'
 import { cms } from '@opulonjs/cms/server'
 import { composeServer } from '@opulonjs/core'
 import { Schema } from 'effect'
-import { expect } from 'vitest'
+import { expect, test } from 'vitest'
 import { adminModules } from '../../admin/modules.ts'
 import { definitions } from '../../cms/definitions.ts'
 import { server } from '../../server/opulon.ts'
-import { test as adminTest } from '../admin-scope.ts'
+import { useAdminLifetime } from '../admin-scope.ts'
 import { useCmsHost } from './helpers.ts'
 
-const cmsHost = useCmsHost()
+const admin = useAdminLifetime()
+const host = admin.track(useCmsHost())
 const largeDefinitions = {
   ...definitions,
   collections: {
@@ -27,20 +28,18 @@ const largeDefinitions = {
     },
   },
 }
-const largeCmsHost = useCmsHost(
-  composeServer({
-    modules: server.modules.map((module) =>
-      module.id === 'cms' ? cms({ definitions: largeDefinitions }) : module,
-    ),
-    contentLocales: ['en', 'it'],
-  }),
+const largeHost = admin.track(
+  useCmsHost(
+    composeServer({
+      modules: server.modules.map((module) =>
+        module.id === 'cms' ? cms({ definitions: largeDefinitions }) : module,
+      ),
+      contentLocales: ['en', 'it'],
+    }),
+  ),
 )
-const test = adminTest.extend<{ host: typeof cmsHost; largeHost: typeof largeCmsHost }>({
-  host: async ({ scope }, use) => use(scope.host(cmsHost)),
-  largeHost: async ({ scope }, use) => use(scope.host(largeCmsHost)),
-})
 const createItems = async (
-  target: typeof cmsHost,
+  target: typeof host,
   collection: string,
   count: number,
   data: (n: string) => Record<string, unknown>,
@@ -62,18 +61,15 @@ const createItems = async (
   return items
 }
 
-test('a reference picker searches beyond page one, retains selections and discards a slow older search', async ({
-  host,
-  scope,
-}) => {
+test('a reference picker searches beyond page one, retains selections and discards a slow older search', async () => {
   const ids = (
     await createItems(host, 'categories', 31, (n) => ({ name: { en: `Picker ${n}` } }))
   ).map((item) => item.id)
   const post = await host.call<Item>('POST', '/collections/posts/items', {
     body: { locales: {}, data: { title: { en: 'References' }, categories: [ids[30]] } },
   })
-  const gate = scope.gate()
-  const labelsGate = scope.gate()
+  const gate = admin.gate()
+  const labelsGate = admin.gate()
   let blockResolved = false
   let searched = false
   const fetch: typeof globalThis.fetch = async (input, init) => {
@@ -88,19 +84,19 @@ test('a reference picker searches beyond page one, retains selections and discar
     }
     return response
   }
-  scope.mount(`/admin/cms/items/${post.body.id}`, { fetch })
+  admin.mount(`/admin/cms/items/${post.body.id}`, { fetch })
   const picker = () =>
     [...document.querySelectorAll<HTMLTableElement>('table')].find(
       (table) => table.caption?.textContent?.trim() === 'Kategórie',
     )
   const rows = () =>
     [...(picker()?.querySelectorAll('tbody tr') ?? [])].map((row) => row.textContent?.trim())
-  await scope.poll(rows).toHaveLength(25)
-  await scope.poll(() => document.querySelector('[aria-label="Odstrániť Picker 31"]')).toBeTruthy()
+  await expect.poll(rows).toHaveLength(25)
+  await expect.poll(() => document.querySelector('[aria-label="Odstrániť Picker 31"]')).toBeTruthy()
   blockResolved = true
   const search = () =>
     document.querySelector<HTMLInputElement>('input[placeholder="Hľadať položky…"]')
-  await scope.poll(search).toBeTruthy()
+  await expect.poll(search).toBeTruthy()
   const type = (value: string) => {
     const input = search()
     if (!input) throw new Error('reference search is missing')
@@ -108,21 +104,21 @@ test('a reference picker searches beyond page one, retains selections and discar
     input.dispatchEvent(new Event('input'))
   }
   type('Picker 01')
-  await scope.poll(() => searched).toBe(true)
+  await expect.poll(() => searched).toBe(true)
   type('Picker 30')
-  await scope.poll(rows).toEqual(['Picker 30'])
+  await expect.poll(rows).toEqual(['Picker 30'])
   gate.resolve()
-  await scope.sleep(100)
+  await new Promise((resolve) => setTimeout(resolve, 100))
   expect(rows()).toEqual(['Picker 30'])
   expect(document.querySelector('[aria-label="Odstrániť Picker 31"]')).toBeTruthy()
   picker()?.querySelector<HTMLElement>('tbody tr')?.click()
-  await scope.poll(() => document.querySelector('[aria-label="Odstrániť Picker 30"]')).toBeTruthy()
+  await expect.poll(() => document.querySelector('[aria-label="Odstrániť Picker 30"]')).toBeTruthy()
   const save = [...document.querySelectorAll('button')].find(
     (button) => button.textContent?.trim() === 'Uložiť koncept',
   )
   expect(save).toBeTruthy()
   save?.click()
-  await scope
+  await expect
     .poll(
       async () =>
         (await host.call<Item>('GET', `/items/${post.body.id}`)).body.draft.data.categories,
@@ -130,10 +126,7 @@ test('a reference picker searches beyond page one, retains selections and discar
     .toEqual([ids[30], ids[29]])
 })
 
-test('a single item link resolves a target beyond page one and can be cleared and saved', async ({
-  host,
-  scope,
-}) => {
+test('a single item link resolves a target beyond page one and can be cleared and saved', async () => {
   const links = await createItems(host, 'posts', 31, (n) => ({ title: { en: `Link ${n}` } }))
   const late = links.at(-1)
   if (!late) throw new Error('no item was created')
@@ -144,23 +137,20 @@ test('a single item link resolves a target beyond page one and can be cleared an
       })
     ).status,
   ).toBe(200)
-  scope.mount('/admin/cms/settings', { fetch: host.fetch })
+  admin.mount('/admin/cms/settings', { fetch: host.fetch })
   const clear = () => document.querySelector<HTMLButtonElement>('[aria-label="Odstrániť Link 31"]')
-  await scope.poll(clear).toBeTruthy()
+  await expect.poll(clear).toBeTruthy()
   clear()?.click()
   const save = [...document.querySelectorAll('button')].find(
     (button) => button.textContent?.trim() === 'Uložiť koncept',
   )
   save?.click()
-  await scope
+  await expect
     .poll(async () => (await host.call<SiteSettings>('GET', '/settings')).body.draft.data.cta)
     .toBeUndefined()
 })
 
-test('saved reference labels load together while individual document requests cannot settle', async ({
-  host,
-  scope,
-}) => {
+test('saved reference labels load together while individual document requests cannot settle', async () => {
   const ids: string[] = []
   for (const title of ['Batch first', 'Batch second']) {
     const result = await host.call<Item>('POST', '/collections/categories/items', {
@@ -173,26 +163,23 @@ test('saved reference labels load together while individual document requests ca
       body: { locales: {}, data: { title: { en: 'Batch picker' }, categories: ids } },
     })
   ).body
-  const gate = scope.gate()
+  const gate = admin.gate()
   const fetch: typeof globalThis.fetch = async (input, init) => {
     const request = new Request(input, init)
     const response = await host.fetch(request)
     if (ids.some((id) => new URL(request.url).pathname.endsWith(`/items/${id}`))) await gate.promise
     return response
   }
-  scope.mount(`/admin/cms/items/${post.id}`, { fetch })
-  await scope
+  admin.mount(`/admin/cms/items/${post.id}`, { fetch })
+  await expect
     .poll(() => document.querySelector('[aria-label="Odstrániť Batch first"]'))
     .toBeTruthy()
-  await scope
+  await expect
     .poll(() => document.querySelector('[aria-label="Odstrániť Batch second"]'))
     .toBeTruthy()
 })
 
-test('a host with larger many-reference fields resolves all 101 saved references without a load error', async ({
-  largeHost,
-  scope,
-}) => {
+test('a host with larger many-reference fields resolves all 101 saved references without a load error', async () => {
   const ids = (
     await createItems(largeHost, 'categories', 101, (n) => ({ name: { en: `Bulk ${n}` } }))
   ).map((item) => item.id)
@@ -200,7 +187,7 @@ test('a host with larger many-reference fields resolves all 101 saved references
     body: { locales: {}, data: { title: { en: 'Large reference field' }, categories: ids } },
   })
   expect(post.status).toBe(200)
-  scope.mount(`/admin/cms/items/${post.body.id}`, {
+  admin.mount(`/admin/cms/items/${post.body.id}`, {
     fetch: largeHost.fetch,
     modules: adminModules.map((module) =>
       module.id === 'cms'
@@ -211,16 +198,13 @@ test('a host with larger many-reference fields resolves all 101 saved references
         : module,
     ),
   })
-  await scope
+  await expect
     .poll(() => document.querySelectorAll('[aria-label^="Odstrániť Bulk "]').length)
     .toBe(101)
   expect(document.querySelector('[role="alert"]')).toBeNull()
 })
 
-test('a deleted saved reference is marked missing and remains removable without a load-failed alert', async ({
-  host,
-  scope,
-}) => {
+test('a deleted saved reference is marked missing and remains removable without a load-failed alert', async () => {
   const category = (
     await host.call<Item>('POST', '/collections/categories/items', {
       body: { locales: {}, data: { name: { en: 'Deleted reference' } } },
@@ -235,29 +219,26 @@ test('a deleted saved reference is marked missing and remains removable without 
     })
   ).body
   expect((await host.call('DELETE', `/items/${category.id}`)).status).toBe(204)
-  scope.mount(`/admin/cms/items/${post.id}`, { fetch: host.fetch })
+  admin.mount(`/admin/cms/items/${post.id}`, { fetch: host.fetch })
   const remove = () =>
     document.querySelector<HTMLButtonElement>(
       `[aria-label="Odstrániť Chýbajúca alebo vymazaná položka (${category.id})"]`,
     )
-  await scope.poll(remove).toBeTruthy()
+  await expect.poll(remove).toBeTruthy()
   expect(document.querySelector('[role="alert"]')).toBeNull()
   remove()?.click()
   const save = [...document.querySelectorAll('button')].find(
     (button) => button.textContent?.trim() === 'Uložiť koncept',
   )
   save?.click()
-  await scope
+  await expect
     .poll(
       async () => (await host.call<Item>('GET', `/items/${post.id}`)).body.draft.data.categories,
     )
     .toEqual([])
 })
 
-test('a failed reference summary request shows a load alert without marking the item deleted', async ({
-  host,
-  scope,
-}) => {
+test('a failed reference summary request shows a load alert without marking the item deleted', async () => {
   const category = (
     await host.call<Item>('POST', '/collections/categories/items', {
       body: { locales: {}, data: { name: { en: 'Available reference' } } },
@@ -277,7 +258,7 @@ test('a failed reference summary request shows a load alert without marking the 
       return Promise.resolve(new Response('', { status: 503 }))
     return host.fetch(request)
   }
-  scope.mount(`/admin/cms/items/${post.id}`, { fetch })
-  await scope.poll(() => document.querySelector('[role="alert"]')).toBeTruthy()
+  admin.mount(`/admin/cms/items/${post.id}`, { fetch })
+  await expect.poll(() => document.querySelector('[role="alert"]')).toBeTruthy()
   expect(document.body.textContent).not.toContain('Chýbajúca alebo vymazaná položka')
 })
