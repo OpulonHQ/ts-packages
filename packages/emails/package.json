@@ -1,7 +1,6 @@
 {
   "name": "@opulonjs/emails",
   "version": "0.0.0",
-  "private": true,
   "description": "Email templates, outbox delivery and the email log for @opulonjs host apps",
   "license": "MIT",
   "type": "module",

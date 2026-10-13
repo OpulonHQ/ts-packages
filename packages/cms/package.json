@@ -1,7 +1,6 @@
 {
   "name": "@opulonjs/cms",
   "version": "0.0.0",
-  "private": true,
   "description": "Pages built from host-defined sections, with drafts, publishing and revisions, for @opulonjs host apps",
   "license": "MIT",
   "type": "module",

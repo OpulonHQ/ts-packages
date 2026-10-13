@@ -1,7 +1,6 @@
 {
   "name": "@opulonjs/core",
   "version": "0.0.0",
-  "private": true,
   "description": "Module contract, composition, Workers adapter and migrator for @opulonjs packages",
   "license": "MIT",
   "type": "module",
