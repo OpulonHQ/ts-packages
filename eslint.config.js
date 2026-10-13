@@ -73,7 +73,7 @@ export default defineConfig(
     },
     {
       files: [`packages/${p}/src/admin/**`],
-      rules: restrict(p, [...serverDeps[p], ...adminEntryDeps]),
+      rules: restrict(p, [...serverDeps[p], ...adminEntryDeps], { allowCoreApi: p === 'admin' }),
     },
   ]),
   {

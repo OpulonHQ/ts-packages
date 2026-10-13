@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /** Users > a user: roles, admin locale, deactivation and reactivation. */
-import { useAdmin, useI18n, useRoute } from '@opulonjs/admin'
+import { AuditTimeline, useAdmin, useI18n, useRoute } from '@opulonjs/admin'
 import { UButton, UCard, UCheckbox } from '@opulonjs/ui'
 import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
@@ -21,6 +21,7 @@ const status = ref<'loading' | 'ready' | 'notFound' | 'failed'>('loading')
 const notice = ref<{ error: boolean; text: string }>()
 const busy = ref(false)
 const confirming = ref(false)
+const timeline = ref<{ refresh: () => Promise<void> }>()
 
 const load = () =>
   users((client) => client.users()).then(
@@ -42,7 +43,6 @@ function toggle(roleId: string, on: boolean | 'indeterminate') {
   roleIds.value = on === true ? [...rest, roleId] : rest
 }
 
-/** Runs one change, shows its outcome (or why the guard refused it) and reloads the user. */
 async function run(change: () => Promise<void>, done: string) {
   busy.value = true
   notice.value = undefined
@@ -55,6 +55,7 @@ async function run(change: () => Promise<void>, done: string) {
     busy.value = false
     confirming.value = false
     await load()
+    await timeline.value?.refresh()
   }
 }
 
@@ -141,6 +142,7 @@ const setLocale = (locale: string | null) =>
         />
       </UCard>
 
+      <AuditTimeline ref="timeline" subject-type="user" :subject-id="id" />
       <ConfirmDialog
         v-model:open="confirming"
         :title="t('users.user.confirmTitle')"

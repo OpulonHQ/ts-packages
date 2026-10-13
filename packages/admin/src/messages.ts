@@ -1,8 +1,7 @@
 import type { Labels, Messages } from './module.ts'
+import type { corePermissions } from '@opulonjs/core/api'
 
-// Core's permission catalog (`corePermissions` in @opulonjs/core/api, which the admin may not
-// import); fixtures/host/test/labels.test-d.ts checks these labels cover it.
-type CorePermission = 'core.audit.view'
+type CorePermission = (typeof corePermissions)[number]
 
 const en = {
   admin: {
@@ -19,6 +18,39 @@ const en = {
     navigation: 'Main navigation',
     reload: { message: 'A new admin version is available.', action: 'Reload' },
     groups: { content: 'Content', users: 'Users', settings: 'Settings' },
+    audit: {
+      title: 'Audit log',
+      description:
+        'Newest events first. Actor and subject names are snapshots from the time of the event.',
+      timeline: 'Audit timeline',
+      event: 'Event',
+      filters: {
+        actor: 'Actor',
+        module: 'Module',
+        action: 'Action',
+        subjectType: 'Subject type',
+        subjectId: 'Subject ID',
+        subjectLabel: 'Subject label',
+        start: 'From date (UTC)',
+        end: 'Through date (UTC)',
+      },
+      filterHelp:
+        'Actor searches kind, ID or name. Subject label searches text. Module, action, subject type and ID match exactly. Both dates include the whole day in UTC.',
+      apply: 'Apply filters',
+      reset: 'Reset filters',
+      invalidRange: 'Enter a valid date range with the end on or after the start.',
+      empty: 'No audit events match.',
+      failed: 'The audit events could not be loaded. Try again.',
+      retry: 'Retry',
+      actors: { user: 'User', system: 'System', anonymous: 'Anonymous' },
+      from: 'From',
+      to: 'To',
+      ip: 'IP address',
+      userAgent: 'User agent',
+      previous: 'Previous events',
+      next: 'Next events',
+      page: 'Page {page} of {pages}',
+    },
   },
   permissions: { 'core.audit.view': 'View the audit log' } satisfies Labels<CorePermission>,
 } satisfies Messages
@@ -38,6 +70,39 @@ const sk: typeof en = {
     navigation: 'Hlavná navigácia',
     reload: { message: 'Je dostupná nová verzia administrácie.', action: 'Obnoviť' },
     groups: { content: 'Obsah', users: 'Používatelia', settings: 'Nastavenia' },
+    audit: {
+      title: 'Auditný záznam',
+      description:
+        'Najnovšie udalosti sú prvé. Mená aktérov a názvy objektov zodpovedajú času udalosti.',
+      timeline: 'Časová os auditu',
+      event: 'Udalosť',
+      filters: {
+        actor: 'Aktér',
+        module: 'Modul',
+        action: 'Akcia',
+        subjectType: 'Typ objektu',
+        subjectId: 'ID objektu',
+        subjectLabel: 'Názov objektu',
+        start: 'Od dátumu (UTC)',
+        end: 'Do dátumu vrátane (UTC)',
+      },
+      filterHelp:
+        'Aktér vyhľadáva typ, ID alebo meno. Názov objektu vyhľadáva text. Modul, akcia, typ a ID objektu sa musia presne zhodovať. Oba dátumy zahŕňajú celý deň v UTC.',
+      apply: 'Použiť filtre',
+      reset: 'Zrušiť filtre',
+      invalidRange: 'Zadajte platný rozsah dátumov s koncom v deň začiatku alebo neskôr.',
+      empty: 'Žiadne auditné udalosti nevyhovujú filtrom.',
+      failed: 'Auditné udalosti sa nepodarilo načítať. Skúste to znova.',
+      retry: 'Skúsiť znova',
+      actors: { user: 'Používateľ', system: 'Systém', anonymous: 'Anonymný' },
+      from: 'Z',
+      to: 'Na',
+      ip: 'IP adresa',
+      userAgent: 'Prehliadač',
+      previous: 'Predchádzajúce udalosti',
+      next: 'Ďalšie udalosti',
+      page: 'Strana {page} z {pages}',
+    },
   },
   permissions: { 'core.audit.view': 'Zobraziť auditný záznam' },
 }
