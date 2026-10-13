@@ -1,4 +1,4 @@
-import { defineCms } from '@opulonjs/cms/api'
+import { defineCms, fields } from '@opulonjs/cms/api'
 import { expect, test } from 'vitest'
 import { page, section, useCmsHost } from './helpers.ts'
 
@@ -87,4 +87,26 @@ test('definition keys must be valid identifiers', () => {
   expect(() =>
     defineCms({ sections: { 'Hero Block': { label: 'x', fields: {} } }, systemPages: {} }),
   ).toThrow('"Hero Block" is not a valid key')
+})
+
+test('references must name a defined collection; title fields must be fields', () => {
+  expect(() =>
+    defineCms({
+      sections: {},
+      systemPages: {},
+      collections: {
+        posts: {
+          label: 'Posts',
+          fields: { tags: fields.reference({ label: 'Tags', collection: 'tags' }) },
+        },
+      },
+    }),
+  ).toThrow('field "tags" of collection "posts" references the unknown collection "tags"')
+  expect(() =>
+    defineCms({
+      sections: {},
+      systemPages: {},
+      collections: { team: { label: 'Team', titleField: 'name', fields: {} } },
+    }),
+  ).toThrow('the title field "name" of collection "team" is not a field')
 })

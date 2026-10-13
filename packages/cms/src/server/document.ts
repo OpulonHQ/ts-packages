@@ -2,7 +2,9 @@ import { Effect, Schema } from 'effect'
 import {
   CmsInvalid,
   type CmsDefinitions,
+  type FieldGroup,
   labelText,
+  type Link,
   type PageDocument,
   type PageLocale,
   type Section,
@@ -24,7 +26,45 @@ export const emptyLocale = (path = ''): PageLocale => ({
   seo: { title: '', description: '', image: null, noindex: false },
 })
 
-const cleanLocale = (locale: string, given: PageLocale | undefined) =>
+/** Path, availability and SEO per content locale; documents without paths refuse one. */
+export const cleanLocales = (
+  locales: ReadonlyArray<string>,
+  given: Readonly<Record<string, PageLocale>>,
+  withPaths = true,
+) =>
+  Effect.gen(function* () {
+    const out: Record<string, PageLocale> = {}
+    for (const locale of locales) {
+      const own = given[locale]
+      if (!withPaths && own && own.path.trim() !== '')
+        return yield* invalid(`These items have no own path, so the ${locale} path must be empty.`)
+      out[locale] = yield* cleanLocale(locale, own, withPaths)
+    }
+    return out
+  })
+
+/** URLs a link may hold: http(s), mailto, tel, a site-relative path or a fragment. */
+const urlPattern = /^(?:https?:\/\/|mailto:|tel:|\/(?!\/)|#)\S*$/i
+
+/** Why a link is refused, or undefined. Targets are checked for shape, not existence: the
+ *  Read API resolves a link whose target is gone or unpublished to no href. */
+export const linkProblem = (definitions: CmsDefinitions, link: Link): string | undefined => {
+  switch (link.type) {
+    case 'page':
+    case 'item':
+      return uuid.test(link.id) ? undefined : `The link points at no ${link.type}.`
+    case 'system':
+      return Object.hasOwn(definitions.systemPages, link.key)
+        ? undefined
+        : `The link points at the unknown system page "${link.key}".`
+    case 'url':
+      return urlPattern.test(link.url.trim())
+        ? undefined
+        : `The link URL "${link.url}" must start with https://, mailto:, tel: or "/".`
+  }
+}
+
+const cleanLocale = (locale: string, given: PageLocale | undefined, withPaths = true) =>
   Effect.gen(function* () {
     if (!given) return emptyLocale()
     const path = given.path.trim()
@@ -32,7 +72,7 @@ const cleanLocale = (locale: string, given: PageLocale | undefined) =>
       return yield* invalid(
         `The ${locale} path "${path}" must start with "/" and use lowercase letters, digits and dashes.`,
       )
-    if (given.available && path === '')
+    if (withPaths && given.available && path === '')
       return yield* invalid(`The page is available in ${locale}, so it needs a ${locale} path.`)
     const image = given.seo.image
     if (image !== null && !uuid.test(image))
@@ -53,19 +93,35 @@ const present = (value: unknown) => value !== null && value !== undefined && val
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
-/** Decodes a section's data against its type, drops empty values and unknown locales and
- *  sanitizes rich text. */
-const cleanData = (
-  type: SectionType,
+const isLink = (value: unknown): value is Link => isRecord(value) && typeof value.type === 'string'
+
+/** Decodes a field group's data against its fields, drops empty values and unknown locales,
+ *  checks links and sanitizes rich text. */
+export const cleanData = (
+  definitions: CmsDefinitions,
+  type: FieldGroup,
   data: Readonly<Record<string, unknown>>,
   locales: ReadonlyArray<string>,
 ) =>
   Effect.gen(function* () {
     const decoded: Readonly<Record<string, unknown>> = yield* Schema.decodeUnknownEffect(
       sectionDataSchema(type),
-    )(data)
+    )(data).pipe(Effect.mapError((error) => invalid(error.message)))
+    for (const [name, field] of Object.entries(type.fields)) {
+      if (field.kind !== 'link') continue
+      const value = decoded[name]
+      const links = field.localized && isRecord(value) ? Object.values(value) : [value]
+      for (const link of links) {
+        const problem = isLink(link) ? linkProblem(definitions, link) : undefined
+        if (problem) return yield* invalid(`"${labelText(field.label, 'en')}": ${problem}`)
+      }
+    }
     const clean = (kind: string, value: unknown) =>
-      kind === 'richText' && typeof value === 'string' ? sanitizeRichText(value) : value
+      kind === 'richText' && typeof value === 'string'
+        ? sanitizeRichText(value)
+        : kind === 'link' && isLink(value) && value.type === 'url'
+          ? { type: 'url', url: value.url.trim() }
+          : value
     const out: Record<string, unknown> = {}
     for (const [name, field] of Object.entries(type.fields)) {
       const value = decoded[name]
@@ -99,9 +155,7 @@ export const normalizeDocument = (
   Effect.gen(function* () {
     if (document.sections.length > maxSections)
       return yield* invalid(`A page holds at most ${maxSections} sections.`)
-    const pageLocales: Record<string, PageLocale> = {}
-    for (const locale of locales)
-      pageLocales[locale] = yield* cleanLocale(locale, document.locales[locale])
+    const pageLocales = yield* cleanLocales(locales, document.locales)
     const sections: Array<Section> = []
     for (const [index, section] of document.sections.entries()) {
       const type: SectionType | undefined = Object.hasOwn(definitions.sections, section.type)
@@ -109,7 +163,7 @@ export const normalizeDocument = (
         : undefined
       if (!type)
         return yield* invalid(`Section ${index + 1} has an unknown type "${section.type}".`)
-      const data = yield* cleanData(type, section.data, locales).pipe(
+      const data = yield* cleanData(definitions, type, section.data, locales).pipe(
         Effect.mapError((error) =>
           invalid(`Section ${index + 1} (${labelText(type.label, 'en')}): ${error.message}`),
         ),
@@ -123,7 +177,28 @@ export const normalizeDocument = (
     return { locales: pageLocales, sections }
   })
 
-/** Publishing needs every required field filled (in the default locale, if localized). */
+/** Every required field of a group filled (in the default locale, if localized). */
+export const checkFields = (
+  group: FieldGroup,
+  defaultLocale: string,
+  data: Readonly<Record<string, unknown>>,
+): Effect.Effect<void, CmsInvalid> =>
+  Effect.gen(function* () {
+    for (const [name, field] of Object.entries(group.fields)) {
+      const value = data[name]
+      const filled = field.localized
+        ? isRecord(value) && present(value[defaultLocale])
+        : Array.isArray(value)
+          ? value.length > 0
+          : present(value)
+      if (field.required && !filled)
+        return yield* invalid(
+          `"${labelText(field.label, 'en')}" is required${field.localized ? ` in ${defaultLocale}` : ''}.`,
+        )
+    }
+  })
+
+/** Publishing a page needs every section's required fields filled. */
 export const checkRequired = (
   definitions: CmsDefinitions,
   defaultLocale: string,
@@ -134,18 +209,33 @@ export const checkRequired = (
       const type = definitions.sections[section.type]
       if (!type)
         return yield* invalid(`Section ${index + 1} has an unknown type "${section.type}".`)
-      for (const [name, field] of Object.entries(type.fields)) {
-        const value = section.data[name]
-        const filled = field.localized
-          ? isRecord(value) && present(value[defaultLocale])
-          : present(value)
-        if (field.required && !filled)
-          return yield* invalid(
-            `Section ${index + 1} (${labelText(type.label, 'en')}): "${labelText(field.label, 'en')}" is required${field.localized ? ` in ${defaultLocale}` : ''}.`,
-          )
-      }
+      yield* checkFields(type, defaultLocale, section.data).pipe(
+        Effect.mapError((error) =>
+          invalid(`Section ${index + 1} (${labelText(type.label, 'en')}): ${error.message}`),
+        ),
+      )
     }
   })
+
+/** A field group's data in one locale: localized fields resolved, falling back to `fallback`. */
+export const localizeData = (
+  group: FieldGroup,
+  data: Readonly<Record<string, unknown>>,
+  locale: string,
+  fallback: string,
+): Record<string, unknown> => {
+  const out: Record<string, unknown> = {}
+  for (const [name, value] of Object.entries(data)) {
+    const field = group.fields[name]
+    if (!field) continue
+    if (!field.localized) out[name] = value
+    else {
+      const values = isRecord(value) ? value : {}
+      out[name] = values[locale] ?? values[fallback] ?? null
+    }
+  }
+  return out
+}
 
 /** A section's data in one locale: localized fields resolved, falling back to `fallback`. */
 export const localizeSection = (
@@ -155,16 +245,5 @@ export const localizeSection = (
   fallback: string,
 ): Section => {
   const type = definitions.sections[section.type]
-  if (!type) return section
-  const data: Record<string, unknown> = {}
-  for (const [name, value] of Object.entries(section.data)) {
-    const field = type.fields[name]
-    if (!field) continue
-    if (!field.localized) data[name] = value
-    else {
-      const values = isRecord(value) ? value : {}
-      data[name] = values[locale] ?? values[fallback] ?? null
-    }
-  }
-  return { ...section, data }
+  return type ? { ...section, data: localizeData(type, section.data, locale, fallback) } : section
 }

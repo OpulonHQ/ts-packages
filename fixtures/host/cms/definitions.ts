@@ -40,4 +40,40 @@ export const definitions = defineCms({
     home: { label: { en: 'Homepage', sk: 'Domovská stránka' }, paths: { en: '/', it: '/' } },
     contact: { label: 'Contact', paths: { en: '/contact', it: '/contatti' } },
   },
+  collections: {
+    posts: {
+      label: { en: 'Posts', sk: 'Články' },
+      routed: true,
+      fields: {
+        title: fields.text({ label: { en: 'Title', sk: 'Nadpis' }, required: true }),
+        body: fields.richText({ label: { en: 'Body', sk: 'Text' } }),
+        cover: fields.media({ label: { en: 'Cover', sk: 'Obálka' }, accept: 'image' }),
+        categories: fields.reference({
+          label: { en: 'Categories', sk: 'Kategórie' },
+          collection: 'categories',
+          many: true,
+        }),
+      },
+    },
+    categories: {
+      label: { en: 'Categories', sk: 'Kategórie' },
+      fields: { name: fields.text({ label: { en: 'Name', sk: 'Názov' }, required: true }) },
+    },
+    testimonials: {
+      label: 'Testimonials',
+      titleField: 'author',
+      fields: {
+        quote: fields.textarea({ label: 'Quote', required: true }),
+        author: fields.text({ label: 'Author', localized: false }),
+      },
+    },
+  },
+  settings: {
+    phone: fields.text({ label: { en: 'Phone', sk: 'Telefón' }, localized: false }),
+    cta: fields.link({ label: { en: 'Call to action', sk: 'Výzva k akcii' } }),
+  },
+  menus: {
+    main: { label: { en: 'Main menu', sk: 'Hlavné menu' } },
+    footer: { label: { en: 'Footer', sk: 'Päta' }, depth: 1 },
+  },
 })

@@ -1,14 +1,40 @@
 // Client-safe: the host's cms definitions (TSPACK-11). One file, imported by the host's server
 // (`cms({ definitions })`) and admin (`cmsAdmin({ definitions })`) entries, so server validation
-// and the admin's generated forms come from the same field definitions. Collections, site
-// settings and menus (next slices) reuse `Field` and add their own keys to `CmsDefinitions`.
+// and the admin's generated forms come from the same field definitions: section types,
+// collections and site settings all use `Field`.
 import { Schema } from 'effect'
 
 /** Admin text: one string, or one per admin locale (`{ en: 'Title', sk: 'Nadpis' }`). */
 export type Label = string | Readonly<Record<string, string>>
 
 export type FieldKind =
-  'text' | 'textarea' | 'richText' | 'number' | 'select' | 'boolean' | 'media' | 'custom'
+  | 'text'
+  | 'textarea'
+  | 'richText'
+  | 'number'
+  | 'select'
+  | 'boolean'
+  | 'media'
+  | 'link'
+  | 'reference'
+  | 'custom'
+
+const uuidString = Schema.String.check(Schema.isUUID())
+
+/**
+ * A link to a page, an item, a system page (by key) or a URL. It stores the reference, not the
+ * path: the Read API resolves it to the target's current published path per locale.
+ */
+export const Link = Schema.Union([
+  Schema.Struct({ type: Schema.Literal('page'), id: Schema.String }),
+  Schema.Struct({ type: Schema.Literal('item'), id: Schema.String }),
+  Schema.Struct({ type: Schema.Literal('system'), key: Schema.String }),
+  Schema.Struct({
+    type: Schema.Literal('url'),
+    url: Schema.String.check(Schema.isMaxLength(2000)),
+  }),
+])
+export type Link = typeof Link.Type
 
 /**
  * One field of a section type: its value schema (Effect Schema, validated on the server) and
@@ -33,6 +59,9 @@ export interface Field<T = unknown> {
   /** `number`: bounds, also shown by the widget. */
   readonly min?: number
   readonly max?: number
+  /** `reference`: the collection whose items it points at, and whether it holds a list. */
+  readonly collection?: string
+  readonly many?: boolean
 }
 
 interface FieldOptions {
@@ -101,17 +130,47 @@ export const fields = {
   boolean: (o: FieldOptions) => make('boolean', Schema.Boolean, o, false),
   /** A media library id, picked with `MediaPicker`; the Read API resolves it. */
   media: (o: FieldOptions & { readonly accept?: 'image' | 'pdf' }) =>
-    make('media', Schema.String.check(Schema.isUUID()), o, false, {
+    make('media', uuidString, o, false, {
       ...(o.accept ? { accept: o.accept } : {}),
     }),
+  /** A link to a page, item, system page or URL (see `Link`). */
+  link: (o: FieldOptions) => make('link', Link, o, false),
+  /** Item id(s) of one collection; `many` holds an ordered list (at most 100). */
+  reference: (o: FieldOptions & { readonly collection: string; readonly many?: boolean }) =>
+    make<string | ReadonlyArray<string>>(
+      'reference',
+      o.many ? Schema.Array(uuidString).check(Schema.isMaxLength(100)) : uuidString,
+      o,
+      false,
+      { collection: o.collection, many: o.many ?? false },
+    ),
   /** Any value schema with a host widget (`cmsAdmin({ widgets: { [widget]: ... } })`). */
   custom: <T>(o: FieldOptions & { readonly widget: string; readonly schema: Schema.Decoder<T> }) =>
     make('custom', o.schema, o, false),
 }
 
-export interface SectionType {
-  readonly label: Label
+/** Anything holding a set of fields: a section type, a collection, the site settings. */
+export interface FieldGroup {
   readonly fields: Readonly<Record<string, Field>>
+}
+
+export interface SectionType extends FieldGroup {
+  readonly label: Label
+}
+
+/** A host-defined collection type (posts, team, testimonials, categories). */
+export interface Collection extends FieldGroup {
+  readonly label: Label
+  /** Items get their own path, availability and SEO per content locale, like pages. */
+  readonly routed?: boolean
+  /** The field naming an item in lists and pickers; default: the first text field. */
+  readonly titleField?: string
+}
+
+export interface Menu {
+  readonly label: Label
+  /** How deep items nest, 1 to 3 (default 3). */
+  readonly depth?: 1 | 2 | 3
 }
 
 export interface SystemPage {
@@ -126,31 +185,90 @@ export const richTextSection = {
   fields: { body: fields.richText({ label: { en: 'Text', sk: 'Text' } }) },
 } satisfies SectionType
 
+/** The global SEO fields every host's site settings start with (TSPACK-11). */
+export const siteSettingsFields = {
+  siteName: fields.text({ label: { en: 'Site name', sk: 'Názov webu' } }),
+  titleTemplate: fields.text({
+    label: { en: 'Title template', sk: 'Šablóna titulku' },
+    help: {
+      en: '"%s" stands for the page title, e.g. "%s | Example".',
+      sk: '"%s" nahradí titulok stránky, napr. "%s | Príklad".',
+    },
+  }),
+  defaultImage: fields.media({
+    label: { en: 'Default social image', sk: 'Predvolený obrázok na zdieľanie' },
+    accept: 'image',
+  }),
+  twitterHandle: fields.text({
+    label: { en: 'X (Twitter) handle', sk: 'Účet na X (Twitter)' },
+    localized: false,
+    maxLength: 50,
+  }),
+} satisfies Record<string, Field>
+
 export interface CmsDefinitions {
   readonly sections: Readonly<Record<string, SectionType>> & {
     readonly rich_text: typeof richTextSection
   }
   readonly systemPages: Readonly<Record<string, SystemPage>>
+  readonly collections: Readonly<Record<string, Collection>>
+  /** The site settings singleton: the global SEO fields plus the host's. */
+  readonly settings: FieldGroup
+  readonly menus: Readonly<Record<string, Menu>>
 }
 
+const keyPattern = /^[a-z][a-z0-9_]*$/
+
 /**
- * The host's cms definitions: section types and system pages (by key). Keys are
- * `[a-z][a-z0-9_]*`; `rich_text` is added. Pass the result to `cms()` and `cmsAdmin()`.
+ * The host's cms definitions: section types, system pages, collections, site settings fields
+ * and menus, all by key (`[a-z][a-z0-9_]*`). `rich_text` and the global SEO settings are added.
+ * Pass the result to `cms()` and `cmsAdmin()`.
  */
 export const defineCms = <
   const Sections extends Readonly<Record<string, SectionType>>,
   const SystemPages extends Readonly<Record<string, SystemPage>>,
+  const Collections extends Readonly<Record<string, Collection>> = Record<never, never>,
+  const Menus extends Readonly<Record<string, Menu>> = Record<never, never>,
 >(definitions: {
   readonly sections: Sections
   readonly systemPages: SystemPages
+  readonly collections?: Collections
+  readonly settings?: Readonly<Record<string, Field>>
+  readonly menus?: Menus
 }) => {
   const sections = { rich_text: richTextSection, ...definitions.sections }
   const systemPages = definitions.systemPages
-  for (const key of [...Object.keys(sections), ...Object.keys(systemPages)])
-    if (!/^[a-z][a-z0-9_]*$/.test(key))
-      throw new Error(`cms definitions: "${key}" is not a valid key ([a-z][a-z0-9_]*).`)
-  return { sections, systemPages } satisfies CmsDefinitions
+  const collections = definitions.collections ?? ({} as Collections)
+  const menus = definitions.menus ?? ({} as Menus)
+  const settings = { fields: { ...siteSettingsFields, ...definitions.settings } }
+  const fail = (message: string) => {
+    throw new Error(`cms definitions: ${message}`)
+  }
+  for (const key of [
+    ...Object.keys(sections),
+    ...Object.keys(systemPages),
+    ...Object.keys(collections),
+    ...Object.keys(menus),
+  ])
+    if (!keyPattern.test(key)) fail(`"${key}" is not a valid key ([a-z][a-z0-9_]*).`)
+  const groups: Array<[string, FieldGroup]> = [
+    ...Object.entries(sections).map(([k, g]): [string, FieldGroup] => [`section type "${k}"`, g]),
+    ...Object.entries(collections).map(([k, g]): [string, FieldGroup] => [`collection "${k}"`, g]),
+    ['site settings', settings],
+  ]
+  for (const [owner, group] of groups)
+    for (const [name, field] of Object.entries(group.fields))
+      if (field.kind === 'reference' && !Object.hasOwn(collections, field.collection ?? ''))
+        fail(`field "${name}" of ${owner} references the unknown collection "${field.collection}".`)
+  for (const [key, collection] of Object.entries(collections))
+    if (collection.titleField !== undefined && !(collection.titleField in collection.fields))
+      fail(`the title field "${collection.titleField}" of collection "${key}" is not a field.`)
+  return { sections, systemPages, collections, settings, menus } satisfies CmsDefinitions
 }
+
+/** The field naming a collection's items: `titleField`, else the first text field. */
+export const titleFieldOf = (collection: Collection) =>
+  collection.titleField ?? Object.entries(collection.fields).find(([, f]) => f.kind === 'text')?.[0]
 
 /** The label in the admin locale, else English, else the first one. */
 export const labelText = (label: Label | undefined, locale: string) =>
@@ -160,8 +278,8 @@ export const labelText = (label: Label | undefined, locale: string) =>
       ? label
       : (label[locale] ?? label.en ?? Object.values(label)[0] ?? '')
 
-/** The stored shape of a section's data: localized fields hold `{ [locale]: value }`. */
-export const sectionDataSchema = (type: SectionType) =>
+/** The stored shape of a field group's data: localized fields hold `{ [locale]: value }`. */
+export const sectionDataSchema = (type: FieldGroup) =>
   Schema.Struct(
     Object.fromEntries(
       Object.entries(type.fields).map(([name, field]) => [
