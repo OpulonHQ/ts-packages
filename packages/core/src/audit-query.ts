@@ -16,6 +16,10 @@ export const listAudit = Effect.fn('Audit.list')(
     const page = query.page ?? 1
     const perPage = query.perPage ?? auditDefaultPerPage
     const actor = query.actor?.trim()
+    const module = query.module?.trim()
+    const action = query.action?.trim()
+    const subjectType = query.subjectType?.trim()
+    const subjectId = query.subjectId?.trim()
     const label = query.subjectLabel?.trim()
     const where = sql.and([
       sql`true`,
@@ -26,10 +30,10 @@ export const listAudit = Effect.fn('Audit.list')(
       or strpos(lower(actor_name), lower(${actor})) > 0)`,
           ]
         : []),
-      ...(query.module ? [sql`split_part(action, '.', 1) = ${query.module}`] : []),
-      ...(query.action ? [sql`action = ${query.action}`] : []),
-      ...(query.subjectType ? [sql`subject_type = ${query.subjectType}`] : []),
-      ...(query.subjectId ? [sql`subject_id = ${query.subjectId}`] : []),
+      ...(module ? [sql`split_part(action, '.', 1) = ${module}`] : []),
+      ...(action ? [sql`action = ${action}`] : []),
+      ...(subjectType ? [sql`subject_type = ${subjectType}`] : []),
+      ...(subjectId ? [sql`subject_id = ${subjectId}`] : []),
       ...(label ? [sql`strpos(lower(subject_label), lower(${label})) > 0`] : []),
       ...(query.start ? [sql`occurred_at >= ${query.start}::timestamptz`] : []),
       ...(query.end ? [sql`occurred_at < ${query.end}::timestamptz`] : []),

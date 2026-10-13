@@ -104,6 +104,7 @@ const timestamp = Schema.String.check(
 )
 
 /** Actor matches kind/id/name text; module/action and subject type/id match exactly.
+ * Text filters trim surrounding whitespace and ignore blank values.
  * Subject label matches text. UTC ISO start is inclusive; end is exclusive.
  * Paging offsets cannot exceed auditMaxOffset. */
 export const AuditQuery = Schema.Struct({
