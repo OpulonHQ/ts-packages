@@ -1,0 +1,17 @@
+{
+  "name": "@opulonjs-fixtures/nuxt",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "nuxt prepare && vue-tsc -b --noEmit",
+    "build:nuxt": "nuxt build"
+  },
+  "dependencies": {
+    "@opulonjs-fixtures/host": "workspace:*",
+    "@opulonjs/cms": "workspace:*",
+    "nuxt": "4.6.1",
+    "vue": "3.5.43",
+    "vue-router": "5.4.0"
+  }
+}

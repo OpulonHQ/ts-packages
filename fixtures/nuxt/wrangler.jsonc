@@ -1,0 +1,19 @@
+// Nuxt 4 public site over the fixture host on real Workers (TSPACK-38). Public repo: no ids here.
+// One Worker: Nuxt renders pages, reading the cms in-process (cmsNitroHooks in
+// server/plugins/cms.ts), and server/middleware/api.ts hands /api/** to the fixture host.
+// Deploy from an ignored copy (wrangler.deploy.jsonc) with the Hyperdrive id filled in, after
+// `pnpm build` (packages resolve to dist), `pnpm --filter @opulonjs-fixtures/nuxt build:nuxt` and
+// `opulon migrate --server server/opulon.ts` (from fixtures/host) against the direct URL. Vars and
+// the USERS_AUTH_SECRET secret are the fixture host's (see fixtures/host/wrangler.jsonc).
+// Hyperdrive query caching off (docs/adr/0006). No cron triggers: this Worker has no scheduled
+// tasks to run.
+{
+  "name": "tspack-nuxt-fixture",
+  "main": ".output/server/index.mjs",
+  "compatibility_date": "2026-10-12",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "assets": { "directory": ".output/public", "binding": "ASSETS" },
+  "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "<hyperdrive-id>" }],
+  "observability": { "enabled": true },
+}

@@ -26,6 +26,7 @@ export DATABASE_URL_TEST=postgres://postgres:postgres@127.0.0.1:54317/postgres
 
 - `packages/*`: the published `@opulonjs/*` packages. Inside the repo they resolve each other to `src` through the `@opulonjs/source` export condition, so no build is needed for typecheck or tests.
 - `fixtures/host`: an unpublished host app composing the packages; the main test seam. Its `admin/` builds with the `@opulonjs/admin/vite` preset into `public/admin`, which `worker.ts` serves through `serveAdmin` (Workers static assets). Admin tests mount `createAdmin` in happy-dom with `fetch` routed into the Worker.
+- `fixtures/nuxt`: a minimal Nuxt 4 public site over the fixture host, deployed to real Workers to check `@opulonjs/cms/site/nuxt` (deploy steps in its `wrangler.jsonc`). Not part of `pnpm build`.
 - `test/`: repo-level tests and helpers.
 
 ## Package graph
