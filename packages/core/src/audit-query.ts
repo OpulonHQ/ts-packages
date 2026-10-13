@@ -3,7 +3,6 @@ import { SqlClient } from 'effect/sql/SqlClient'
 import { AuditPage, type AuditQuery } from './api.ts'
 import { requirePermission } from './authz.ts'
 
-/** Reads snapshot events without joining live records. Checks permission for non-HTTP callers too. */
 export const listAudit = Effect.fn('Audit.list')(
   function* (query: AuditQuery) {
     yield* requirePermission('core.audit.view')

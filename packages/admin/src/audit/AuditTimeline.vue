@@ -7,7 +7,6 @@ import { useApiClient } from '../api-client.ts'
 import { useAdmin } from '../state.ts'
 import AuditEventDetails from './AuditEventDetails.vue'
 
-/** Permission-gated, paged snapshot history of one subject. Call refresh after a mutation. */
 const props = defineProps<{ subjectType: string; subjectId: string }>()
 const { t } = useI18n()
 const { can, me } = useAdmin()
