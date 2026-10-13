@@ -337,6 +337,7 @@ export default async (ctx) => {
     'cleared single reference is absent from the persisted draft',
   )
   await shot('single-reference-cleared')
+  await page.unroute('**/api/cms/items/*')
   const doomed = await api('POST', '/cms/collections/categories/items', {
     locales: {},
     data: { name: { en: 'Removed fixture reference' } },
