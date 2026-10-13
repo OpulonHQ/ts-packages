@@ -1,0 +1,12 @@
+{
+  "$schema": "https://unpkg.com/@changesets/config@4.0.1/schema.json",
+  "baseBranch": "main",
+  "access": "public",
+  "fixed": [["@opulonjs/*"]],
+  "ignore": ["@opulonjs-fixtures/host"],
+  "privatePackages": { "version": true, "tag": false },
+  "updateInternalDependencies": "patch",
+  "snapshot": { "useCalculatedVersion": true },
+  "commit": false,
+  "changelog": "@changesets/cli/changelog"
+}

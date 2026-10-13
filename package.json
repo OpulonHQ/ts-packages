@@ -1,0 +1,45 @@
+{
+  "name": "ts-packages",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.20.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "lint": "eslint . && prettier --check .",
+    "format": "prettier --write .",
+    "typecheck": "tsgo --noEmit && pnpm -r --workspace-concurrency=6 typecheck",
+    "test": "vitest run",
+    "build": "pnpm -r --workspace-concurrency=6 build",
+    "pack:check": "node scripts/pack-check.ts",
+    "smoke": "node scripts/smoke.ts",
+    "changeset": "changeset",
+    "version-packages": "changeset version && pnpm install --lockfile-only",
+    "release": "pnpm build && changeset publish",
+    "snapshot": "changeset version --snapshot next && pnpm build && changeset publish --tag next --no-git-tag"
+  },
+  "devDependencies": {
+    "@changesets/cli": "3.0.3",
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.19.2",
+    "@types/pg": "8.23.1",
+    "@typescript/native-preview": "7.0.0-dev.20260707.2",
+    "@vitejs/plugin-vue": "6.0.10",
+    "eslint": "10.12.0",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-vue": "10.11.1",
+    "happy-dom": "20.14.5",
+    "pg": "8.23.1",
+    "prettier": "3.9.10",
+    "tsdown": "0.23.1",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.1",
+    "unplugin-vue": "8.0.0",
+    "vite": "8.3.4",
+    "vitest": "5.0.3",
+    "vue": "3.5.43",
+    "vue-eslint-parser": "10.4.1",
+    "vue-tsc": "3.3.13"
+  }
+}

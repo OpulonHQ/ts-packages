@@ -1,0 +1,66 @@
+{
+  "name": "@opulonjs/users",
+  "version": "0.0.0",
+  "description": "Staff users: sign-in, invitations and password reset for @opulonjs host apps",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OpulonHQ/ts-packages.git",
+    "directory": "packages/users"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "@opulonjs/source": "./src/index.ts",
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    },
+    "./api": {
+      "@opulonjs/source": "./src/api.ts",
+      "types": "./dist/api.d.mts",
+      "default": "./dist/api.mjs"
+    },
+    "./server": {
+      "@opulonjs/source": "./src/server/index.ts",
+      "types": "./dist/server/index.d.mts",
+      "default": "./dist/server/index.mjs"
+    },
+    "./admin": {
+      "@opulonjs/source": "./src/admin/index.ts",
+      "types": "./dist/admin/index.d.mts",
+      "default": "./dist/admin/index.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "@opulonjs/admin": "workspace:*",
+    "@opulonjs/core": "workspace:*",
+    "@opulonjs/emails": "workspace:*",
+    "@opulonjs/ui": "workspace:*",
+    "better-auth": "1.7.7",
+    "kysely": "0.29.6",
+    "pg": "8.23.1"
+  },
+  "peerDependencies": {
+    "@effect/sql-pg": "4.0.3",
+    "effect": "4.0.3",
+    "vue": "^3.5.0"
+  },
+  "devDependencies": {
+    "@effect/sql-pg": "4.0.3",
+    "@types/pg": "8.23.1",
+    "effect": "4.0.3",
+    "vue": "3.5.43"
+  }
+}

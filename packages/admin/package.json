@@ -1,0 +1,51 @@
+{
+  "name": "@opulonjs/admin",
+  "version": "0.0.0",
+  "description": "Admin shell, module contract and Vite preset for @opulonjs host apps",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OpulonHQ/ts-packages.git",
+    "directory": "packages/admin"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "@opulonjs/source": "./src/index.ts",
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    },
+    "./vite": {
+      "@opulonjs/source": "./src/vite.ts",
+      "types": "./dist/vite.d.mts",
+      "default": "./dist/vite.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "@opulonjs/ui": "workspace:*",
+    "@vitejs/plugin-vue": "6.0.10",
+    "vue-i18n": "11.4.14",
+    "vue-router": "5.4.0"
+  },
+  "peerDependencies": {
+    "effect": "4.0.3",
+    "vite": "^8.0.0",
+    "vue": "^3.5.0"
+  },
+  "devDependencies": {
+    "effect": "4.0.3",
+    "vite": "8.3.4"
+  }
+}

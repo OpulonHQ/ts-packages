@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.packed/
+*.tsbuildinfo
+.env*
+.wrangler/
+# Deploy copy of a wrangler config with real ids (public repo).
+wrangler.deploy.jsonc
+fixtures/host/public/admin/
+.vitest/

@@ -1,0 +1,35 @@
+// Deploy smoke for the fixture host (TSPACK-22). Public repo: no account or Hyperdrive ids here.
+// Deploy with CLOUDFLARE_ACCOUNT_ID set, from an ignored copy (wrangler.deploy.jsonc) with the
+// Hyperdrive id filled in, after `pnpm build` (packages resolve to dist) and `opulon migrate`
+// against the direct URL. Pass the build id with `--var OPULON_BUILD_ID:$OPULON_BUILD_ID` (the
+// same value the admin build read) and the Worker's origin with `--var USERS_BASE_URL:<origin>`;
+// set `wrangler secret put USERS_AUTH_SECRET` (32+ random characters). The first user comes from
+// `opulon users invite-super-admin --server server/opulon.ts --email <address>`.
+// The Worker runs first for every path: serveAdmin answers /admin/** from ASSETS (SPA fallback
+// with no-store, immutable hashed assets), serveMedia answers /media/** from the R2 bucket
+// (immutable originals), everything else goes to the composed API. Resized media URLs
+// (/cdn-cgi/image/...) need Image Transformations enabled on the zone.
+// Create the Hyperdrive config with query caching off (`wrangler hyperdrive create <name>
+// --connection-string=... --caching-disabled`): the cms Read API is purged by Cache-Tag on
+// publish, and a cached database read would rebuild it from stale rows (docs/adr/0006).
+// Then drive it with `SMOKE_URL=<origin> DATABASE_URL_DIRECT=<direct url> pnpm smoke`
+// (scripts/smoke.ts; waits for a real */5 cron tick, so allow ~6 minutes). Cleanup: wrangler
+// delete, hyperdrive delete, empty the R2 bucket (r2 object delete) before r2 bucket delete,
+// and delete the throwaway database.
+{
+  "name": "tspack-fixture-host",
+  "main": "worker.ts",
+  "compatibility_date": "2026-10-12",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": true,
+    "html_handling": "none",
+  },
+  "r2_buckets": [{ "binding": "MEDIA_BUCKET", "bucket_name": "tspack-fixture-media" }],
+  "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "<hyperdrive-id>" }],
+  "triggers": { "crons": ["*/5 * * * *"] },
+  "observability": { "enabled": true },
+}

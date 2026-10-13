@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node", "vite/client"],
+    // Vue templates (the host's and, in-repo, the UI kit's sources) pass `undefined` for absent
+    // optional props by design.
+    "exactOptionalPropertyTypes": false
+  },
+  "include": ["test", "modules", "server", "admin", "worker.ts", "vite.config.ts"]
+}

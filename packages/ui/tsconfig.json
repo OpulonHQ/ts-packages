@@ -1,0 +1,6 @@
+{
+  "extends": "../../tsconfig.base.json",
+  // Vue templates pass `undefined` for absent optional props by design.
+  "compilerOptions": { "exactOptionalPropertyTypes": false },
+  "include": ["src", "test"]
+}

@@ -29,7 +29,7 @@ Recurring work a module declares to run at a fixed interval (every few minutes, 
 _Avoid_: cron job, job, worker
 
 **Host app**:
-The project's own application (SLM, ICF, ...) that installs packages, mounts their API, serves the admin and renders the public website.
+A project's own application that installs packages, mounts their API, serves the admin and renders the public website.
 _Avoid_: consumer app, client app, site
 
 **Admin shell**:
@@ -57,7 +57,7 @@ The Audit events of one subject, shown on that subject's admin screen.
 _Avoid_: history, activity feed
 
 **Pilot**:
-The first host app built on TSPACK (SLM), whose needs decide the v1 scope.
+The first host app built on TSPACK, whose needs decide the v1 scope.
 _Avoid_: test project, guinea pig
 
 **UI kit**:
@@ -139,6 +139,14 @@ _Avoid_: headless API, content API, frontend API
 **Public site**:
 The visitor-facing pages of a host app, rendered from published CMS content that it reads through the Read API.
 _Avoid_: frontend, website, storefront
+
+**Public path**:
+Where content is reached on the public site: its path in a content locale, prefixed with that locale except in the default one (`/about`, `/it/chi-siamo`, `/it` for the Italian homepage).
+_Avoid_: URL, slug, route
+
+**Sitemap source**:
+A module's contribution to the sitemap: one child sitemap listing the public paths of its content.
+_Avoid_: sitemap provider, sitemap plugin
 
 **Email template**:
 A named email a module can send (such as an invitation), with its placeholders and default wording in each locale.

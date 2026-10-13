@@ -1,0 +1,78 @@
+{
+  "name": "@opulonjs/cms",
+  "version": "0.0.0",
+  "description": "Pages built from host-defined sections, with drafts, publishing and revisions, for @opulonjs host apps",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OpulonHQ/ts-packages.git",
+    "directory": "packages/cms"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "@opulonjs/source": "./src/index.ts",
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    },
+    "./api": {
+      "@opulonjs/source": "./src/api.ts",
+      "types": "./dist/api.d.mts",
+      "default": "./dist/api.mjs"
+    },
+    "./server": {
+      "@opulonjs/source": "./src/server/index.ts",
+      "types": "./dist/server/index.d.mts",
+      "default": "./dist/server/index.mjs"
+    },
+    "./admin": {
+      "@opulonjs/source": "./src/admin/index.ts",
+      "types": "./dist/admin/index.d.mts",
+      "default": "./dist/admin/index.mjs"
+    },
+    "./site": {
+      "@opulonjs/source": "./src/site/index.ts",
+      "types": "./dist/site/index.d.mts",
+      "default": "./dist/site/index.mjs"
+    },
+    "./site/nuxt": {
+      "@opulonjs/source": "./src/site/nuxt.ts",
+      "types": "./dist/site/nuxt.d.mts",
+      "default": "./dist/site/nuxt.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "@opulonjs/admin": "workspace:*",
+    "@opulonjs/core": "workspace:*",
+    "@opulonjs/media": "workspace:*",
+    "@opulonjs/ui": "workspace:*",
+    "sanitize-html": "2.18.0"
+  },
+  "peerDependencies": {
+    "effect": "4.0.3",
+    "vue": "^3.5.0",
+    "vue-router": "^5.4.0"
+  },
+  "peerDependenciesMeta": {
+    "nuxt": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/sanitize-html": "2.16.2",
+    "effect": "4.0.3",
+    "vue-router": "5.4.0"
+  }
+}
