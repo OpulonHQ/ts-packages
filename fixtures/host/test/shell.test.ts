@@ -236,3 +236,44 @@ test('a saved language applies even if reading /me again would fail', async () =
   await expect.poll(admin.text).toContain('Dashboard')
   expect(admin.text()).not.toContain('could not reach the server')
 })
+
+test('an unmounted admin leaves the document language alone when its catalogs arrive late', async () => {
+  const held = Promise.withResolvers<void>()
+  const loads: Array<Promise<unknown>> = []
+  const hold =
+    <T>(load: () => Promise<T>) =>
+    async () => {
+      await held.promise
+      const loaded = load()
+      loads.push(loaded)
+      return loaded
+    }
+  const modules = adminModules.map((m) => ({
+    ...m,
+    messages: { en: hold(m.messages.en), sk: hold(m.messages.sk) },
+  }))
+  let requested = false
+  const app = createAdmin({
+    brand,
+    modules,
+    buildId: 'b1',
+    fetch: async (input, init) => {
+      const response = await hosts.b1.browserFetch({ cookie })(input, init)
+      if (String(input instanceof Request ? input.url : input).endsWith('/api/me')) requested = true
+      return response
+    },
+  })
+  history.replaceState(null, '', '/admin/')
+  document.body.innerHTML = '<div id="app"></div>'
+  document.documentElement.lang = 'xx'
+  app.mount('#app')
+  await expect.poll(() => requested).toBe(true)
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  app.unmount()
+  held.resolve()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  await Promise.all(loads)
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(loads.length).toBeGreaterThan(0)
+  expect(document.documentElement.lang).toBe('xx')
+})

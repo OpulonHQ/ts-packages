@@ -168,6 +168,7 @@ export const createAdmin = (options: AdminOptions): App => {
   const allowed = (access: Access | undefined) =>
     !access || access.public || access.signedIn || can(access.permission)
 
+  let unmounted = false
   const getMe = async (): Promise<Me | 'signedOut'> => {
     const response = await fetch(new URL(`${apiPrefix}/me`, location.origin), {
       credentials: 'same-origin',
@@ -193,6 +194,7 @@ export const createAdmin = (options: AdminOptions): App => {
       loadMessages(locale, modules),
       locale === 'en' ? undefined : loadMessages('en', modules),
     ])
+    if (unmounted) return
     i18n.global.locale.value = locale
     document.documentElement.lang = locale
   }
@@ -401,11 +403,15 @@ export const createAdmin = (options: AdminOptions): App => {
   })
 
   document.title = options.brand.name
-  return createApp(Shell)
+  const app = createApp(Shell)
     .use(router)
     .use(i18n)
     .use(uiPlugin)
     .provide(apiContextKey, { apiPrefix, fetch })
     .provide(adminStateKey, state)
     .provide(failedScreenKey, failedScreen)
+  app.onUnmount(() => {
+    unmounted = true
+  })
+  return app
 }
