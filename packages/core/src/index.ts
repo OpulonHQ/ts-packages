@@ -25,6 +25,7 @@ export {
 } from './compose.ts'
 export type { ComposedServer, Unprovided } from './compose.ts'
 export { migrate } from './migrate.ts'
+export { describeError } from './redact.ts'
 export type { Applied } from './migrate.ts'
 export { defineModule } from './module.ts'
 export type {

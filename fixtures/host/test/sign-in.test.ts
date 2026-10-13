@@ -1,4 +1,5 @@
-import { expect, test } from 'vitest'
+import { format } from 'node:util'
+import { expect, test, vi } from 'vitest'
 import { useTestDatabase } from '../../../test/postgres/index.ts'
 import { makeHost, randomIp, seedUser, sqlQuery } from './support/users.ts'
 
@@ -149,4 +150,49 @@ test('an active session is extended, and the browser gets the refreshed cookie',
     [user.id],
   )
   expect(Number(session!.days)).toBeGreaterThan(6.9)
+})
+
+/** Everything written to the console while `fn` runs. */
+async function consoleOf(fn: () => Promise<unknown>) {
+  const logged: Array<string> = []
+  // As the console prints them: an error's message and stack included.
+  const capture = (...args: Array<unknown>) => void logged.push(format(...args))
+  const spies = (['log', 'error', 'warn', 'info', 'debug'] as const).map((m) =>
+    vi.spyOn(console, m).mockImplementation(capture),
+  )
+  try {
+    await fn()
+  } finally {
+    for (const spy of spies) spy.mockRestore()
+  }
+  return logged.join('\n')
+}
+
+test('a sign-in Better Auth fails answers 500 and logs the cause, without user data', async () => {
+  const user = await seedUser(db.url)
+  // A database error whose message quotes the user, as Postgres errors quote rejected values.
+  await sqlQuery(
+    db.url,
+    `create function users.fail_session() returns trigger language plpgsql as $$
+       begin raise exception 'no session for %', new.user_id using errcode = 'P0042'; end $$;
+     create trigger fail_session before insert on users.session
+       for each row execute function users.fail_session()`,
+  )
+  let status = 0
+  const log = await consoleOf(async () => {
+    status = (await signIn(user.email, user.password)).status
+  })
+  expect(status).toBe(500)
+  expect(log).toContain('request failed')
+  expect(log).toContain('P0042')
+  expect(log).not.toContain(user.id)
+  expect(log).not.toContain(user.email)
+})
+
+test("Better Auth's log lines reach our log without their messages", async () => {
+  const user = await seedUser(db.url)
+  const log = await consoleOf(() => signIn(user.email, 'wrong password'))
+  expect(log).toContain('better-auth')
+  // Its messages can quote request data (an origin, a URL); this one is fixed text.
+  expect(log).not.toContain('Invalid password')
 })
