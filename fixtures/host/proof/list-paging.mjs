@@ -1,4 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises'
+import process from 'node:process'
+import { URL } from 'node:url'
 import pg from 'pg'
 import signedIn from '../../../.claude/skills/verify-host/journeys/signed-in.mjs'
 
@@ -32,7 +34,7 @@ export default async (ctx) => {
     create trigger verify_invitation_mail_capture after insert on emails.email_log for each row execute function public.verify_invitation_mail_capture();`)
   let ip = 1
   const publicCall = async (path, data) => {
-    const response = await fetch(`${base}/api/users${path}`, {
+    const response = await globalThis.fetch(`${base}/api/users${path}`, {
       method: 'POST',
       headers: {
         Origin: base,
@@ -108,7 +110,7 @@ export default async (ctx) => {
       '/users/users?page=2&search=Paging',
       '/cms/collections/posts/items?page=2&search=Paging',
     ]) {
-      const result = await fetch(`${base}/api${path}`, {
+      const result = await globalThis.fetch(`${base}/api${path}`, {
         headers: { Origin: base, Cookie: cookie },
       })
       check(result.status === 403, `signed-in staff without permission GET ${path} 403`)
@@ -156,7 +158,7 @@ export default async (ctx) => {
   await page.goto(`${base}/admin/cms/collections/posts`)
   const table = page.getByRole('table', { name: 'Posts', exact: true })
   await table.getByRole('row').filter({ hasText: 'Paging 600' }).waitFor()
-  await table.getByRole('button', { name: 'Title', exact: true }).click()
+  await table.getByRole('button', { name: 'Sort by Title', exact: true }).click()
   await table.getByRole('row').filter({ hasText: 'Paging 001' }).waitFor()
   await shot('items-title-sort')
   await page.getByRole('button', { name: 'Page 2', exact: true }).click()
@@ -193,7 +195,12 @@ export default async (ctx) => {
   const search = picker.getByRole('textbox', { name: 'Search items…', exact: true })
   await search.fill('Paging 001')
   await oldStarted
+  const newerSearch = page.waitForResponse(
+    (response) => new URL(response.url()).searchParams.get('search') === 'Paging 045',
+  )
   await search.fill('Paging 045')
+  await newerSearch
+  await pickerTable.locator('tbody tr').nth(1).waitFor({ state: 'hidden' })
   await pickerTable.getByRole('row').filter({ hasText: 'Paging 045' }).waitFor()
   release()
   await page.waitForResponse(
