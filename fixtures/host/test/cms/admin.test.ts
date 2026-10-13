@@ -91,4 +91,5 @@ test('a system page offers no delete', async () => {
   const text = mountAdmin(`/admin/cms/pages/${home.id}`)
   await expect.poll(text).toContain('Uložiť koncept')
   expect(button('Vymazať')).toBeUndefined()
+  await expect.poll(text).toContain('Zatiaľ žiadne publikované revízie.')
 })
