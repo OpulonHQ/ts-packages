@@ -232,3 +232,26 @@ test('locale prefixes are compared as resolve sees them: no loop through the def
     ],
   })
 })
+
+test('a path still under a locale prefix after the default prefix is dropped is refused', async () => {
+  // /en/en/loop would be stored as /en/loop, which resolve redirects back to /loop: a cycle.
+  for (const body of [
+    { from: '/loop', to: '/en/en/loop' },
+    { from: '/en/en/loop', to: '/loop' },
+    { from: '/en/it/x', to: '/y' },
+    { from: '/x', to: '/en/it/y' },
+  ]) {
+    const response = await create(body)
+    expect(response.status).toBe(400)
+    expect(response.body).toMatchObject({ message: expect.stringContaining('prefix') })
+  }
+  const imported = await importCsv(['from,to', '/loop,/en/en/loop', '/en/it/x,/y'].join('\r\n'))
+  expect(imported.body).toMatchObject({
+    created: 0,
+    errors: [
+      { row: 2, message: expect.stringContaining('prefix') },
+      { row: 3, message: expect.stringContaining('prefix') },
+    ],
+  })
+  expect(await rules()).toEqual([])
+})

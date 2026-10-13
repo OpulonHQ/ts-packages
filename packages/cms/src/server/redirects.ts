@@ -262,7 +262,15 @@ export class Redirects extends Context.Service<
         if (path === undefined) return { error: notAPath(raw) }
         const first = path.split('/')[1]!
         if (locale !== defaultLocale || !locales.includes(first)) return { path }
-        if (first === defaultLocale) return { path: path.slice(first.length + 1) || '/' }
+        if (first === defaultLocale) {
+          // Dropped once only: what remains under a locale prefix (`/en/en/x`, `/en/it/x`)
+          // resolves elsewhere and could loop back.
+          const rest = path.slice(first.length + 1) || '/'
+          const next = rest.split('/')[1]!
+          return locales.includes(next)
+            ? { error: `"${path}" has another locale prefix after "/${first}".` }
+            : { path: rest }
+        }
         return side === 'to'
           ? { path }
           : { error: `"${path}" starts with "/${first}", the prefix of ${first} pages.` }
