@@ -368,6 +368,7 @@ test.each([
   ['1.2.0-1', '1.2.0-alpha', false],
   ['1.2.0-beta.2', '1.2.0', false],
   ['1.2.0', '1.2.0+host.1', false],
+  ['1.3.0', '1.2.0+host.1', true],
   ['1.2.0', '1.3.0', false],
   ['1.2.0', '1.2.0', false],
 ])('warns for copied screen version %s vs header %s: %s', async (installed, copied, warns) => {

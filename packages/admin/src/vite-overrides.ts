@@ -26,7 +26,7 @@ const provenance = (source: string): SourceProvenance | undefined => {
     !packageName ||
     !version ||
     !path ||
-    valid(version) !== version ||
+    valid(version) !== version.split('+')[0] ||
     path.startsWith('/') ||
     path.split('/').includes('..')
   )
