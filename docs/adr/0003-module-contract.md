@@ -4,10 +4,10 @@ Every module, whether a package or a host module, has one id that prefixes its s
 
 We rejected core knowing every extension point (it would stop being minimal and framework-neutral), the host hand-wiring each one into the owner's options (a package could not ship its own templates), and serving cms definitions to the admin as JSON (loses types). One composition entry for both bundles is impossible, since server and browser code cannot share it. Decided in TSPACK-7, reviewed independently by gpt-6.1-sol and gpt-6-astra.
 
-TSPACK-41 adds the `core/api` exception so the shell shares the authoritative schema instead of mirroring it. The Audit log screen and reusable AuditTimeline belong to admin, keeping frontend dependencies out of core. A host's `core.audit` route replaces the built-in route and navigation entry.
+TSPACK-41 extends the existing `core/api` contract with audit schemas so the shell shares the authoritative schema instead of mirroring it. The Audit log screen and reusable AuditTimeline belong to admin, keeping frontend dependencies out of core. A host's `core.audit` route replaces the built-in route and navigation entry.
 
 Audit reads mask IP addresses and user agents past the configured IP retention window independently of the retention task. Server queries cap the offset at 10,000; the audit screen and timeline bound their page controls while retaining the actual match count and explaining the accessible history window.
 
-Composition reserves the module IDs `me` and `audit` for core’s root API routes. This breaks hosts that use either ID: those modules must be renamed before upgrading.
+Composition reserves the module IDs `me` and `audit` for core’s root API routes. This breaks hosts that use either ID: those modules must be renamed before upgrading. Renaming requires migration of the module's schema and data, migration history, permission keys and audit-action keys.
 
 The ui DataTable exposes an optional `maxPage` prop and `error` and `pagination-limit` slots so callers can bound navigation and supply one failure message and a history-limit explanation.
