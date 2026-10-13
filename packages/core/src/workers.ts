@@ -43,7 +43,12 @@ export const workersCachePurge = (ctx: { readonly cache?: WorkersCache } | undef
   Layer.succeed(CachePurger, {
     purge: Effect.fn('WorkersCache.purge')(function* (tags: ReadonlyArray<string>) {
       const cache = ctx?.cache
-      if (!cache) return
+      if (!ctx) return
+      if (!cache)
+        return yield* new CachePurgeFailed({
+          reason: 'failed',
+          detail: 'Workers Cache is unavailable on this invocation.',
+        })
       for (let offset = 0; offset < tags.length; offset += 100) {
         const result = yield* Effect.tryPromise({
           try: () => cache.purge({ tags: tags.slice(offset, offset + 100) }),

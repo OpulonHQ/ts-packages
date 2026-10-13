@@ -13,4 +13,5 @@ export default Effect.gen(function* () {
     created_at timestamptz not null default now()
   )`
   yield* sql`create index cache_purge_next_attempt_at on core.cache_purge (next_attempt_at)`
+  yield* sql`create index cache_purge_created_at on core.cache_purge (created_at)`
 })

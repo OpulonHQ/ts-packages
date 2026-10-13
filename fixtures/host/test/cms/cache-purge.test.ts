@@ -14,7 +14,7 @@ const fakeCache = (reply: () => ReturnType<WorkersCache['purge']>) => {
   return { cache, purged }
 }
 
-const purge = (ctx: { cache?: WorkersCache }, tags: Array<string>) =>
+const purge = (ctx: { cache?: WorkersCache } | undefined, tags: Array<string>) =>
   Effect.runPromise(
     Effect.gen(function* () {
       const cache = yield* CachePurger
@@ -31,8 +31,15 @@ test("purges tags through the Worker's own cache, 100 tags per call", async () =
   expect(fake.purged).toEqual([tags.slice(0, 100), tags.slice(100)])
 })
 
-test('does nothing where the invocation has no Workers Cache', async () => {
-  await expect(purge({}, ['cms'])).resolves.toBeUndefined()
+test('does nothing when there is no Workers invocation context', async () => {
+  await expect(purge(undefined, ['cms'])).resolves.toBeUndefined()
+})
+
+test('an invocation without Workers Cache fails closed', async () => {
+  await expect(purge({}, ['cms'])).rejects.toMatchObject({
+    _tag: 'CachePurgeFailed',
+    reason: 'failed',
+  })
 })
 
 test('an adapter rejection fails the port so the outbox can retain it', async () => {
