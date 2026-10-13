@@ -14,6 +14,7 @@ export default async (ctx) => {
   const notes = page.waitForResponse((response) => response.url().endsWith('/api/demo/notes'))
   await page.goto(`${base}/admin/demo/notes`)
   check((await notes).status() === 200, 'GET /api/demo/notes 200')
+  await page.getByRole('textbox').fill('copy-in-proof-no-matching-note')
   await page.getByText('No notes yet.', { exact: true }).waitFor()
   await page.getByText('Fixture UI override', { exact: true }).waitFor()
   await shot('kit-internal-override')
