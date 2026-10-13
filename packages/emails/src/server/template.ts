@@ -1,6 +1,5 @@
 import { type Contribution, defineExtensionPoint } from '@opulonjs/core'
-import xss from 'xss'
-import type * as Xss from 'xss'
+import sanitizeHtml from 'sanitize-html'
 import { type EmailComponent, escapeHtml } from './components.ts'
 
 /** Who a template is written for: staff (admin locales) or public visitors (content locales). */
@@ -134,33 +133,34 @@ const isSafeUrl = (value: string) => {
   }
 }
 
-// xss is CommonJS without detectable named exports, so Node's ESM loader only offers the default
-// (module.exports, which carries them all); its typings declare them as named exports only.
-const { escapeAttrValue, FilterXSS, friendlyAttrValue } = xss as unknown as typeof Xss
 const exactPlaceholder = /^\{\{\s*[A-Za-z][A-Za-z0-9_]*\s*\}\}$/
-const allowedTags = ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'a', 'ul', 'ol', 'li']
-const allowedBlocks = ['h2', 'h3', 'blockquote']
 
-const sanitizer = new FilterXSS({
-  whiteList: Object.fromEntries(
-    [...allowedTags, ...allowedBlocks].map((tag) => [tag, tag === 'a' ? ['href'] : []]),
-  ),
-  stripIgnoreTag: true,
-  stripIgnoreTagBody: ['script', 'style'],
-  onTagAttr: (_tag, name, value) => {
-    if (name !== 'href') return undefined
-    // A safe URL or exactly one placeholder (whose value is checked at send time).
-    const href = friendlyAttrValue(value).trim()
-    return exactPlaceholder.test(href) || isSafeUrl(href) ? `href="${escapeAttrValue(href)}"` : ''
+// sanitize-html parses with htmlparser2 (no DOM), so it runs on Workers; cms uses it too.
+const options: sanitizeHtml.IOptions = {
+  allowedTags: [
+    ...['p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'a', 'ul', 'ol', 'li'],
+    ...['h2', 'h3', 'blockquote'],
+  ],
+  allowedAttributes: { a: ['href'] },
+  allowProtocolRelative: false,
+  transformTags: {
+    // A safe URL or exactly one placeholder (whose value is checked at send time); else no href.
+    a: (tagName, { href }) => {
+      const trimmed = href?.trim() ?? ''
+      return {
+        tagName,
+        attribs: exactPlaceholder.test(trimmed) || isSafeUrl(trimmed) ? { href: trimmed } : {},
+      }
+    },
   },
-})
+}
 
 /**
  * Reduces staff-authored HTML to the restricted body format: paragraphs, h2/h3, bold, italic,
  * underline, strike, lists, quotes and links (http(s), mailto or a placeholder). Other tags and
  * attributes are dropped, script and style with their contents.
  */
-export const sanitizeBody = (html: string): string => sanitizer.process(html)
+export const sanitizeBody = (html: string): string => sanitizeHtml(html, options)
 
 const placeholder = String.raw`\{\{\s*([A-Za-z][A-Za-z0-9_]*)\s*\}\}`
 const token = String.raw`\[\[([a-z][a-z0-9_]*)([^\[\]<>]*)\]\]`
