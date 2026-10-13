@@ -8,7 +8,8 @@ import { failedScreenKey } from '../state.ts'
 const { t } = useI18n()
 const router = useRouter()
 const failedScreen = inject(failedScreenKey)
-const retry = () => failedScreen?.value && router.push(failedScreen.value)
+// A full load: browsers keep a failed dynamic import cached for the page's lifetime.
+const retry = () => failedScreen?.value && location.assign(router.resolve(failedScreen.value).href)
 </script>
 
 <template>

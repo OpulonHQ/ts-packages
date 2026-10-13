@@ -2,7 +2,7 @@ import { createAdmin, type AdminOptions } from '../src/createAdmin.ts'
 import { defineAdminModule } from '../src/module.ts'
 import { defineComponent, h } from 'vue'
 import { useRoute } from 'vue-router'
-import { expect, onTestFinished, test } from 'vitest'
+import { expect, onTestFinished, test, vi } from 'vitest'
 
 const screen = (text: string) => defineComponent(() => () => h('p', text))
 const lazy = (text: string) => async () => ({ default: screen(text) })
@@ -173,13 +173,15 @@ test.each(['/audit', '/AUDIT/', '/audit///'] as const)(
   },
 )
 
-test('a rejected route loader shows an error and retries', async () => {
-  let attempts = 0
-  const dashboard = () =>
-    ++attempts === 1
-      ? Promise.reject(new Error('override download failed'))
-      : Promise.resolve(screen('retry host'))
-  mount('/', { overrides: { dashboard } })
+test('a rejected route loader shows an error whose retry reloads the failed screen', async () => {
+  const assign = vi.spyOn(location, 'assign').mockImplementation(() => {})
+  onTestFinished(() => assign.mockRestore())
+  const app = mount('/', {
+    overrides: { 'demo.protected': () => Promise.reject(new Error('screen download failed')) },
+  })
+  const router = app.config.globalProperties.$router
+  await expect.poll(() => document.body.textContent).toContain('Nothing to show here yet.')
+  await expect(router.push('/protected?tab=1')).rejects.toThrow('screen download failed')
   await expect
     .poll(() => document.querySelector('[role="alert"]')?.textContent)
     .toContain('This screen could not be loaded.')
@@ -187,9 +189,7 @@ test('a rejected route loader shows an error and retries', async () => {
     b.textContent?.includes('Try again'),
   )
   retry?.click()
-  await expect.poll(() => document.body.textContent).toContain('retry host')
-  expect(attempts).toBe(2)
-  expect(document.querySelector('[role="alert"]')).toBeNull()
+  expect(assign).toHaveBeenCalledWith('/admin/protected?tab=1')
 })
 
 test('returning to the current screen clears a failed screen error', async () => {
