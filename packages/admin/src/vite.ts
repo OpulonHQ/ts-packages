@@ -30,14 +30,24 @@ const headSha = () => {
   }
 }
 
+/** The nearest directory at or above `dir` with a package.json, if any. */
+const packageDir = (dir: string): string | undefined => {
+  for (let at = dir; ; at = dirname(at)) {
+    if (existsSync(join(at, 'package.json'))) return at
+    if (dirname(at) === at) return undefined
+  }
+}
+
 /**
  * The built (and, in a workspace, source) directories of the host's `@opulonjs/*` dependencies
- * that ship admin screens, read from the package.json in `root` (where the build runs). Their
- * screens are code-split chunks across `dist/`, so the whole directory is scanned.
+ * that ship admin screens (an `./admin` export), from the host package.json at or above the
+ * Vite root. Their screens are code-split chunks across `dist/`, so the whole directory is
+ * scanned. A dependency without `./admin` is skipped.
  */
 const moduleSources = (root: string): Array<string> => {
-  const manifest = join(root, 'package.json')
-  if (!existsSync(manifest)) return []
+  const hostDir = packageDir(root)
+  if (!hostDir) return []
+  const manifest = join(hostDir, 'package.json')
   const host = JSON.parse(readFileSync(manifest, 'utf8')) as {
     dependencies?: Record<string, string>
     devDependencies?: Record<string, string>
@@ -46,10 +56,14 @@ const moduleSources = (root: string): Array<string> => {
   return Object.keys({ ...host.dependencies, ...host.devDependencies })
     .filter((name) => name.startsWith('@opulonjs/'))
     .flatMap((name) => {
-      const path = require.resolve(`${name}/package.json`)
-      const pkg = JSON.parse(readFileSync(path, 'utf8')) as { exports?: Record<string, unknown> }
-      if (!pkg.exports?.['./admin']) return []
-      return ['dist', 'src'].map((dir) => join(dirname(path), dir)).filter(existsSync)
+      let entry: string
+      try {
+        entry = require.resolve(`${name}/admin`)
+      } catch {
+        return []
+      }
+      const dir = packageDir(dirname(entry))
+      return dir ? ['dist', 'src'].map((d) => join(dir, d)).filter(existsSync) : []
     })
 }
 
@@ -66,7 +80,7 @@ export const opulonAdmin = (options: OpulonAdminOptions = {}): Array<PluginOptio
     vue(),
     ...opulonUi({
       ...(options.brand ? { brand: options.brand } : {}),
-      sources: [shellDir, ...moduleSources(process.cwd()), ...(options.sources ?? [])],
+      sources: (root) => [shellDir, ...moduleSources(root), ...(options.sources ?? [])],
     }),
     {
       name: '@opulonjs/admin',

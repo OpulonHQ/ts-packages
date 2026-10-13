@@ -136,6 +136,17 @@ export const createAdmin = (options: AdminOptions): App => {
       }),
     )
 
+  /** Loads the modules' catalogs for a user's locale (en as the fallback) and switches to it. */
+  const applyLocale = async (requested: string | null, modules: ReadonlyArray<AdminModule>) => {
+    const locale = requested && requested in catalogs ? requested : defaultLocale
+    await Promise.all([
+      loadMessages(locale, modules),
+      locale === 'en' ? undefined : loadMessages('en', modules),
+    ])
+    i18n.global.locale.value = locale
+    document.documentElement.lang = locale
+  }
+
   // The auth provider's messages are needed before sign-in, too.
   const load = () =>
     getMe().then(
@@ -152,14 +163,10 @@ export const createAdmin = (options: AdminOptions): App => {
             )
           }
         }
-        const locale = first.locale && first.locale in catalogs ? first.locale : defaultLocale
-        const modules = options.modules.filter((m) => first.modules.includes(m.id))
-        await Promise.all([
-          loadMessages(locale, modules),
-          locale === 'en' ? undefined : loadMessages('en', modules),
-        ])
-        i18n.global.locale.value = locale
-        document.documentElement.lang = locale
+        await applyLocale(
+          first.locale,
+          options.modules.filter((m) => first.modules.includes(m.id)),
+        )
         me.value = first
         status.value = 'ready'
       },
@@ -235,7 +242,10 @@ export const createAdmin = (options: AdminOptions): App => {
             const userId = me.value?.user.id
             if (!userId) return
             await providerSetLocale({ apiPrefix, fetch, userId, locale })
-            await state.refresh()
+            // Applied here rather than by reading /me again, which on failure would take the
+            // whole shell down for a saved language.
+            await applyLocale(locale, enabled.value)
+            if (me.value) me.value = { ...me.value, locale }
           },
         }
       : {}),

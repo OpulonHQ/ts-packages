@@ -74,6 +74,7 @@ function mountAdmin(
     server = 'b1' as keyof typeof hosts,
     signedIn = true,
     as = undefined as string | undefined,
+    wrapFetch = (f: typeof fetch) => f,
   } = {},
 ) {
   history.replaceState(null, '', path)
@@ -82,7 +83,7 @@ function mountAdmin(
     brand,
     modules: [...adminModules, coreScreens, ghost],
     buildId: admin,
-    fetch: hosts[server].browserFetch({ cookie: signedIn ? (as ?? cookie) : '' }),
+    fetch: wrapFetch(hosts[server].browserFetch({ cookie: signedIn ? (as ?? cookie) : '' })),
   })
   app.mount('#app')
   onTestFinished(() => app.unmount())
@@ -173,4 +174,29 @@ test('the user menu holds the account settings, the language and sign-out', asyn
   await expect.poll(admin.text).toContain('Dashboard')
   const me = await hosts.b1.browserFetch({ cookie: own })(new URL('/api/me', location.origin))
   expect(await me.json()).toMatchObject({ locale: 'en' })
+})
+
+test('a saved language applies even if reading /me again would fail', async () => {
+  const user = await seedUser(db.url, { name: 'Flaky User', locale: 'sk' })
+  const own = await hosts.b1.signIn(user.email, user.password)
+  let meCalls = 0
+  // The first /me loads the shell; any later one fails.
+  const wrapFetch =
+    (f: typeof fetch): typeof fetch =>
+    async (input, init) =>
+      String(input).endsWith('/api/me') && ++meCalls > 1
+        ? new Response('down', { status: 503 })
+        : f(input, init)
+  const admin = mountAdmin('/admin/', { as: own, wrapFetch })
+  await expect.poll(admin.text).toContain('Prehľad')
+  document
+    .querySelector<HTMLElement>('[aria-label="Používateľské menu"]')!
+    .dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  await expect.poll(() => menuItem('Jazyk')).toBeDefined()
+  menuItem('Jazyk')!.click()
+  await expect.poll(() => menuItem('English')).toBeDefined()
+  menuItem('English')!.click()
+  await expect.poll(() => document.documentElement.lang).toBe('en')
+  await expect.poll(admin.text).toContain('Dashboard')
+  expect(admin.text()).not.toContain('could not reach the server')
 })

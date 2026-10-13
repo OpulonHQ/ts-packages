@@ -38,8 +38,9 @@ export interface UiPresetOptions {
   /**
    * Directories outside the Vite root with templates or scripts: Tailwind scans them for
    * classes, and their `i-lucide-*` names join the offline icon bundle. The kit adds itself.
+   * A function gets the resolved Vite root.
    */
-  readonly sources?: ReadonlyArray<string>
+  readonly sources?: ReadonlyArray<string> | ((root: string) => ReadonlyArray<string>)
 }
 
 /** The virtual stylesheet the admin entry imports: Tailwind, Nuxt UI, the font and the brand. */
@@ -136,7 +137,8 @@ const css = (brand: Brand | undefined, sources: ReadonlyArray<string>): string =
  * next to it; `@opulonjs/admin/vite` does both.
  */
 export const opulonUi = (options: UiPresetOptions = {}): Array<PluginOption> => {
-  const sources = [kitDir, ...(options.sources ?? [])]
+  // Resolved with the Vite root (configResolved runs before any load).
+  let sources: ReadonlyArray<string> = [kitDir]
   const { brand } = options
   // A real path inside this package, so the stylesheet's bare imports resolve from here.
   const stylesPath = join(kitDir, '__opulon-ui.css')
@@ -156,6 +158,8 @@ export const opulonUi = (options: UiPresetOptions = {}): Array<PluginOption> => 
     enforce: 'pre',
     configResolved: (config) => {
       root = config.root
+      const extra = typeof options.sources === 'function' ? options.sources(root) : options.sources
+      sources = [kitDir, ...(extra ?? [])]
     },
     resolveId: (id) => (id === iconsId ? `\0${iconsId}` : undefined),
     load: (id) => {
