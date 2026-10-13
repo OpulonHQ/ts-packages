@@ -90,14 +90,15 @@ const messages = {
 }
 
 export const CachePurge = {
-  /** Status across all active rows, including failures beyond the bounded editor list. */
+  /** Status requiring attention, including failures beyond the bounded editor list. */
   summary: Effect.fn('CachePurge.summary')(function* () {
     const sql = yield* SqlClient
     const [row] = yield* sql`
       select count(*)::int as total,
-        count(*) filter (where attempts >= ${maxAttempts} and (reason is not null or next_attempt_at <= now()))::int as failed,
+        count(*) filter (where attempts >= ${maxAttempts})::int as failed,
         max(created_at + interval '1 hour') as stale_until
-      from core.cache_purge where created_at > now() - interval '1 hour'`
+      from core.cache_purge where created_at > now() - interval '1 hour'
+        and (reason is not null or next_attempt_at <= now())`
     const summary = yield* Schema.decodeUnknownEffect(Summary)(row).pipe(Effect.orDie)
     return {
       total: summary.total,
@@ -133,18 +134,19 @@ export const CachePurge = {
       )`
     yield* attempt()
   }),
-  /** Bounded editor summary. Diagnostics stay in storage; failures remain for one hour. */
+  /** Queued or failed purges requiring attention. Provider diagnostics stay in storage. */
   pending: Effect.fn('CachePurge.pending')(function* () {
     const sql = yield* SqlClient
     const rows = yield* decodePending(
       yield* sql`
       select id, tags, attempts,
-        case when attempts >= ${maxAttempts} and (reason is not null or next_attempt_at <= now())
+        case when attempts >= ${maxAttempts}
           then 'failed' else 'queued' end as state,
-        case when attempts >= ${maxAttempts} and reason is null and next_attempt_at <= now()
+        case when attempts >= ${maxAttempts} and reason is null
           then 'interrupted' else reason end as reason,
         created_at + interval '1 hour' as stale_until
       from core.cache_purge where created_at > now() - interval '1 hour'
+        and (reason is not null or next_attempt_at <= now())
       order by created_at desc, id limit ${sweepBatch}`,
     ).pipe(Effect.orDie)
     return rows.map((row) => ({
