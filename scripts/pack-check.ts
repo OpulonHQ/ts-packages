@@ -2,7 +2,7 @@
 // and imports each export subpath from the packed output, so CI tests what npm would ship.
 // Against the same tarballs it then bundles every `/api` entry for the browser (no server-only
 // imports), bundles `@opulonjs/cms/site` for the browser (no Effect) and compares the fixture
-// host's server and admin module id lists.
+// host's server and admin module id lists, and renders a cms screen from the admin dev server.
 import { execFileSync } from 'node:child_process'
 import {
   cpSync,
@@ -153,13 +153,20 @@ const bundled = new Set([...js.matchAll(/[{,](?:"([a-z0-9-]+)"|([a-z0-9]+)):\\{(
 const missingIcons = [...used].filter((name) => !bundled.has(name))
 if (missingIcons.length > 0) throw new Error('icons missing from the admin bundle: ' + missingIcons.join(', '))
 console.log('ok admin bundles all', used.size, 'icons its screens use')
+const { createServer: createNetServer } = await import('node:net')
+const port = await new Promise((done) => {
+  const probe = createNetServer().listen(0, '127.0.0.1', () => {
+    const { port } = probe.address()
+    probe.close(() => done(port))
+  })
+})
 const vite = await createServer({
   ...config,
-  server: { middlewareMode: true },
-  appType: 'custom',
+  server: { port, strictPort: true, host: '127.0.0.1' },
   // Every @opulonjs package: module admin entries import the shell and kit (virtual modules).
   ssr: { noExternal: [/^@opulonjs\\//, '@nuxt/ui'] },
 })
+await vite.listen()
 let adminModules
 try {
   const transformed = await vite.transformRequest('/modules.ts')
@@ -171,11 +178,81 @@ try {
   if (!table?.code.includes('/overrides/EmptyState.vue')) throw new Error('published DataTable bypassed the host override in dev')
   ;({ adminModules } = await vite.ssrLoadModule('/modules.ts'))
   console.log('ok published admin dev imports use host kit overrides without prebundling')
+  // A package both prebundled and served raw runs as two instances that reject each other's
+  // values (Effect schemas): walk the dev module graph and compare.
+  const packageOf = (path) => path.match(/node_modules\\/(?:\\.pnpm\\/[^/]+\\/node_modules\\/)?((?:@[^/]+\\/)?[^/]+)\\//)?.[1]
+  const raw = new Set()
+  const seen = new Set()
+  const queue = ['/main.ts']
+  while (queue.length > 0) {
+    const url = queue.pop()
+    if (seen.has(url)) continue
+    seen.add(url)
+    const code = (await vite.transformRequest(url))?.code ?? ''
+    for (const [, spec] of code.matchAll(/(?:from|import)\\s*\\(?\\s*["'](\\/[^"']+)["']/g)) {
+      const dep = spec.startsWith(vite.config.base) ? spec.slice(vite.config.base.length - 1) : spec
+      if (dep.includes('/.vite/deps/') || (dep.startsWith('/@') && !dep.startsWith('/@fs/'))) continue
+      const name = packageOf(dep)
+      if (name) raw.add(name)
+      queue.push(dep)
+    }
+  }
+  const optimizer = vite.environments.client.depsOptimizer
+  optimizer.run()
+  await Promise.all(Object.values(optimizer.metadata.discovered).map((dep) => dep.processing))
+  const prebundled = [...Object.values(optimizer.metadata.optimized), ...Object.values(optimizer.metadata.chunks)]
+  const bundled = new Set(prebundled.flatMap(({ file }) => [...readFileSync(file, 'utf8').matchAll(/^\\/\\/#region (.+)$/gm)].map((m) => packageOf(m[1]))))
+  const twice = [...raw].filter((name) => bundled.has(name))
+  if (twice.length > 0) throw new Error('admin dev loads packages both prebundled and raw: ' + twice.join(', '))
+  console.log('ok admin dev loads', raw.size, 'packages raw and', bundled.size, 'prebundled, none in both')
+  const { spawn } = await import('node:child_process')
+  const screen = spawn(process.execPath, ['--import', './dev-modules.mjs', 'dev-screen.mjs', 'http://127.0.0.1:' + port + vite.config.base, vite.config.base + '@fs' + require.resolve('@opulonjs/admin')], { stdio: 'inherit' })
+  if ((await new Promise((done) => screen.on('exit', done))) !== 0) throw new Error('the cms Collections screen failed to load its items in dev')
+  console.log('ok admin dev renders the cms Collections screen with its decoded API response')
 } finally { await vite.close() }
 const { server } = await import('./host/server/opulon.ts')
 const serverIds = new Set(server.modules.map((m) => m.id))
 const missing = adminModules.map((m) => m.id).filter((id) => !serverIds.has(id))
 if (missing.length > 0) throw new Error('admin modules without a server module: ' + missing.join(', '))
+`
+
+// Node loads the admin modules from the dev server, as a browser would; the HMR client is a stub.
+const devModules = String.raw`import { register } from 'node:module'
+const hooks = ${'`'}
+const viteClient = 'const noop = () => {}; export const createHotContext = () => ({ data: {}, accept: noop, dispose: noop, prune: noop, invalidate: noop, on: noop, off: noop, send: noop }); export const updateStyle = noop, removeStyle = noop, injectQuery = (url) => url'
+export const resolve = (spec, context, next) => context.parentURL?.startsWith('http:') && !spec.startsWith('node:') ? { url: new URL(spec, context.parentURL).href, shortCircuit: true } : next(spec, context)
+export const load = async (url, context, next) => url.startsWith('http:') ? { format: 'module', shortCircuit: true, source: url.endsWith('/@vite/client') ? viteClient : await (await fetch(url)).text() } : next(url, context)
+${'`'}
+register('data:text/javascript,' + encodeURIComponent(hooks))
+`
+
+// The fixture admin in happy-dom, signed in, on the cms Collections screen: its DataTable decodes
+// the items response and shows the host's EmptyState copy, not a load failure.
+const devScreen = String.raw`import { Window } from 'happy-dom'
+const [origin, adminEntry] = process.argv.slice(2)
+const window = new Window({ url: origin + 'cms/collections/posts' })
+for (const key of Object.getOwnPropertyNames(window)) if (!(key in globalThis)) globalThis[key] = window[key]
+Object.assign(globalThis, { window, document: window.document, location: window.location })
+Object.defineProperty(globalThis, 'navigator', { value: window.navigator })
+document.body.innerHTML = '<div id="app"></div>'
+const { createAdmin } = await import(new URL(adminEntry, origin).href)
+const { adminModules } = await import(origin + 'modules.ts')
+const { brand } = await import(origin + 'brand.ts')
+const me = { buildId: 'pack-check', user: { id: 'u', name: 'U', email: 'u@example.com' }, locale: null, permissions: ['cms.collections.view'], modules: adminModules.map((m) => m.id), permissionCatalog: [], contentLocales: ['en'] }
+const responses = { '/api/me': me, '/api/cms/collections/posts/items': { rows: [], total: 0 } }
+const fetch = async (url) => {
+  const body = responses[new URL(url, location.origin).pathname]
+  return body ? Response.json(body) : new Response(null, { status: 404 })
+}
+createAdmin({ brand, modules: adminModules, apiPrefix: '/api', buildId: 'pack-check', fetch }).mount('#app')
+const text = () => document.body.textContent
+for (let i = 0; i < 100 && !text().includes('Fixture UI override'); i++) await new Promise((r) => setTimeout(r, 100))
+await new Promise((r) => setTimeout(r, 200))
+if (!text().includes('Fixture UI override') || text().includes('The data could not be loaded.')) {
+  console.error(text())
+  process.exit(1)
+}
+process.exit(0)
 `
 
 const root = resolve(import.meta.dirname, '..')
@@ -190,6 +267,14 @@ const hostDependencies = () => {
       ([, spec]) => !spec.startsWith('workspace:'),
     ),
   )
+}
+const rootDevDependency = (name: string) => {
+  const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as {
+    devDependencies: Record<string, string>
+  }
+  const spec = pkg.devDependencies[name]
+  if (!spec) throw new Error(`${name} is not a root devDependency`)
+  return spec
 }
 // The repo's install-script decisions, so the scratch install does not stop on them.
 const allowBuilds =
@@ -228,8 +313,13 @@ try {
     JSON.stringify({
       private: true,
       type: 'module',
-      // The fixture host's own third-party dependencies (effect, vite, ...) plus the tarballs.
-      dependencies: { ...hostDependencies(), ...tarballs },
+      // The fixture host's own third-party dependencies (effect, vite, ...), the tarballs and
+      // the repo's happy-dom for the dev screen check.
+      dependencies: {
+        ...hostDependencies(),
+        ...tarballs,
+        'happy-dom': rootDevDependency('happy-dom'),
+      },
     }),
   )
   // Internal dependencies resolve to the tarballs too, not to the registry.
@@ -268,6 +358,8 @@ for (const name of names) {
   }
   await checkBrowserApi(scratch, tarballs)
   await checkPublicSite(scratch)
+  writeFileSync(join(scratch, 'dev-modules.mjs'), devModules)
+  writeFileSync(join(scratch, 'dev-screen.mjs'), devScreen)
   run('node', ['--input-type=module', '-e', adminCheck], scratch)
   console.log('ok server and admin module id lists match')
 } finally {
