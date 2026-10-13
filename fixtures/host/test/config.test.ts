@@ -4,7 +4,7 @@ import { Config, Effect, Redacted, Schema } from 'effect'
 import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import * as HttpApiEndpoint from 'effect/http-api/HttpApiEndpoint'
 import * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
-import { afterEach, expect, test } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 
 // Module config: Effect Config over the Worker env, keys prefixed with the module id.
 const settings = Config.all({
@@ -80,4 +80,24 @@ test('config comes from the Worker env only, never from process.env', async () =
   expect(await show({ HYPERDRIVE: hyperdrive, CFG_API_KEY: 'k' })).toMatchObject({
     greeting: 'missing',
   })
+})
+
+test('a request that dies answers 500 and logs its cause, which would otherwise be lost', async () => {
+  const logged: Array<string> = []
+  const capture = (...args: Array<unknown>) => void logged.push(args.map(String).join(' '))
+  const spies = (['log', 'error', 'warn', 'info'] as const).map((m) =>
+    vi.spyOn(console, m).mockImplementation(capture),
+  )
+  try {
+    // A deploy missing the CFG_API_KEY secret: the handler's Effect.orDie(settings) dies.
+    const response = await worker.fetch(
+      new Request('https://host.test/api/cfg/show'),
+      { HYPERDRIVE: hyperdrive } as Env,
+      { waitUntil: () => {} },
+    )
+    expect(response.status).toBe(500)
+  } finally {
+    for (const spy of spies) spy.mockRestore()
+  }
+  expect(logged.join('\n')).toContain('CFG_API_KEY')
 })

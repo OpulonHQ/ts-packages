@@ -2,6 +2,7 @@ import * as PgClient from '@effect/sql-pg/PgClient'
 import { ConfigProvider, Effect, Layer, ManagedRuntime, Redacted } from 'effect'
 import * as HttpRouter from 'effect/http/HttpRouter'
 import * as HttpServer from 'effect/http/HttpServer'
+import * as HttpServerError from 'effect/http/HttpServerError'
 import { Background } from './background.ts'
 import { BuildId, type ComposedServer } from './compose.ts'
 import { runDueTasks } from './tasks.ts'
@@ -78,7 +79,17 @@ export const createWorker = <R, Env extends object, I, E>(
         Layer.provide(Layer.mergeAll(options.infra(env), background.layer, envLayer(env))),
         Layer.provide(HttpServer.layerServices),
       ) as Layer.Layer<never, unknown, HttpRouter.HttpRouter>
-      const web = HttpRouter.toWebHandler(app, { disableLogger: true })
+      // No per-request log line (Workers logs requests), but a failure answered with a 5xx logs
+      // its cause: the client only sees a generic error, so this is its only trace.
+      const web = HttpRouter.toWebHandler(app, {
+        disableLogger: true,
+        middleware: (effect) =>
+          Effect.tapCause(effect, (cause) =>
+            HttpServerError.causeResponseStripped(cause)[0].status >= 500
+              ? Effect.logError(cause)
+              : Effect.void,
+          ),
+      })
       try {
         return await web.handler(request)
       } finally {

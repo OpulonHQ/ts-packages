@@ -149,7 +149,9 @@ export class Users extends Context.Service<
 
       const failOnServerError = (result: AuthResult) =>
         result.status >= 500
-          ? Effect.die(new Error(`Better Auth answered ${result.status}`))
+          ? Effect.die(
+              new Error(`Better Auth answered ${result.status}: ${JSON.stringify(result.body)}`),
+            )
           : Effect.void
 
       return Users.of({
