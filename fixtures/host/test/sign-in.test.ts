@@ -116,7 +116,12 @@ test('a state-changing request from another origin is not authenticated (CSRF)',
 test('a tampered session cookie is rejected', async () => {
   const user = await seedUser(db.url)
   const cookie = await host.signIn(user.email, user.password)
-  const tampered = cookie.replace(/=([^.]+)\./, (_, token: string) => `=${token.slice(0, -1)}x.`)
+  // Change the token's last character (to one it is not: a no-op tamper made this flaky).
+  const tampered = cookie.replace(
+    /=([^.]+)\./,
+    (_, token: string) => `=${token.slice(0, -1)}${token.endsWith('x') ? 'y' : 'x'}.`,
+  )
+  expect(tampered).not.toBe(cookie)
   expect((await host.request('GET', '/me', { cookie: tampered })).status).toBe(401)
 })
 
