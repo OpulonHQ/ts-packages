@@ -176,6 +176,9 @@ export class BetterAuth extends Context.Service<
             },
           },
           advanced: {
+            // One query per read, and no fallback join: that path prints a failed query's error
+            // whole with console.error, past the logger above.
+            database: { joins: true },
             ipAddress: { ipAddressHeaders: ['cf-connecting-ip'] },
             useSecureCookies: origin.startsWith('https:'),
           },

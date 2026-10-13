@@ -168,26 +168,41 @@ async function consoleOf(fn: () => Promise<unknown>) {
   return logged.join('\n')
 }
 
-test('a sign-in Better Auth fails answers 500 and logs the cause, without user data', async () => {
-  const user = await seedUser(db.url)
-  // A database error whose message quotes the user, as Postgres errors quote rejected values.
-  await sqlQuery(
-    db.url,
-    `create function users.fail_session() returns trigger language plpgsql as $$
-       begin raise exception 'no session for %', new.user_id using errcode = 'P0042'; end $$;
-     create trigger fail_session before insert on users.session
-       for each row execute function users.fail_session()`,
-  )
-  let status = 0
-  const log = await consoleOf(async () => {
-    status = (await signIn(user.email, user.password)).status
-  })
-  expect(status).toBe(500)
-  expect(log).toContain('request failed')
-  expect(log).toContain('P0042')
-  expect(log).not.toContain(user.id)
-  expect(log).not.toContain(user.email)
-})
+// Database errors whose messages quote the user, as Postgres errors quote rejected values: one
+// where the session is written, one where sign-in reads the credential (a join).
+const failures = {
+  'writing the session': {
+    code: 'P0042',
+    setup: `create function users.fail_session() returns trigger language plpgsql as $$
+        begin raise exception 'no session for %', new.user_id using errcode = 'P0042'; end $$;
+      create trigger fail_session before insert on users.session
+        for each row execute function users.fail_session()`,
+    teardown: `drop trigger fail_session on users.session; drop function users.fail_session()`,
+  },
+  'reading the credential': {
+    code: '22P02', // invalid_text_representation, quoting the user id
+    setup: `alter table users.account rename to account_real;
+      create view users.account as select * from users.account_real where user_id::int > 0`,
+    teardown: `drop view users.account; alter table users.account_real rename to account`,
+  },
+}
+
+test.each(Object.entries(failures))(
+  'a sign-in failing in %s answers 500 and logs the cause, without user data',
+  async (_, failure) => {
+    const user = await seedUser(db.url)
+    await sqlQuery(db.url, failure.setup)
+    let status = 0
+    const log = await consoleOf(async () => {
+      status = (await signIn(user.email, user.password)).status
+    }).finally(() => sqlQuery(db.url, failure.teardown))
+    expect(status).toBe(500)
+    expect(log).toContain('request failed')
+    expect(log).toContain(failure.code)
+    expect(log).not.toContain(user.id)
+    expect(log).not.toContain(user.email)
+  },
+)
 
 test("Better Auth's log lines reach our log without their messages", async () => {
   const user = await seedUser(db.url)
