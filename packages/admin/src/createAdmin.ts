@@ -137,36 +137,38 @@ export const createAdmin = (options: AdminOptions): App => {
     )
 
   // The auth provider's messages are needed before sign-in, too.
-  const ready = getMe().then(
-    async (first) => {
-      if (first === 'signedOut') {
-        await loadMessages(defaultLocale, [auth])
-        status.value = 'signedOut'
-        return
-      }
-      for (const m of options.modules) {
-        if (!first.modules.includes(m.id) && import.meta.env.DEV) {
-          console.warn(
-            `[@opulonjs/admin] admin module "${m.id}" is hidden: the server does not run it (missing from /me).`,
-          )
+  const load = () =>
+    getMe().then(
+      async (first) => {
+        if (first === 'signedOut') {
+          await loadMessages(defaultLocale, [auth])
+          status.value = 'signedOut'
+          return
         }
-      }
-      const locale = first.locale && first.locale in catalogs ? first.locale : defaultLocale
-      const modules = options.modules.filter((m) => first.modules.includes(m.id))
-      await Promise.all([
-        loadMessages(locale, modules),
-        locale === 'en' ? undefined : loadMessages('en', modules),
-      ])
-      i18n.global.locale.value = locale
-      document.documentElement.lang = locale
-      me.value = first
-      status.value = 'ready'
-    },
-    (error: unknown) => {
-      console.error(error)
-      status.value = 'failed'
-    },
-  )
+        for (const m of options.modules) {
+          if (!first.modules.includes(m.id) && import.meta.env.DEV) {
+            console.warn(
+              `[@opulonjs/admin] admin module "${m.id}" is hidden: the server does not run it (missing from /me).`,
+            )
+          }
+        }
+        const locale = first.locale && first.locale in catalogs ? first.locale : defaultLocale
+        const modules = options.modules.filter((m) => first.modules.includes(m.id))
+        await Promise.all([
+          loadMessages(locale, modules),
+          locale === 'en' ? undefined : loadMessages('en', modules),
+        ])
+        i18n.global.locale.value = locale
+        document.documentElement.lang = locale
+        me.value = first
+        status.value = 'ready'
+      },
+      (error: unknown) => {
+        console.error(error)
+        status.value = 'failed'
+      },
+    )
+  let ready = load()
 
   const nav = computed<ReadonlyArray<ShellNavGroup>>(() => {
     const routes = new Map(options.modules.flatMap((m) => m.routes.map((r) => [r.name, r])))
@@ -202,6 +204,7 @@ export const createAdmin = (options: AdminOptions): App => {
       .map(({ key, component }) => ({ key, component })),
   )
 
+  const providerSignOut = auth.auth?.signOut
   const state: AdminState = {
     brand: options.brand,
     me,
@@ -212,6 +215,17 @@ export const createAdmin = (options: AdminOptions): App => {
     nav,
     widgets,
     can,
+    refresh: () => (ready = load()),
+    ...(providerSignOut
+      ? {
+          signOut: async () => {
+            await providerSignOut({ apiPrefix, fetch })
+            me.value = undefined
+            status.value = 'signedOut'
+            await router.push({ name: auth.auth!.signInRoute })
+          },
+        }
+      : {}),
   }
 
   const routes: Array<RouteRecordRaw> = [

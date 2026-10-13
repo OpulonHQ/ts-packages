@@ -3,9 +3,8 @@ import { beforeAll, expect, onTestFinished, test } from 'vitest'
 import { useTestDatabase } from '../../../test/postgres/index.ts'
 import { brand } from '../admin/brand.ts'
 import { adminModules } from '../admin/modules.ts'
-import worker, { type Env } from '../worker.ts'
-import { memoryBucket } from './memory-bucket.ts'
 import { makeShop } from './support/shop.ts'
+import { makeHost, seedUser } from './support/users.ts'
 
 // Runs in the `admin` vitest project: happy-dom, built by the opulonUi() preset.
 const db = useTestDatabase()
@@ -18,23 +17,12 @@ beforeAll(async () => {
   shop.mailer.failure = undefined
 })
 
-/** The admin's fetch, routed into the fixture host's Worker (no mocked API). */
-const hostFetch: typeof fetch = async (input, init) => {
-  const request = new Request(input, init)
-  request.headers.set('authorization', 'Bearer test-token')
-  const env: Env = {
-    HYPERDRIVE: { connectionString: db.url },
-    DEMO_TOKEN: 'test-token',
-    OPULON_BUILD_ID: 'b1',
-    ASSETS: { fetch: async () => new Response('not found', { status: 404 }) },
-    MEDIA_BUCKET: memoryBucket(),
-  }
-  const pending: Array<Promise<unknown>> = []
-  const response = await worker.fetch(request, env, { waitUntil: (p) => pending.push(p) })
-  const body = await response.arrayBuffer()
-  await Promise.all(pending)
-  return new Response(body, response)
-}
+let hostFetch: typeof fetch
+beforeAll(async () => {
+  const host = makeHost(() => db.url, { buildId: 'b1' })
+  const user = await seedUser(db.url, { locale: 'sk', permissions: ['emails.log.view'] })
+  hostFetch = host.browserFetch({ cookie: await host.signIn(user.email, user.password) })
+})
 
 test('the email log screen lists emails with status and attempts, in the admin locale', async () => {
   history.replaceState(null, '', '/admin/emails/log')

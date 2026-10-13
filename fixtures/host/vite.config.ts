@@ -12,7 +12,11 @@ export default defineConfig({
     opulonAdmin({
       brand,
       // Package admin screens outside the root, scanned for Tailwind classes and icons.
-      sources: [repo('packages/emails/src'), repo('packages/media/src/admin')],
+      sources: [
+        repo('packages/emails/src'),
+        repo('packages/media/src/admin'),
+        repo('packages/users/src/admin'),
+      ],
     }),
   ],
   build: { outDir: '../public/admin', emptyOutDir: true },

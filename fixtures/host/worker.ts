@@ -1,4 +1,3 @@
-import { authorization } from '@opulonjs/core'
 import {
   type AssetsBinding,
   createWorker,
@@ -13,7 +12,7 @@ import {
   r2MediaStorage,
   serveMedia,
 } from '@opulonjs/media/server'
-import { Effect, Layer } from 'effect'
+import { Layer } from 'effect'
 import { server } from './server/opulon.ts'
 
 export interface Env {
@@ -24,62 +23,31 @@ export interface Env {
   readonly MEDIA_BUCKET: R2BucketLike
   /** Commit SHA, set once in CI and passed to the admin build too (OPULON_BUILD_ID). */
   readonly OPULON_BUILD_ID: string
-  /** Bearer token of the stub user; users replaces this with real sessions. */
-  readonly DEMO_TOKEN: string
+  /** The host's public origin (users: cookies, CSRF checks, emailed links). */
+  readonly USERS_BASE_URL: string
+  /** Signs session cookies (a secret: `wrangler secret put`). */
+  readonly USERS_AUTH_SECRET: string
 }
 
-const demoPermissions = [
-  'demo.notes.view',
-  'emails.log.view',
-  'media.view',
-  'media.upload',
-  'media.archive',
-  'cms.pages.view',
-  'cms.pages.edit',
-  'cms.pages.publish',
-]
-
-// Stub until users ships: one bearer token signs in a demo staff user. Tests may narrow the
-// user's permissions with `Bearer <token>:<permission>,<permission>`.
-const stubAuthorization = (token: string) =>
-  authorization((request) => {
-    const [given, only] = (request.headers.authorization ?? '').split(':')
-    return Effect.succeed(
-      token && given === `Bearer ${token}`
-        ? {
-            id: 'demo-user',
-            name: 'Demo User',
-            email: 'demo@example.test',
-            locale: 'sk',
-            permissions:
-              only === undefined
-                ? demoPermissions
-                : demoPermissions.filter((p) => only.split(',').includes(p)),
-          }
-        : undefined,
-    )
+/** The fixture Worker with a given Mailer; tests pass `captureMailer().layer`. */
+export const hostWorker = (mailer: Layer.Layer<Mailer> = Mailer.log) => {
+  const opulon = createWorker(server, {
+    infra: (env: Env) =>
+      Layer.mergeAll(PgFromHyperdrive(env.HYPERDRIVE), R2MediaStorage(env.MEDIA_BUCKET), mailer),
+    buildId: (env) => env.OPULON_BUILD_ID,
   })
-
-const opulon = createWorker(server, {
-  infra: (env: Env) =>
-    Layer.mergeAll(
-      PgFromHyperdrive(env.HYPERDRIVE),
-      stubAuthorization(env.DEMO_TOKEN),
-      R2MediaStorage(env.MEDIA_BUCKET),
-      // The fixture logs emails instead of sending them; a real host uses Mailer.resend().
-      Mailer.log,
-    ),
-  buildId: (env) => env.OPULON_BUILD_ID,
-})
-
-export default {
-  ...opulon,
-  // The admin SPA (only /admin/**), media originals (only /media/**), then the composed API.
-  async fetch(request: Request, env: Env, ctx: WorkerContext): Promise<Response> {
-    return (
-      (await serveAdmin(request, env.ASSETS)) ??
-      (await serveMedia(request, r2MediaStorage(env.MEDIA_BUCKET))) ??
-      opulon.fetch(request, env, ctx)
-    )
-  },
+  return {
+    ...opulon,
+    // The admin SPA (only /admin/**), media originals (only /media/**), then the composed API.
+    async fetch(request: Request, env: Env, ctx: WorkerContext): Promise<Response> {
+      return (
+        (await serveAdmin(request, env.ASSETS)) ??
+        (await serveMedia(request, r2MediaStorage(env.MEDIA_BUCKET))) ??
+        opulon.fetch(request, env, ctx)
+      )
+    },
+  }
 }
+
+// The fixture logs emails instead of sending them; a real host uses Mailer.resend().
+export default hostWorker()

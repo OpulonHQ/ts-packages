@@ -1,9 +1,15 @@
-import { expect, test } from 'vitest'
+import { beforeAll, expect, test } from 'vitest'
 import { useTestDatabase } from '../../../test/postgres/index.ts'
 import worker, { type Env } from '../worker.ts'
-import { memoryBucket } from './memory-bucket.ts'
+import { makeHost, seedUser } from './support/users.ts'
 
 const db = useTestDatabase()
+const host = makeHost(() => db.url)
+let cookie = ''
+beforeAll(async () => {
+  const user = await seedUser(db.url, { permissions: ['demo.notes.view'] })
+  cookie = await host.signIn(user.email, user.password)
+})
 
 // Stands in for the ASSETS binding serving fixtures/host/public (html_handling "none").
 const files: Record<string, string> = {
@@ -18,13 +24,7 @@ const assets: Env['ASSETS'] = {
   },
 }
 
-const env = (): Env => ({
-  HYPERDRIVE: { connectionString: db.url },
-  DEMO_TOKEN: 'test-token',
-  OPULON_BUILD_ID: 'build-1',
-  ASSETS: assets,
-  MEDIA_BUCKET: memoryBucket(),
-})
+const env = (): Env => ({ ...host.env(), ASSETS: assets })
 
 async function request(path: string, headers: Record<string, string> = {}) {
   const pending: Array<Promise<unknown>> = []
@@ -42,7 +42,7 @@ async function request(path: string, headers: Record<string, string> = {}) {
 }
 
 test('serves the demo module under /api/<module id> behind its policy', async () => {
-  expect(await request('/api/demo/notes', { authorization: 'Bearer test-token' })).toMatchObject({
+  expect(await request('/api/demo/notes', { cookie })).toMatchObject({
     status: 200,
     body: [{ id: 1, body: 'hello from demo' }],
   })
@@ -57,14 +57,14 @@ test('the cron runs the demo task as the system actor, and its afterCommit work 
     { scheduledTime: Date.parse('2026-10-13T10:05:00Z'), cron: '*/5 * * * *' },
     env(),
   )
-  expect(await request('/api/demo/ticks', { authorization: 'Bearer test-token' })).toMatchObject({
+  expect(await request('/api/demo/ticks', { cookie })).toMatchObject({
     status: 200,
     body: [{ actor: 'system', confirmed: true }],
   })
 })
 
 test('serves nothing outside the API prefix and /admin', async () => {
-  expect((await request('/demo/notes', { authorization: 'Bearer test-token' })).status).toBe(404)
+  expect((await request('/demo/notes', { cookie })).status).toBe(404)
 })
 
 test('/admin/** falls back to index.html with no-store', async () => {

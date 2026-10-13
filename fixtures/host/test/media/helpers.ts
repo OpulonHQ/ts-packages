@@ -2,6 +2,7 @@ import type { MediaItem } from '@opulonjs/media/api'
 import { useTestDatabase } from '../../../../test/postgres/index.ts'
 import worker, { type Env } from '../../worker.ts'
 import { memoryBucket } from '../memory-bucket.ts'
+import { origin, sessions, usersEnv } from '../support/users.ts'
 
 const text = (value: string) => new TextEncoder().encode(value)
 const be32 = (n: number) => [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255]
@@ -133,21 +134,36 @@ export const useHost = () => {
   const bucket = memoryBucket()
   const env = (): Env => ({
     HYPERDRIVE: { connectionString: db.url },
-    DEMO_TOKEN: 'test-token',
+    ...usersEnv,
     OPULON_BUILD_ID: 'build-1',
     ASSETS: { fetch: async () => new Response('not found', { status: 404 }) },
     MEDIA_BUCKET: bucket,
   })
+  const send = async (request: Request) => {
+    const pending: Array<Promise<unknown>> = []
+    const response = await worker.fetch(request, env(), { waitUntil: (p) => pending.push(p) })
+    const body = await response.arrayBuffer()
+    await Promise.all(pending)
+    return new Response(body.byteLength ? body : null, response)
+  }
+  /** The staff user tests act as: every permission the fixture uses, or exactly `as`. */
+  const session = sessions(() => db.url, send)
+  const staff = [
+    'demo.notes.view',
+    'emails.log.view',
+    'media.view',
+    'media.upload',
+    'media.archive',
+  ]
 
-  /** Calls the Worker. `as` narrows the demo user's permissions; null sends no token. */
+  /** Calls the Worker. `as` narrows the staff user's permissions; null signs nobody in. */
   const call = async <Body = unknown>(
     method: string,
     path: string,
     { body, as }: { body?: BodyInit; as?: ReadonlyArray<string> | null } = {},
   ) => {
-    const headers = new Headers()
-    if (as !== null)
-      headers.set('authorization', `Bearer test-token${as ? `:${as.join(',')}` : ''}`)
+    const headers = new Headers({ origin })
+    if (as !== null) headers.set('cookie', await session(as ?? staff, { locale: 'sk' }))
     if (typeof body === 'string') headers.set('content-type', 'application/json')
     if (body instanceof FormData) body = await multipart(body, headers)
     const pending: Array<Promise<unknown>> = []
@@ -174,15 +190,12 @@ export const useHost = () => {
     return data
   }
 
-  /** A `fetch` routed into the Worker as the demo user, for admin screens (no mocked API). */
+  /** A `fetch` routed into the Worker as the staff user, for admin screens (no mocked API). */
   const hostFetch: typeof fetch = async (input, init) => {
     const request = new Request(input, init)
-    request.headers.set('authorization', 'Bearer test-token')
-    const pending: Array<Promise<unknown>> = []
-    const response = await worker.fetch(request, env(), { waitUntil: (p) => pending.push(p) })
-    const body = await response.arrayBuffer()
-    await Promise.all(pending)
-    return new Response(body, response)
+    request.headers.set('origin', origin)
+    request.headers.set('cookie', await session(staff, { locale: 'sk' }))
+    return send(request)
   }
 
   return {

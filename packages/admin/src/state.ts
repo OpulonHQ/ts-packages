@@ -47,6 +47,10 @@ export interface AdminState {
   readonly widgets: ComputedRef<ReadonlyArray<ShellWidget>>
   /** Whether the signed-in user holds a permission (UX only; the API enforces it). */
   readonly can: (permission: string) => boolean
+  /** Reads `/me` again, e.g. after the auth provider signed the user in. */
+  readonly refresh: () => Promise<void>
+  /** Signs out through the auth provider, when it supports it. */
+  readonly signOut?: () => Promise<void>
 }
 
 export const adminStateKey: InjectionKey<AdminState> = Symbol('@opulonjs/admin/state')

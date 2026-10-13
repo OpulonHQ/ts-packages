@@ -1,11 +1,10 @@
 import { createAdmin, defineAdminModule } from '@opulonjs/admin'
 import { defineComponent, h } from 'vue'
-import { expect, onTestFinished, test, vi } from 'vitest'
+import { beforeAll, expect, onTestFinished, test, vi } from 'vitest'
 import { useTestDatabase } from '../../../test/postgres/index.ts'
 import { brand } from '../admin/brand.ts'
 import { adminModules } from '../admin/modules.ts'
-import worker, { type Env } from '../worker.ts'
-import { memoryBucket } from './memory-bucket.ts'
+import { makeHost, seedUser } from './support/users.ts'
 
 // Runs in the `admin` vitest project: happy-dom, built by the opulonAdmin() preset.
 const db = useTestDatabase()
@@ -27,7 +26,7 @@ const ghost = defineAdminModule({
   },
 })
 
-// Admin screens for core (composed on the server): one needs a permission the stub user lacks.
+// Admin screens for core (composed on the server): one needs a permission the user lacks.
 const coreScreens = defineAdminModule({
   id: 'core',
   routes: [
@@ -53,29 +52,24 @@ const coreScreens = defineAdminModule({
   },
 })
 
-/** The admin's fetch, routed into the fixture host's Worker (no mocked API). */
-const hostFetch =
-  (serverBuildId: string, token: string | null): typeof fetch =>
-  async (input, init) => {
-    const request = new Request(input, init)
-    if (token) request.headers.set('authorization', `Bearer ${token}`)
-    const env: Env = {
-      HYPERDRIVE: { connectionString: db.url },
-      DEMO_TOKEN: 'test-token',
-      OPULON_BUILD_ID: serverBuildId,
-      ASSETS: { fetch: async () => new Response('not found', { status: 404 }) },
-      MEDIA_BUCKET: memoryBucket(),
-    }
-    const pending: Array<Promise<unknown>> = []
-    const response = await worker.fetch(request, env, { waitUntil: (p) => pending.push(p) })
-    const body = await response.arrayBuffer()
-    await Promise.all(pending)
-    return new Response(body, response)
-  }
+// The admin's fetch, routed into the fixture host's Worker (no mocked API), as a browser.
+const hosts = {
+  b1: makeHost(() => db.url, { buildId: 'b1' }),
+  'new-build': makeHost(() => db.url, { buildId: 'new-build' }),
+}
+let cookie = ''
+beforeAll(async () => {
+  const user = await seedUser(db.url, {
+    name: 'Demo User',
+    locale: 'sk',
+    permissions: ['demo.notes.view', 'emails.log.view'],
+  })
+  cookie = await hosts.b1.signIn(user.email, user.password)
+})
 
 function mountAdmin(
   path: string,
-  { admin = 'b1', server = 'b1', token = 'test-token' as string | null } = {},
+  { admin = 'b1', server = 'b1' as keyof typeof hosts, signedIn = true } = {},
 ) {
   history.replaceState(null, '', path)
   document.body.innerHTML = '<div id="app"></div>'
@@ -83,7 +77,7 @@ function mountAdmin(
     brand,
     modules: [...adminModules, coreScreens, ghost],
     buildId: admin,
-    fetch: hostFetch(server, token),
+    fetch: hosts[server].browserFetch({ cookie: signedIn ? cookie : '' }),
   })
   app.mount('#app')
   onTestFinished(() => app.unmount())
@@ -128,10 +122,10 @@ test('hides admin modules missing from /me, with a dev warning', async () => {
 })
 
 test('sends signed-out users to the auth provider sign-in route', async () => {
-  const admin = mountAdmin('/admin/demo/notes', { token: null })
+  const admin = mountAdmin('/admin/demo/notes', { signedIn: false })
   await expect.poll(() => location.pathname).toBe('/admin/sign-in')
   expect(new URLSearchParams(location.search).get('redirect')).toBe('/demo/notes')
-  await expect.poll(admin.text).toContain('Access token')
+  await expect.poll(admin.text).toContain('Password')
   expect(admin.text()).not.toContain('Poznámky')
 })
 

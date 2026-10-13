@@ -5,6 +5,7 @@ import {
   nuxtUiSk,
   UAlert,
   UApp,
+  UButton,
   UDashboardGroup,
   UDashboardNavbar,
   UDashboardPanel,
@@ -17,7 +18,7 @@ import { useI18n } from 'vue-i18n'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { useAdmin } from '../state.ts'
 
-const { brand, me, status, stale, nav } = useAdmin()
+const { brand, me, status, stale, nav, signOut } = useAdmin()
 const { t, locale } = useI18n()
 const route = useRoute()
 
@@ -115,10 +116,20 @@ const title = computed(() => {
             >
               {{ me.user.name.charAt(0) }}
             </span>
-            <span v-if="!collapsed" class="min-w-0">
+            <span v-if="!collapsed" class="min-w-0 flex-1">
               <span class="block truncate font-medium text-highlighted">{{ me.user.name }}</span>
               <span class="block truncate text-xs text-muted">{{ me.user.email }}</span>
             </span>
+            <UButton
+              v-if="signOut && !collapsed"
+              icon="i-lucide-log-out"
+              color="neutral"
+              variant="ghost"
+              size="sm"
+              :aria-label="t('admin.signOut')"
+              :title="t('admin.signOut')"
+              @click="signOut"
+            />
           </div>
         </template>
       </UDashboardSidebar>

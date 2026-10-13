@@ -66,6 +66,11 @@ export interface Widget {
 export interface AuthProvider {
   /** Name of a `public` route of the same module: where signed-out users are sent. */
   readonly signInRoute: string
+  /** Ends the session; the shell then shows the sign-in route. */
+  readonly signOut?: (api: {
+    readonly apiPrefix: string
+    readonly fetch: typeof globalThis.fetch
+  }) => Promise<void>
 }
 
 export interface AdminModule<Id extends string = string> {

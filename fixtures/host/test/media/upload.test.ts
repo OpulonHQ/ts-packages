@@ -44,7 +44,7 @@ test.each([
     ).toEqual([
       {
         action: 'media.item.uploaded',
-        actor_id: 'demo-user',
+        actor_id: expect.any(String),
         subject_id: item.id,
         subject_label: filename,
       },
