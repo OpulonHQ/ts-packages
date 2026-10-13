@@ -119,7 +119,11 @@ export const AuditQuery = Schema.Struct({
   subjectLabel: Schema.optionalKey(filterText),
   start: Schema.optionalKey(timestamp),
   end: Schema.optionalKey(timestamp),
-}).check(Schema.makeFilter((query) => !query.start || !query.end || query.start < query.end))
+}).check(
+  Schema.makeFilter(
+    (query) => !query.start || !query.end || Date.parse(query.start) < Date.parse(query.end),
+  ),
+)
 export type AuditQuery = typeof AuditQuery.Type
 
 /** Core's group. Unlike other modules it is mounted at the API prefix itself: `/api/me`. */

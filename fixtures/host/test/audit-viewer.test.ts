@@ -79,6 +79,9 @@ test('audit pages immutable snapshots newest first with filters and a true total
     total: 1,
   })
   expect((await get(`${range}&actor=%25`)).body).toEqual({ total: 0, rows: [] })
+  expect((await get('start=2026-01-02T12:00:00Z&end=2026-01-02T12:00:00.500Z')).body).toMatchObject(
+    { total: 2 },
+  )
 })
 
 test('audit rejects invalid paging, dates and reversed ranges at the HTTP boundary', async () => {
