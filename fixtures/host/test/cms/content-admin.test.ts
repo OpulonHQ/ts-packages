@@ -46,6 +46,28 @@ test('a collection-only editor can see the real pending purge on their content s
   expect(text()).not.toContain('private diagnostic')
 })
 
+test('the loaded menu editor shows one purge warning', async () => {
+  await failed.upload(files.png(800, 600), 'menu-notice.png', { en: 'Menu image' })
+  const requests: Array<Promise<Response>> = []
+  const fetch: typeof failed.fetch = (input, init) => {
+    const response = failed.fetch(input, init)
+    const url = input instanceof Request ? input.url : String(input)
+    if (url.endsWith('/cache-purges')) requests.push(response)
+    return response
+  }
+  mountAdmin('/admin/cms/menus/main', fetch)
+  await expect.poll(() => button('Zverejniť')).toBeTruthy()
+  await Promise.all(requests)
+  await failed.call('GET', '/menus/main')
+  await expect
+    .poll(() =>
+      [...document.querySelectorAll('[role="status"]')].filter((notice) =>
+        notice.textContent?.includes('Živý web môže zobrazovať predchádzajúcu verziu'),
+      ),
+    )
+    .toHaveLength(1)
+})
+
 const button = (label: string) =>
   [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === label)
 const input = (name: string) => document.querySelector<HTMLInputElement>(`input[name="${name}"]`)
