@@ -1,4 +1,5 @@
 import { CachePurgeStatus } from '@opulonjs/core/api'
+import type { WorkersCache } from '@opulonjs/core/workers'
 import { Schema } from 'effect'
 import { expect, test } from 'vitest'
 import { page, useCmsHost } from './helpers.ts'
@@ -24,6 +25,13 @@ const concurrent = useCmsHost(undefined, async () => {
   return { success: true, errors: [] }
 })
 
+const entered = Promise.withResolvers<void>()
+const completed = Promise.withResolvers<Awaited<ReturnType<WorkersCache['purge']>>>()
+const inFlight = useCmsHost(undefined, () => {
+  entered.resolve()
+  return completed.promise
+})
+
 const status = async (
   fixture: typeof host,
   permissions: ReadonlyArray<string> = ['cms.pages.view'],
@@ -34,6 +42,22 @@ const status = async (
     body: Schema.decodeUnknownSync(CachePurgeStatus)(await response.json()),
   }
 }
+
+test('an immediate purge in flight does not report a retry warning for a successful save', async () => {
+  const created = await inFlight.create(page({ en: '/purge-in-flight' }))
+  expect(created.status).toBe(200)
+  const publishing = inFlight.publish(created.body.id)
+  await entered.promise
+  try {
+    const during = await status(inFlight)
+    expect(during.body.summary).toEqual({ total: 0, failed: 0, staleUntil: null })
+    expect(during.body.rows).toEqual([])
+  } finally {
+    completed.resolve({ success: true, errors: [] })
+    expect((await publishing).status).toBe(200)
+  }
+  expect((await status(inFlight)).body.summary.total).toBe(0)
+})
 
 test('core exposes safe purge status to media-only staff and rejects anonymous reads', async () => {
   const created = await statusHost.create(page({ en: '/media-status' }))
