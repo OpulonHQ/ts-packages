@@ -16,6 +16,40 @@ const failed = useCmsHost(undefined, async () => ({
   errors: [{ code: 1, message: 'private diagnostic' }],
 }))
 
+let mediaPurgeRefused = false
+const mediaOnly = useCmsHost(undefined, async () => ({
+  success: !mediaPurgeRefused,
+  errors: mediaPurgeRefused ? [{ code: 1, message: 'private media diagnostic' }] : [],
+}))
+
+test('a media-only editor sees one purge warning after saving and after closing details', async () => {
+  mediaPurgeRefused = false
+  await mediaOnly.upload(files.png(800, 600), 'media-only.png')
+  const fetch = mediaOnly.fetchAs(['media.view', 'media.upload', 'media.archive'])
+  const text = mountAdmin('/admin/media', fetch)
+  const row = () =>
+    [...document.querySelectorAll<HTMLElement>('tbody tr')].find((row) =>
+      row.textContent?.includes('media-only.png'),
+    )
+  await expect.poll(row).toBeTruthy()
+  row()!.click()
+  await expect.poll(() => input('alt.en')).toBeTruthy()
+  expect(text()).not.toContain('Živý web môže zobrazovať predchádzajúcu verziu')
+  mediaPurgeRefused = true
+  type('alt.en', 'Media-only edit')
+  button('Uložiť')!.click()
+  await expect.poll(text).toContain('Uložené.')
+  const warnings = () =>
+    [...document.querySelectorAll('[role="status"]')].filter((notice) =>
+      notice.textContent?.includes('Živý web môže zobrazovať predchádzajúcu verziu'),
+    )
+  await expect.poll(warnings).toHaveLength(1)
+  expect(text()).not.toContain('private media diagnostic')
+  document.querySelector<HTMLButtonElement>('button[aria-label="Close"]')!.click()
+  await expect.poll(() => input('alt.en')).toBeFalsy()
+  await expect.poll(warnings).toHaveLength(1)
+})
+
 function mountAdmin(path: string, fetch = host.fetch) {
   history.replaceState(null, '', path)
   document.body.innerHTML = '<div id="app"></div>'

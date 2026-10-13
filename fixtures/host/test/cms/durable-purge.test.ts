@@ -18,6 +18,43 @@ const concurrent = useCmsHost(undefined, async () => {
   return { success: true, errors: [] }
 })
 
+test('core exposes safe purge status to media-only staff and rejects anonymous reads', async () => {
+  const created = await refused.create(page({ en: '/media-status' }))
+  expect((await refused.publish(created.body.id)).status).toBe(200)
+  const response = await refused.fetchAs(['media.upload'])('https://host.test/api/cache-purges')
+  expect(response.status).toBe(200)
+  const body = await response.json()
+  expect(body).toMatchObject({
+    summary: { total: 1, failed: 0, staleUntil: expect.any(String) },
+    rows: [
+      {
+        id: expect.any(String),
+        attempts: 1,
+        state: 'queued',
+        error: 'Cache purge was refused.',
+        staleUntil: expect.any(String),
+      },
+    ],
+  })
+  expect(Object.keys(body.rows[0]).sort()).toEqual([
+    'attempts',
+    'error',
+    'id',
+    'staleUntil',
+    'state',
+  ])
+  expect(JSON.stringify(body)).not.toContain('secret provider diagnostic')
+  expect((await refused.publicFetch('https://host.test/api/cache-purges')).status).toBe(401)
+})
+
+test('core denies purge status access to staff without a producer access permission', async () => {
+  for (const permissions of [[], ['media.view']]) {
+    expect((await refused.fetchAs(permissions)('https://host.test/api/cache-purges')).status).toBe(
+      403,
+    )
+  }
+})
+
 test('failed purges survive the request, are editor-readable, and a scheduled retry clears them', async () => {
   const created = await host.create(page({ en: '/durable-purge' }))
   expect((await host.publish(created.body.id)).status).toBe(200)
