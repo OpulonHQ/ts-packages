@@ -11,7 +11,7 @@ import {
   withTransaction,
 } from '@opulonjs/core'
 import { EmailService } from '@opulonjs/emails/server'
-import { Context, Effect, Layer } from 'effect'
+import { Context, Data, Effect, Layer } from 'effect'
 import { BadRequest, Conflict, Forbidden, Unauthorized } from 'effect/http-api/HttpApiError'
 import { SqlClient } from 'effect/sql/SqlClient'
 import { InvalidToken, Refused, TooManyRequests } from '../api.ts'
@@ -38,6 +38,13 @@ const auditBestEffort = (input: AuditInput, actor?: Actor) =>
     : Audit.record(input)
   ).pipe(Effect.catchCause((cause) => Effect.logError(`audit ${input.action} failed`, cause)))
 
+/** Better Auth answered 5xx; its error code only, since the message can quote user input. */
+class BetterAuthServerError extends Data.TaggedError('BetterAuthServerError')<{
+  readonly status: number
+  readonly code: string
+}> {}
+const errorCode = (body: unknown) =>
+  typeof body === 'object' && body !== null && 'code' in body ? String(body.code) : 'none'
 const tooMany = (result: AuthResult) => new TooManyRequests({ retryAfter: result.retryAfter ?? 60 })
 
 /** Sign-in, sessions, password reset and invitations; implements core's auth ports. */
@@ -150,7 +157,7 @@ export class Users extends Context.Service<
       const failOnServerError = (result: AuthResult) =>
         result.status >= 500
           ? Effect.die(
-              new Error(`Better Auth answered ${result.status}: ${JSON.stringify(result.body)}`),
+              new BetterAuthServerError({ status: result.status, code: errorCode(result.body) }),
             )
           : Effect.void
 

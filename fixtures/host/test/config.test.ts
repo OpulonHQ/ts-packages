@@ -82,9 +82,10 @@ test('config comes from the Worker env only, never from process.env', async () =
   })
 })
 
-test('a request that dies answers 500 and logs its cause, which would otherwise be lost', async () => {
+test('a request that dies answers 500 and logs its cause, without the message', async () => {
   const logged: Array<string> = []
-  const capture = (...args: Array<unknown>) => void logged.push(args.map(String).join(' '))
+  const capture = (...args: Array<unknown>) =>
+    void logged.push(args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' '))
   const spies = (['log', 'error', 'warn', 'info'] as const).map((m) =>
     vi.spyOn(console, m).mockImplementation(capture),
   )
@@ -99,5 +100,9 @@ test('a request that dies answers 500 and logs its cause, which would otherwise 
   } finally {
     for (const spy of spies) spy.mockRestore()
   }
-  expect(logged.join('\n')).toContain('CFG_API_KEY')
+  const log = logged.join('\n')
+  expect(log).toContain('request failed')
+  expect(log).toContain('ConfigError')
+  // Messages can carry user data; this one names the missing key.
+  expect(log).not.toContain('CFG_API_KEY')
 })

@@ -1,5 +1,5 @@
 import * as PgClient from '@effect/sql-pg/PgClient'
-import { ConfigProvider, Effect, Layer, ManagedRuntime, Redacted } from 'effect'
+import { Cause, ConfigProvider, Effect, Layer, ManagedRuntime, Redacted } from 'effect'
 import * as HttpRouter from 'effect/http/HttpRouter'
 import * as HttpServer from 'effect/http/HttpServer'
 import * as HttpServerError from 'effect/http/HttpServerError'
@@ -9,6 +9,30 @@ import { runDueTasks } from './tasks.ts'
 
 export { serveAdmin } from './admin-assets.ts'
 export type { AssetsBinding } from './admin-assets.ts'
+
+/**
+ * A failure's names and codes (`_tag` or `name`, then `code`, e.g. a SQLSTATE), nested causes
+ * included. Never messages or stacks: they can carry user data (a Postgres error quotes the
+ * value it rejected; a schema error's stack names the input path).
+ */
+const describe = (error: unknown, depth = 0): Record<string, unknown> => {
+  if (typeof error !== 'object' || error === null) return { error: typeof error }
+  const e = error as { _tag?: unknown; name?: unknown; code?: unknown; cause?: unknown }
+  return {
+    error: String(e._tag ?? e.name ?? 'unknown'),
+    ...(typeof e.code === 'string' ? { code: e.code } : {}),
+    ...(e.cause !== undefined && depth < 3 ? { cause: describe(e.cause, depth + 1) } : {}),
+  }
+}
+
+const redact = (cause: Cause.Cause<unknown>) =>
+  cause.reasons.flatMap((reason) =>
+    Cause.isDieReason(reason)
+      ? [describe(reason.defect)]
+      : Cause.isFailReason(reason)
+        ? [describe(reason.error)]
+        : [],
+  )
 
 /** The part of the Workers ExecutionContext the adapter uses. */
 export interface WorkerContext {
@@ -80,13 +104,13 @@ export const createWorker = <R, Env extends object, I, E>(
         Layer.provide(HttpServer.layerServices),
       ) as Layer.Layer<never, unknown, HttpRouter.HttpRouter>
       // No per-request log line (Workers logs requests), but a failure answered with a 5xx logs
-      // its cause: the client only sees a generic error, so this is its only trace.
+      // its cause, redacted: the client only sees a generic error, so this is its only trace.
       const web = HttpRouter.toWebHandler(app, {
         disableLogger: true,
         middleware: (effect) =>
           Effect.tapCause(effect, (cause) =>
             HttpServerError.causeResponseStripped(cause)[0].status >= 500
-              ? Effect.logError(cause)
+              ? Effect.logError('request failed', redact(cause))
               : Effect.void,
           ),
       })

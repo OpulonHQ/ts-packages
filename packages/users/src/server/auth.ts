@@ -76,7 +76,9 @@ export class BetterAuth extends Context.Service<
           // well within 2^53), and the default string made it concatenate retry-after values.
           types: {
             getTypeParser: (oid: number, format?: 'text' | 'binary') =>
-              oid === pg.types.builtins.INT8 ? Number : pg.types.getTypeParser(oid, format),
+              oid === pg.types.builtins.INT8 && (format ?? 'text') === 'text'
+                ? Number
+                : pg.types.getTypeParser(oid, format),
           },
         })
         // An idle connection the server closes must not crash the isolate; the next query
