@@ -1,6 +1,6 @@
 import { Effect, Schema } from 'effect'
 import { SqlClient } from 'effect/sql/SqlClient'
-import { AuditPage, type AuditQuery } from './api.ts'
+import { AuditPage, auditDefaultPerPage, type AuditQuery } from './api.ts'
 import { requirePermission } from './authz.ts'
 
 export const listAudit = Effect.fn('Audit.list')(
@@ -14,7 +14,7 @@ export const listAudit = Effect.fn('Audit.list')(
     yield* requirePermission('core.audit.view')
     const sql = yield* SqlClient
     const page = query.page ?? 1
-    const perPage = query.perPage ?? 25
+    const perPage = query.perPage ?? auditDefaultPerPage
     const actor = query.actor?.trim()
     const label = query.subjectLabel?.trim()
     const where = sql.and([

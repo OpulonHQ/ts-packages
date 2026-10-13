@@ -87,6 +87,7 @@ export const AuditPage = Schema.Struct({ rows: Schema.Array(AuditEvent), total: 
 export type AuditPage = typeof AuditPage.Type
 
 export const auditMaxOffset = 10_000
+export const auditDefaultPerPage = 25
 
 const filterText = Schema.String.check(Schema.isMaxLength(500))
 const timestamp = Schema.String.check(
@@ -126,7 +127,7 @@ export const AuditQuery = Schema.Struct({
 }).check(
   Schema.makeFilter(
     (query) =>
-      ((query.page ?? 1) - 1) * (query.perPage ?? 25) <= auditMaxOffset &&
+      ((query.page ?? 1) - 1) * (query.perPage ?? auditDefaultPerPage) <= auditMaxOffset &&
       (!query.start || !query.end || Date.parse(query.start) < Date.parse(query.end)),
   ),
 )

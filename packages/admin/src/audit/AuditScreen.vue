@@ -1,5 +1,11 @@
 <script setup lang="ts">
-import { CoreGroup, auditMaxOffset, type AuditQuery, type AuditEvent } from '@opulonjs/core/api'
+import {
+  CoreGroup,
+  auditDefaultPerPage,
+  auditMaxOffset,
+  type AuditQuery,
+  type AuditEvent,
+} from '@opulonjs/core/api'
 import {
   UButton,
   UCard,
@@ -30,7 +36,7 @@ const fields = [
 const filters = reactive(Object.fromEntries(fields.map((field) => [field, ''])))
 const applied = ref<AuditQuery>({})
 const revision = ref(0)
-const perPage = 25
+const perPage = auditDefaultPerPage
 const maxPage = Math.floor(auditMaxOffset / perPage) + 1
 const invalid = ref<'invalidRange' | 'invalidThrough'>()
 const columns = computed<ReadonlyArray<DataTableColumn<AuditEvent>>>(() => [
