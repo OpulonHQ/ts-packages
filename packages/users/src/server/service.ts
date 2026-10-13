@@ -11,23 +11,15 @@ import {
   withTransaction,
 } from '@opulonjs/core'
 import { EmailService } from '@opulonjs/emails/server'
-import { Context, Effect, Layer, Schema } from 'effect'
+import { Context, Effect, Layer } from 'effect'
 import { BadRequest, Conflict, Forbidden, Unauthorized } from 'effect/http-api/HttpApiError'
 import { SqlClient } from 'effect/sql/SqlClient'
-import { InvalidToken, superAdminRole, TooManyRequests } from '../api.ts'
+import { InvalidToken, Refused, TooManyRequests } from '../api.ts'
+import { canGrant, loadAccess } from './access.ts'
 import { type AuthResult, BetterAuth, usersConfig } from './auth.ts'
 import { adminLink, createInvitation, hashToken } from './invitations.ts'
 import { hashPassword } from './password.ts'
 import { invitationEmail, passwordResetEmail } from './templates.ts'
-
-const UserRow = Schema.Struct({
-  id: Schema.String,
-  name: Schema.String,
-  email: Schema.String,
-  locale: Schema.NullOr(Schema.String),
-  superAdmin: Schema.Boolean,
-  permissions: Schema.Array(Schema.String),
-})
 
 const addressPattern = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/
 const normalizeEmail = (email: string) => email.trim().toLowerCase()
@@ -87,7 +79,11 @@ export class Users extends Context.Service<
     readonly invite: (input: {
       readonly email: string
       readonly roleIds: ReadonlyArray<string>
-    }) => Effect.Effect<{ readonly id: string }, BadRequest | Conflict | Forbidden, CurrentUser>
+    }) => Effect.Effect<
+      { readonly id: string },
+      BadRequest | Conflict | Forbidden | Refused,
+      CurrentUser
+    >
   }
 >()('@opulonjs/users/Users') {
   static readonly layer = Layer.effect(
@@ -99,33 +95,12 @@ export class Users extends Context.Service<
       const background = yield* Background
       const withSql = Effect.provideService(SqlClient, sql)
 
-      const loadUser = Effect.fn('Users.loadUser')(function* (id: string) {
-        const composed = yield* Composed
-        const rows = yield* sql`
-          select u.id, u.name, u.email, u.admin_locale as locale,
-            coalesce(bool_or(ur.role_id = ${superAdminRole}), false) as "superAdmin",
-            coalesce(jsonb_agg(distinct p) filter (where p is not null), '[]') as permissions
-          from users."user" u
-          left join users.user_role ur on ur.user_id = u.id
-          left join users.role r on r.id = ur.role_id
-          left join lateral unnest(r.permissions) as p on true
-          where u.id = ${id} and u.deactivated_at is null
-          group by u.id`.pipe(Effect.orDie)
-        const [row] = yield* Schema.decodeUnknownEffect(Schema.Array(UserRow))(rows).pipe(
-          Effect.orDie,
+      /** The active user's access; undefined for unknown or deactivated users. */
+      const loadUser = (id: string) =>
+        loadAccess(id).pipe(
+          Effect.map((access) => (access?.active ? access : undefined)),
+          withSql,
         )
-        if (!row) return undefined
-        // Keys no composed module declares are ignored; Super admin holds the whole catalog.
-        const held = new Set(row.permissions)
-        const user: User = {
-          id: row.id,
-          name: row.name,
-          email: row.email,
-          locale: row.locale,
-          permissions: composed.permissions.filter((key) => row.superAdmin || held.has(key)),
-        }
-        return { user, superAdmin: row.superAdmin }
-      })
 
       const userIdByEmail = (email: string) =>
         sql<{ id: string; name: string }>`select id, name from users."user"
@@ -293,16 +268,11 @@ export class Users extends Context.Service<
             Effect.orDie,
           )
           if (roles.length !== roleIds.length) return yield* new BadRequest()
-          // Escalation guard (TSPACK-10): only a Super admin grants Super admin, and nobody
-          // grants a permission they do not hold. TSPACK-30 applies the same rule to roles.
+          // Escalation guard (TSPACK-10): an invitation grants its roles on acceptance.
           const self = yield* loadUser(inviter.id)
-          const held = new Set(inviter.permissions)
-          const catalog = new Set((yield* Composed).permissions)
-          for (const role of roles) {
-            if (role.id === superAdminRole && !self?.superAdmin) return yield* new Forbidden()
-            if (role.permissions.some((key) => catalog.has(key) && !held.has(key)))
-              return yield* new Forbidden()
-          }
+          const catalog = (yield* Composed).permissions
+          if (!self || roles.some((role) => !canGrant(self, role, catalog)))
+            return yield* new Refused({ reason: 'escalation' })
           if (yield* userIdByEmail(email)) return yield* new Conflict()
           return yield* withTransaction(
             Effect.gen(function* () {

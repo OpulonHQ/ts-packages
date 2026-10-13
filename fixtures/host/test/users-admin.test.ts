@@ -101,3 +101,88 @@ test('a forgotten password is reset through the emailed link', async () => {
   await expect.poll(reset.text).toContain('Your password is set.')
   await host.signIn(user.email, 'fresh password 1')
 })
+
+const button = (label: string) =>
+  [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === label)
+/** Clicks the checkbox whose label reads `label`. */
+function check(label: string) {
+  const target = [...document.querySelectorAll('label')].find(
+    (l) => l.textContent?.trim() === label,
+  )?.htmlFor
+  if (!target) throw new Error(`no checkbox labelled ${label}`)
+  document.getElementById(target)!.click()
+}
+function type(name: string, value: string) {
+  const input = document.querySelector<HTMLInputElement>(`input[name="${name}"]`)!
+  input.value = value
+  input.dispatchEvent(new Event('input'))
+}
+const row = (text: string) =>
+  [...document.querySelectorAll<HTMLElement>('tbody tr')].find((tr) =>
+    tr.textContent?.includes(text),
+  )
+
+test('a Super admin reaches every composed admin screen', async () => {
+  const owner = await seedUser(db.url, { superAdmin: true })
+  const me = await host.me(await host.signIn(owner.email, owner.password))
+  const needed = adminModules.flatMap((m) =>
+    m.routes.flatMap((r) => (r.permission ? [r.permission] : [])),
+  )
+  expect(needed).toEqual(
+    expect.arrayContaining(['emails.templates.manage', 'users.manage', 'users.roles.manage']),
+  )
+  expect(me.permissions).toEqual(expect.arrayContaining(needed))
+})
+
+test('creates a role from labelled permissions and assigns it on the user screen', async () => {
+  const owner = await seedUser(db.url, { superAdmin: true })
+  const member = await seedUser(db.url, { name: 'Milan Member', permissions: [] })
+  const jar = { cookie: await host.signIn(owner.email, owner.password) }
+
+  const roles = mountAdmin('/admin/roles', jar)
+  await expect.poll(roles.text).toContain('Super admin')
+  button('New role')!.click()
+  await expect.poll(roles.text).toContain('View the email log')
+  type('name', 'Mail watchers')
+  check('View the email log')
+  button('Save')!.click()
+  await expect.poll(roles.text).toContain('The role is saved.')
+
+  const users = mountAdmin('/admin/users', jar)
+  await expect.poll(() => row('Milan Member')).toBeDefined()
+  row('Milan Member')!.click()
+  await expect.poll(() => location.pathname).toBe(`/admin/users/${member.id}`)
+  await expect.poll(users.text).toContain('Mail watchers')
+  check('Mail watchers')
+  button('Save roles')!.click()
+  await expect.poll(users.text).toContain('The roles are saved.')
+  const cookie = await host.signIn(member.email, member.password)
+  expect((await host.me(cookie)).permissions).toEqual(['emails.log.view'])
+
+  button('Deactivate')!.click()
+  await expect.poll(() => button('Deactivate the user')).toBeDefined()
+  button('Deactivate the user')!.click()
+  await expect.poll(users.text).toContain('This user is deactivated')
+  expect((await host.request('GET', '/me', { cookie })).status).toBe(401)
+})
+
+test('says why a change is refused', async () => {
+  const manager = await seedUser(db.url, { permissions: ['users.manage'] })
+  const jar = { cookie: await host.signIn(manager.email, manager.password) }
+  const admin = mountAdmin(`/admin/users/${manager.id}`, jar)
+  await expect.poll(() => button('Deactivate')).toBeDefined()
+  button('Deactivate')!.click()
+  await expect.poll(() => button('Deactivate the user')).toBeDefined()
+  button('Deactivate the user')!.click()
+  await expect.poll(admin.text).toContain('You cannot take away your own access')
+})
+
+test('users pick their admin language on their account screen', async () => {
+  const user = await seedUser(db.url, { permissions: [] })
+  const jar = { cookie: await host.signIn(user.email, user.password) }
+  const admin = mountAdmin('/admin/account', jar)
+  await expect.poll(() => button('slovenčina')).toBeDefined()
+  button('slovenčina')!.click()
+  await expect.poll(admin.text).toContain('Jazyk administrácie')
+  expect((await host.me(jar.cookie)).locale).toBe('sk')
+})

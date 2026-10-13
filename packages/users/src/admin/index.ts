@@ -3,7 +3,8 @@ import { usersAuditActions, usersPermissions } from '../api.ts'
 
 /**
  * The users module's admin side and the admin's auth provider: the public sign-in, forgotten
- * password, password reset and invitation screens, and sign-out.
+ * password, password reset and invitation screens, sign-out, the Users and Roles screens and
+ * each user's own account (admin language).
  */
 export const usersAdmin = () =>
   defineAdminModule({
@@ -44,6 +45,40 @@ export const usersAdmin = () =>
         path: '/accept-invitation',
         public: true,
         component: () => import('./AcceptInvitationScreen.vue'),
+      },
+      {
+        name: 'users.users',
+        path: '/users',
+        permission: 'users.manage',
+        component: () => import('./UsersScreen.vue'),
+      },
+      {
+        name: 'users.user',
+        path: '/users/:id',
+        permission: 'users.manage',
+        component: () => import('./UserScreen.vue'),
+      },
+      {
+        name: 'users.roles',
+        path: '/roles',
+        permission: 'users.roles.manage',
+        component: () => import('./RolesScreen.vue'),
+      },
+      {
+        name: 'users.account',
+        path: '/account',
+        signedIn: true,
+        component: () => import('./AccountScreen.vue'),
+      },
+    ],
+    nav: [
+      { label: 'nav.users', route: 'users.users', icon: 'i-lucide-users', group: 'users' },
+      { label: 'nav.roles', route: 'users.roles', icon: 'i-lucide-shield', group: 'users' },
+      {
+        label: 'nav.account',
+        route: 'users.account',
+        icon: 'i-lucide-circle-user',
+        group: 'users',
       },
     ],
     messages: {

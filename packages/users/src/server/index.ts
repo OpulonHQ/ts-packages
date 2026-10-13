@@ -16,11 +16,13 @@ import {
 import { BetterAuth } from './auth.ts'
 import { createInvitation } from './invitations.ts'
 import createUsers from './migrations/0001_create_users.ts'
+import { UserManagement } from './manage.ts'
 import { Users } from './service.ts'
 import { invitationEmail, passwordResetEmail } from './templates.ts'
 
 export { usersConfig } from './auth.ts'
 export { hashPassword, verifyPassword } from './password.ts'
+export { UserManagement } from './manage.ts'
 export { Users } from './service.ts'
 export { invitationEmail, passwordResetEmail } from './templates.ts'
 
@@ -110,7 +112,21 @@ export const users = () =>
         HttpApiBuilder.group(api, 'users', (h) =>
           Effect.gen(function* () {
             const users = yield* Users
-            return h.handle('invite', ({ payload }) => users.invite(payload))
+            const manage = yield* UserManagement
+            return h
+              .handle('invite', ({ payload }) => users.invite(payload))
+              .handle('users', () => manage.users())
+              .handle('assignRoles', ({ params, payload }) =>
+                manage.assignRoles(params.id, payload.roleIds),
+              )
+              .handle('deactivate', ({ params }) => manage.setActive(params.id, false))
+              .handle('reactivate', ({ params }) => manage.setActive(params.id, true))
+              .handle('setLocale', ({ params, payload }) =>
+                manage.setLocale(params.id, payload.locale),
+              )
+              .handle('roles', () => manage.roles())
+              .handle('createRole', ({ payload }) => manage.createRole(payload))
+              .handle('updateRole', ({ params, payload }) => manage.updateRole(params.id, payload))
           }),
         ),
       ),
@@ -126,7 +142,10 @@ export const users = () =>
           )
         return signedIn?.user
       }),
-    ).pipe(Layer.provideMerge(Users.layer), Layer.provide(BetterAuth.layer)),
+    ).pipe(
+      Layer.provideMerge(Layer.merge(Users.layer, UserManagement.layer)),
+      Layer.provide(BetterAuth.layer),
+    ),
     migrations: { '0001_create_users': createUsers },
     permissions: usersPermissions,
     auditActions: usersAuditActions,

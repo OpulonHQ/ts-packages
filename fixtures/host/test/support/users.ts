@@ -159,8 +159,8 @@ export interface SeededUser {
 
 /**
  * Creates an active staff user directly in the database: a role granting `permissions` (or the
- * built-in Super admin), the Better Auth user and its credential. Until TSPACK-30 ships the
- * roles API this is the only way to give a test user specific permissions.
+ * built-in Super admin), the Better Auth user and its credential. Direct writes on purpose: the
+ * roles API needs a signed-in Super admin first, and tests of the guard use the API itself.
  */
 export async function seedUser(
   databaseUrl: string,
@@ -209,7 +209,7 @@ export async function seedUser(
   return { id, email, password }
 }
 
-/** A role with the given permissions (until TSPACK-30's roles API); resolves with its id. */
+/** A role with the given permissions, written directly (see seedUser); resolves with its id. */
 export async function seedRole(databaseUrl: string, permissions: ReadonlyArray<string>) {
   const id = randomUUID()
   await sqlQuery(
