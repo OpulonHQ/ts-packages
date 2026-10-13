@@ -1,7 +1,8 @@
 // Packs every package (after `pnpm build`), installs the tarballs into a scratch project
 // and imports each export subpath from the packed output, so CI tests what npm would ship.
 // Against the same tarballs it then bundles every `/api` entry for the browser (no server-only
-// imports) and compares the fixture host's server and admin module id lists.
+// imports), bundles `@opulonjs/cms/site` for the browser (no Effect) and compares the fixture
+// host's server and admin module id lists.
 import { execFileSync } from 'node:child_process'
 import {
   cpSync,
@@ -74,6 +75,42 @@ async function checkBrowserApi(scratch: string, packages: Record<string, string>
     ],
   })
   console.log('ok browser /api build:', entries.join(', '))
+}
+
+/**
+ * Bundles the public-site entries for the browser, as a host's public site would, and fails on
+ * any import of Effect: the public bundle reads the Read API with a plain fetch (ADR 0004).
+ */
+async function checkPublicSite(scratch: string) {
+  const entries = ['@opulonjs/cms/site', '@opulonjs/cms/site/nuxt']
+  writeFileSync(
+    join(scratch, 'browser-site.ts'),
+    entries.map((e, i) => `import * as e${i} from '${e}'\nconsole.log(e${i})\n`).join(''),
+  )
+  await build({
+    root: scratch,
+    configFile: false,
+    logLevel: 'warn',
+    build: {
+      write: false,
+      lib: { entry: join(scratch, 'browser-site.ts'), formats: ['es'], fileName: 'site' },
+    },
+    plugins: [
+      {
+        name: 'no-effect-imports',
+        enforce: 'pre',
+        resolveId(source, importer) {
+          if (/^(effect|@effect\/[a-z-]+)(\/|$)/.test(source) || source.includes('HttpApiClient')) {
+            this.error(`public site bundle imports "${source}" (from ${importer})`)
+          }
+          if (serverOnly.some((pattern) => pattern.test(source))) {
+            this.error(`public site bundle imports server-only "${source}" (from ${importer})`)
+          }
+        },
+      },
+    ],
+  })
+  console.log('ok browser public site build without effect:', entries.join(', '))
 }
 
 // The fixture admin, built from the tarballs with the opulonAdmin() preset as a host builds it
@@ -190,6 +227,7 @@ for (const name of names) {
     cpSync(join(root, 'fixtures/host', dir), join(scratch, 'host', dir), { recursive: true })
   }
   await checkBrowserApi(scratch, tarballs)
+  await checkPublicSite(scratch)
   run('node', ['--input-type=module', '-e', adminCheck], scratch)
   console.log('ok server and admin module id lists match')
 } finally {
