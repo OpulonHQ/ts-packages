@@ -100,7 +100,7 @@ export class Items extends Context.Service<
         ) =>
           Effect.gen(function* () {
             const collection = collectionOf(key)
-            // A collection removed from the definitions leaves items nothing validates.
+
             if (!collection)
               return yield* new CmsInvalid({ message: `Unknown collection "${key}".` })
             return yield* f(collection).pipe(
@@ -169,7 +169,7 @@ export class Items extends Context.Service<
               Effect.map(toItem),
             ),
           saveDraft: (id, draft) => documents.saveDraft(id, draft).pipe(Effect.map(toItem)),
-          // Only system pages refuse deletion.
+
           remove: (id) => documents.remove(id).pipe(Effect.catchTag('CmsConflict', Effect.die)),
           publish: (id) => documents.publish(id).pipe(Effect.map(toItem)),
           unpublish: (id) => documents.unpublish(id).pipe(Effect.map(toItem)),

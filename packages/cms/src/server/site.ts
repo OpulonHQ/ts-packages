@@ -27,14 +27,12 @@ import { cacheTags } from './cache.ts'
 import { checkFields, cleanData, linkProblem, localizeData, uuid } from './document.ts'
 import { type DocumentRow, documentState, makeDocuments } from './documents.ts'
 
-/** Menus and settings have no paths, so a path conflict cannot happen. */
 const noConflict = <A, E, R>(effect: Effect.Effect<A, E | CmsConflict, R>) =>
   effect.pipe(Effect.catchTag('CmsConflict', Effect.die))
 
 /** Cache-Tag of the public site response (settings and menus). */
 export const siteTags = ['cms:site']
 
-/** The settings singleton's key in `cms.document`. */
 const settingsKey = 'site'
 const maxMenuItems = 200
 const maxLabel = 100
@@ -165,7 +163,7 @@ export class Settings extends Context.Service<
           checkRequired: (_key, document) =>
             checkFields(definitions.settings, defaultLocale, document.data),
         })
-        // The singleton always exists, so "not found" cannot happen.
+
         const orDie = <A, E>(effect: Effect.Effect<A, E | CmsNotFound>) =>
           effect.pipe(Effect.catchTag('CmsNotFound', Effect.die))
         return {
@@ -322,7 +320,6 @@ export class Menus extends Context.Service<
           normalize,
           checkRequired: (_key, document) => checkLabels(document.items, ''),
         })
-        /** Only declared menus exist. */
         const declared = (key: string) =>
           Object.hasOwn(definitions.menus, key)
             ? Effect.void

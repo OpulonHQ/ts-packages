@@ -23,13 +23,12 @@ import { Redirects } from './redirects.ts'
 /** What `cms.document.kind` holds; `key` names the system page, collection or menu. */
 export type DocumentKind = 'page' | 'item' | 'settings' | 'menu'
 
-/** A document row with its draft and published documents decoded. */
 export interface DocumentRow<D> {
   readonly id: string
   readonly key: string | null
   readonly draft: D
   readonly published: D | null
-  /** Published and the draft equals it. */
+
   readonly inSync: boolean
   readonly publishedAt: Date | null
   readonly publishedRevisionId: string | null
@@ -42,11 +41,10 @@ export interface PublishedPath {
   readonly path: string
 }
 
-/** How one kind of document is validated, permitted, audited and purged. */
 export interface DocumentSpec<D> {
   readonly kind: DocumentKind
   readonly schema: Schema.Decoder<D>
-  /** Singletons (site settings, menus) are found by key and created on first read. */
+
   readonly singleton?: { readonly empty: D }
   readonly permissions: { readonly view: string; readonly edit: string; readonly publish: string }
   readonly actions: {
@@ -60,15 +58,15 @@ export interface DocumentSpec<D> {
     readonly id: string
     readonly label: string
   }
-  /** Cache-Tags purged when the published document changes. */
+
   readonly tags: (row: DocumentRow<D>) => ReadonlyArray<string>
-  /** Validates and normalizes a draft; `key` is the document's key (an item's collection). */
+
   readonly normalize: (key: string | null, document: D) => Effect.Effect<D, CmsInvalid>
-  /** Publishing needs these to pass on top of `normalize`. */
+
   readonly checkRequired: (key: string | null, document: D) => Effect.Effect<void, CmsInvalid>
-  /** Routed documents (pages, items) have a path and availability per content locale. */
+
   readonly routes?: (document: D) => Readonly<Record<string, PageLocale>>
-  /** Refuses deleting some documents (system pages). */
+
   readonly beforeRemove?: (row: DocumentRow<D>) => Effect.Effect<void, CmsConflict>
 }
 
@@ -86,7 +84,6 @@ const decodeRows = Schema.decodeUnknownEffect(Schema.Array(Row))
 const columns = `id, key, draft, published, coalesce(draft = published, false) as in_sync,
   published_at, published_revision_id, updated_at`
 
-/** Status of a document as the admin shows it. */
 export const documentState = (row: DocumentRow<unknown>) => ({
   status:
     row.published === null
@@ -98,11 +95,6 @@ export const documentState = (row: DocumentRow<unknown>) => ({
   publishedAt: row.publishedAt?.toISOString() ?? null,
 })
 
-/**
- * The draft/publish store every kind of cms document shares (TSPACK-11): one row per document,
- * draft and published JSON, a revision per publish, the publish family audited and purged.
- * `documents(spec)` binds it to one kind. Every method checks the actor's permission itself.
- */
 export const makeDocuments = Effect.gen(function* () {
   const sql = yield* SqlClient
   const purger = yield* CachePurger
@@ -110,7 +102,6 @@ export const makeDocuments = Effect.gen(function* () {
   const redirects = yield* Redirects
   const withSql = Effect.provideService(SqlClient, sql)
 
-  /** Fails when another page or item uses one of the paths (in its draft or published). */
   const checkPaths = (id: string | null, routes: Readonly<Record<string, PageLocale>>) =>
     Effect.gen(function* () {
       const wanted = Object.entries(routes).filter(([, l]) => l.path !== '')
@@ -134,11 +125,6 @@ export const makeDocuments = Effect.gen(function* () {
         })
     })
 
-  /**
-   * Replaces a routed document's published paths and returns them before and after. The one
-   * place where a published path changes: publish and unpublish go through it (delete
-   * cascades); publish hands the change to `Redirects.pathsChanged`.
-   */
   const replacePaths = (id: string, next: ReadonlyArray<PublishedPath>) =>
     Effect.gen(function* () {
       const previous = yield* sql<PublishedPath>`delete from cms.path where document_id = ${id}
@@ -149,7 +135,6 @@ export const makeDocuments = Effect.gen(function* () {
     })
 
   return <D>(spec: DocumentSpec<D>) => {
-    /** A routed document's published paths may change on every publish family write. */
     const purge = (tags: ReadonlyArray<string>) =>
       CachePurge.afterCommit(spec.routes ? [...tags, cacheTags.routes] : tags).pipe(
         Effect.provideService(Background, background),
@@ -178,7 +163,6 @@ export const makeDocuments = Effect.gen(function* () {
       })
     const lock = (forUpdate: boolean) => sql.literal(forUpdate ? 'for update' : '')
 
-    /** By id, or by key for singletons (created with an empty draft on first read). */
     const find = (ref: string, forUpdate = false) =>
       Effect.gen(function* () {
         if (spec.singleton) {
@@ -285,7 +269,6 @@ export const makeDocuments = Effect.gen(function* () {
         withSql,
       ),
 
-      /** All documents of the kind, or of one key (an item's collection). */
       list: Effect.fn('Documents.list')(
         function* (key: string | null) {
           yield* requirePermission(spec.permissions.view)
@@ -368,7 +351,6 @@ export const makeDocuments = Effect.gen(function* () {
         withSql,
       ),
 
-      /** Copies the draft to published, records a revision, audits and purges. */
       publish: Effect.fn('Documents.publish')(
         function* (ref: string) {
           yield* requirePermission(spec.permissions.publish)
@@ -376,7 +358,7 @@ export const makeDocuments = Effect.gen(function* () {
           return yield* withTransaction(
             Effect.gen(function* () {
               const row = yield* find(ref, true)
-              // Again, as the definitions may have changed since the draft was saved.
+
               const draft = yield* spec.normalize(row.key, row.draft)
               yield* spec.checkRequired(row.key, draft)
               if (spec.routes) yield* checkPaths(row.id, spec.routes(draft))
@@ -395,7 +377,7 @@ export const makeDocuments = Effect.gen(function* () {
               )
               if (spec.routes) {
                 const { previous, next } = yield* replacePaths(row.id, publishedPaths(draft))
-                // Old paths redirect to the new ones (TSPACK-34).
+
                 yield* redirects.pathsChanged(row.id, previous, next)
               }
               yield* Audit.record({

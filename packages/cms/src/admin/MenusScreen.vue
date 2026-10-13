@@ -1,11 +1,12 @@
 <script setup lang="ts">
-/** Content > Menus: the host's menus as tabs; the chosen one's entries, draft and publishing. */
 import { useI18n } from '@opulonjs/admin'
 import { UButton, UCard } from '@opulonjs/ui'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
+import { Schema } from 'effect'
 import { computed, ref, shallowRef, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { labelText, type Menu, type MenuDocument } from '../api.ts'
+import { labelText, type Menu, MenuDocument } from '../api.ts'
+import RevisionHistory from './RevisionHistory.vue'
 import MenuItemsEditor, { type EditedMenuItem } from './MenuItemsEditor.vue'
 import PublishActions from './PublishActions.vue'
 import { useAction, useCmsContext, useContent } from './use-cms.ts'
@@ -14,7 +15,7 @@ const { t, locale } = useI18n()
 const content = useContent()
 const { definitions } = useCmsContext()
 const route = useRoute()
-const { pending, status, run } = useAction(() => t('cms.errors.failed'))
+const { pending, status, run, invalidate } = useAction(() => t('cms.errors.failed'))
 
 const keys = Object.keys(definitions.menus)
 const current = computed(() => {
@@ -23,16 +24,20 @@ const current = computed(() => {
 })
 const menu = shallowRef<Menu>()
 const items = ref<EditedMenuItem[]>([])
+const revisionPending = ref(false)
 const canEdit = computed(() => content.can('cms.site.edit'))
 
 const show = (next: Menu | undefined) => {
   if (!next) return
   menu.value = next
-  items.value = structuredClone(next.draft.items) as EditedMenuItem[]
+  items.value = next.draft.items.map(function copy(item): EditedMenuItem {
+    return { ...item, label: { ...item.label }, children: item.children.map(copy) }
+  })
 }
 watch(
   current,
   async (key) => {
+    invalidate()
     menu.value = undefined
     status.value = undefined
     if (key) show(await run(() => content.getMenu(key), ''))
@@ -40,19 +45,23 @@ watch(
   { immediate: true },
 )
 
-// The server validates links; the editor's working copy is sent as is.
-const document = () => ({ items: items.value }) as unknown as MenuDocument
+const document = () => Schema.decodeUnknownSync(MenuDocument)({ items: items.value })
 const save = async () =>
   show(await run(() => content.saveMenu(current.value!, document()), t('cms.page.saved')))
 const publish = async () =>
   show(
     await run(async () => {
-      await content.saveMenu(current.value!, document())
-      return content.publishMenu(current.value!)
+      const key = current.value!
+      const draft = document()
+      await content.saveMenu(key, draft)
+      return content.publishMenu(key)
     }, t('cms.page.published')),
   )
 const unpublish = async () =>
   show(await run(() => content.unpublishMenu(current.value!), t('cms.site.unpublished')))
+async function restored() {
+  show(await run(() => content.getMenu(current.value!), t('cms.revisions.restored')))
+}
 </script>
 
 <template>
@@ -62,7 +71,7 @@ const unpublish = async () =>
         <PublishActions
           :status="menu.status"
           :published="menu.published !== null"
-          :pending="pending"
+          :pending="pending || revisionPending"
           :can-edit="canEdit"
           :can-publish="content.can('cms.site.publish')"
           @save="save"
@@ -103,5 +112,15 @@ const unpublish = async () =>
         />
       </UCard>
     </form>
+    <RevisionHistory
+      v-if="menu && current"
+      kind="menu"
+      :document-ref="current"
+      :published-revision-id="menu.publishedRevisionId"
+      :can-restore="content.can('cms.site.publish')"
+      :disabled="pending"
+      @busy="revisionPending = $event"
+      @restored="restored"
+    />
   </section>
 </template>

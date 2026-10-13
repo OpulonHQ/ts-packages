@@ -1,22 +1,18 @@
 <script setup lang="ts">
-/**
- * One page: path, availability and SEO per content locale, its ordered sections with forms
- * generated from the definitions, and save draft / publish / unpublish / delete.
- */
 import { CachePurgeNotice, useI18n } from '@opulonjs/admin'
 import { UButton, UCard } from '@opulonjs/ui'
 import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
 import FieldSelect from '@opulonjs/ui/components/Field/Select'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
 import StatusBadge from '@opulonjs/ui/components/StatusBadge'
-import { computed, ref, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { labelText, type Page, type PageDocument, type PageLocale } from '../api.ts'
+import RevisionHistory from './RevisionHistory.vue'
 import FieldsForm from './FieldsForm.vue'
 import LocaleDetails from './LocaleDetails.vue'
 import { failureMessage, pageTitle, useCmsContext, usePages } from './use-cms.ts'
 
-/** The draft as edited: plain mutable copies of the document's parts. */
 interface Draft {
   locales: Record<string, PageLocale>
   sections: Array<{ id: string; type: string; data: Record<string, unknown> }>
@@ -33,6 +29,7 @@ const draft = ref<Draft>()
 const missing = ref(false)
 const pending = ref(false)
 const confirming = ref(false)
+const revisionPending = ref(false)
 const status = ref<{ kind: 'ok' | 'error'; message: string }>()
 const newType = ref<string | number | null>(null)
 
@@ -50,8 +47,15 @@ const blankLocale = (): PageLocale => ({
   seo: { title: '', description: '', image: null, noindex: false },
 })
 const toDraft = (document: PageDocument): Draft => {
-  // A deep, mutable copy: JSON documents only.
-  const copy = structuredClone(document) as Draft
+  const copy: Draft = {
+    locales: Object.fromEntries(
+      Object.entries(document.locales).map(([code, value]) => [code, structuredClone(value)]),
+    ),
+    sections: document.sections.map((section) => ({
+      ...section,
+      data: structuredClone(section.data),
+    })),
+  }
   for (const code of locales.value) copy.locales[code] ??= blankLocale()
   return copy
 }
@@ -60,39 +64,57 @@ const show = (next: Page) => {
   draft.value = toDraft(next.draft)
 }
 
+let actionTicket = 0
+let loadTicket = 0
+onBeforeUnmount(() => {
+  loadTicket++
+  actionTicket++
+})
 watch(
   () => String(route.params.id),
   async (id) => {
+    const request = ++loadTicket
+    actionTicket++
+    pending.value = false
+    status.value = undefined
+    page.value = undefined
+    draft.value = undefined
     missing.value = false
     try {
-      show(await pages.get(id))
+      const next = await pages.get(id)
+      if (request === loadTicket) show(next)
     } catch {
-      missing.value = true
+      if (request === loadTicket) missing.value = true
     }
   },
   { immediate: true },
 )
 
 async function run(action: () => Promise<Page | void>, done: string) {
+  const request = ++actionTicket
   pending.value = true
   status.value = undefined
   try {
     const next = await action()
+    if (request !== actionTicket) return
     if (next) show(next)
     status.value = { kind: 'ok', message: done }
   } catch (error) {
-    status.value = { kind: 'error', message: failureMessage(error, t('cms.errors.failed')) }
+    if (request === actionTicket)
+      status.value = { kind: 'error', message: failureMessage(error, t('cms.errors.failed')) }
   } finally {
-    pending.value = false
+    if (request === actionTicket) pending.value = false
   }
 }
 
 const save = () => run(() => pages.save(page.value!.id, draft.value!), t('cms.page.saved'))
-// Publishing publishes what is on screen: the draft is saved first.
+
 const publish = () =>
   run(async () => {
-    await pages.save(page.value!.id, draft.value!)
-    return pages.publish(page.value!.id)
+    const id = page.value!.id
+    const document = draft.value!
+    await pages.save(id, document)
+    return pages.publish(id)
   }, t('cms.page.published'))
 const unpublish = () => run(() => pages.unpublish(page.value!.id), t('cms.page.unpublished'))
 async function remove() {
@@ -110,6 +132,9 @@ function move(index: number, by: -1 | 1) {
   const sections = draft.value!.sections
   const [section] = sections.splice(index, 1)
   sections.splice(index + by, 0, section!)
+}
+async function restored() {
+  await run(() => pages.get(page.value!.id), t('cms.revisions.restored'))
 }
 </script>
 
@@ -132,14 +157,14 @@ function move(index: number, by: -1 | 1) {
             :label="t('cms.page.save')"
             color="neutral"
             variant="outline"
-            :loading="pending"
+            :loading="pending || revisionPending"
             @click="save"
           />
           <UButton
             v-if="canEdit && pages.can('cms.pages.publish')"
             :label="t('cms.page.publish')"
             icon="i-lucide-globe"
-            :loading="pending"
+            :loading="pending || revisionPending"
             @click="publish"
           />
           <UButton
@@ -147,7 +172,7 @@ function move(index: number, by: -1 | 1) {
             :label="t('cms.page.unpublish')"
             color="neutral"
             variant="ghost"
-            :disabled="pending"
+            :disabled="pending || revisionPending"
             @click="unpublish"
           />
           <UButton
@@ -156,12 +181,12 @@ function move(index: number, by: -1 | 1) {
             color="error"
             variant="ghost"
             icon="i-lucide-trash-2"
-            :disabled="pending"
+            :disabled="pending || revisionPending"
             @click="confirming = true"
           />
         </template>
       </PageHeader>
-      <CachePurgeNotice :pending="pending" class="mb-4" />
+      <CachePurgeNotice :pending="pending || revisionPending" class="mb-4" />
 
       <p
         v-if="status && status.message"
@@ -246,13 +271,23 @@ function move(index: number, by: -1 | 1) {
           </div>
         </div>
       </form>
+      <RevisionHistory
+        v-if="page"
+        kind="page"
+        :document-ref="page.id"
+        :published-revision-id="page.publishedRevisionId"
+        :can-restore="pages.can('cms.pages.publish')"
+        :disabled="pending"
+        @busy="revisionPending = $event"
+        @restored="restored"
+      />
 
       <ConfirmDialog
         v-model:open="confirming"
         :title="t('cms.page.deleteTitle')"
         :description="t('cms.page.deleteWarning')"
         :confirm-label="t('cms.page.delete')"
-        :loading="pending"
+        :loading="pending || revisionPending"
         danger
         @confirm="remove"
       />

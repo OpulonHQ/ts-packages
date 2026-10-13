@@ -1,15 +1,12 @@
 <script setup lang="ts">
-/**
- * One collection item: path, availability and SEO per content locale (routed collections
- * only), the collection's fields, and save draft / publish / unpublish / delete.
- */
 import { useI18n } from '@opulonjs/admin'
 import { UCard } from '@opulonjs/ui'
 import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
-import { computed, ref, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { type Item, type ItemDocument, labelText, type PageLocale } from '../api.ts'
+import RevisionHistory from './RevisionHistory.vue'
 import FieldsForm from './FieldsForm.vue'
 import LocaleDetails from './LocaleDetails.vue'
 import PublishActions from './PublishActions.vue'
@@ -25,12 +22,13 @@ const content = useContent()
 const { definitions } = useCmsContext()
 const route = useRoute()
 const router = useRouter()
-const { pending, status, run } = useAction(() => t('cms.errors.failed'))
+const { pending, status, run, invalidate } = useAction(() => t('cms.errors.failed'))
 
 const item = shallowRef<Item>()
 const draft = ref<Draft>()
 const missing = ref(false)
 const confirming = ref(false)
+const revisionPending = ref(false)
 
 const locales = computed(() => content.contentLocales.value)
 const canEdit = computed(() => content.can('cms.collections.edit'))
@@ -40,8 +38,12 @@ const collection = computed(() =>
 const collectionLabel = computed(() => labelText(collection.value?.label, locale.value))
 
 const toDraft = (document: ItemDocument): Draft => {
-  // A deep, mutable copy: JSON documents only.
-  const copy = structuredClone(document) as Draft
+  const copy: Draft = {
+    locales: Object.fromEntries(
+      Object.entries(document.locales).map(([code, value]) => [code, structuredClone(value)]),
+    ),
+    data: structuredClone(document.data),
+  }
   for (const code of locales.value)
     copy.locales[code] ??= {
       path: '',
@@ -56,14 +58,23 @@ const show = (next: Item | undefined) => {
   draft.value = toDraft(next.draft)
 }
 
+let loadTicket = 0
+onBeforeUnmount(() => {
+  loadTicket++
+})
 watch(
   () => String(route.params.id),
   async (id) => {
+    const request = ++loadTicket
+    invalidate()
+    item.value = undefined
+    draft.value = undefined
     missing.value = false
     try {
-      show(await content.getItem(id))
+      const next = await content.getItem(id)
+      if (request === loadTicket) show(next)
     } catch {
-      missing.value = true
+      if (request === loadTicket) missing.value = true
     }
   },
   { immediate: true },
@@ -71,12 +82,14 @@ watch(
 
 const save = async () =>
   show(await run(() => content.saveItem(item.value!.id, draft.value!), t('cms.page.saved')))
-// Publishing publishes what is on screen: the draft is saved first.
+
 const publish = async () =>
   show(
     await run(async () => {
-      await content.saveItem(item.value!.id, draft.value!)
-      return content.publishItem(item.value!.id)
+      const id = item.value!.id
+      const document = draft.value!
+      await content.saveItem(id, document)
+      return content.publishItem(id)
     }, t('cms.page.published')),
   )
 const unpublish = async () =>
@@ -87,6 +100,9 @@ async function remove() {
   await run(() => content.removeItem(item.value!.id), '')
   if (status.value?.kind === 'ok')
     await router.push({ name: 'cms.collections', params: { collection: collectionKey } })
+}
+async function restored() {
+  show(await run(() => content.getItem(item.value!.id), t('cms.revisions.restored')))
 }
 </script>
 
@@ -108,7 +124,7 @@ async function remove() {
           <PublishActions
             :status="item.status"
             :published="item.published !== null"
-            :pending="pending"
+            :pending="pending || revisionPending"
             :can-edit="canEdit"
             :can-publish="content.can('cms.collections.publish')"
             deletable
@@ -149,13 +165,24 @@ async function remove() {
           />
         </UCard>
       </form>
+      <RevisionHistory
+        v-if="item"
+        kind="item"
+        :document-ref="item.id"
+        :collection="item.collection"
+        :published-revision-id="item.publishedRevisionId"
+        :can-restore="content.can('cms.collections.publish')"
+        :disabled="pending"
+        @busy="revisionPending = $event"
+        @restored="restored"
+      />
 
       <ConfirmDialog
         v-model:open="confirming"
         :title="t('cms.item.deleteTitle')"
         :description="t('cms.item.deleteWarning')"
         :confirm-label="t('cms.page.delete')"
-        :loading="pending"
+        :loading="pending || revisionPending"
         danger
         @confirm="remove"
       />

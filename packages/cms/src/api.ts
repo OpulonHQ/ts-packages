@@ -1,6 +1,3 @@
-// Client-safe: the cms HttpApi group, its catalogs, document schemas and the definitions
-// builders (TSPACK-11). Imported by the admin build and the host's definitions file, so no
-// server-only imports here.
 import { Authorization, Policy, Public } from '@opulonjs/core/api'
 import { ResolvedMedia } from '@opulonjs/media/api'
 import { Schema } from 'effect'
@@ -467,7 +464,6 @@ export const CmsGroup = HttpApiGroup.make('cms')
     }).annotate(Policy, 'cms.pages.publish'),
   )
   .add(
-    // Preview: an admin session reads the draft; answered `private, no-store`.
     HttpApiEndpoint.get('previewPage', '/pages/:id/preview', {
       params: id,
       query: { locale: Schema.optionalKey(Schema.String) },
@@ -632,7 +628,6 @@ export const CmsGroup = HttpApiGroup.make('cms')
     }).annotate(Policy, 'cms.redirects.edit'),
   )
   .add(
-    // The file's text, read by the admin; rows are validated one by one.
     HttpApiEndpoint.post('importRedirects', '/redirects/import', {
       payload: Schema.Struct({
         csv: Schema.String.check(Schema.isMaxLength(redirectImportLimits.maxChars)),
@@ -642,13 +637,6 @@ export const CmsGroup = HttpApiGroup.make('cms')
     }).annotate(Policy, 'cms.redirects.edit'),
   )
   .middleware(Authorization)
-
-// ---------------------------------------------------------------------------------------------
-// The Read API (TSPACK-11 §11, TSPACK-19): public, unauthenticated, published content only.
-// Its schemas are JSON-native, so their encoded and decoded types are the same and a public
-// site uses them without Effect. Paths in it are public paths: the default content locale has
-// no prefix, the others are prefixed with the locale (`/about`, `/it/chi-siamo`, and `/it` for
-// the Italian homepage).
 
 export { ResolvedMedia }
 
@@ -823,9 +811,7 @@ export const CmsReadGroup = HttpApiGroup.make('cms.read')
       error: [CmsInvalid, CmsNotFound],
     }),
   )
-  // The index links its children at `<apiPrefix>/cms/sitemaps/<file>`, as served here. A host
-  // that wants `/sitemap.xml` at its root proxies that path to this endpoint (or lists the
-  // index in `robots.txt`); sitemaps sit under the API path, so submit them through robots.txt.
+
   .add(HttpApiEndpoint.get('sitemapIndex', '/sitemap.xml', { success: xml }))
   .add(
     HttpApiEndpoint.get('sitemap', '/sitemaps/:file', {

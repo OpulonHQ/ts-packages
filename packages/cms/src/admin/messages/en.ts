@@ -1,4 +1,19 @@
 export default {
+  revisions: {
+    title: 'Revision history',
+    description:
+      'Past published snapshots. Restoring replaces the draft; publish separately to update the live site.',
+    date: 'Published',
+    author: 'Author',
+    empty: 'No published revisions yet.',
+    view: 'View revision',
+    restore: 'Restore to draft',
+    restored: 'Revision restored to draft.',
+    warning:
+      'This replaces the current draft, including unsaved edits. Published content stays as it is until you publish.',
+    loading: 'Loading revision…',
+    snapshot: 'Full snapshot',
+  },
   nav: {
     collections: 'Collections',
     menus: 'Menus',

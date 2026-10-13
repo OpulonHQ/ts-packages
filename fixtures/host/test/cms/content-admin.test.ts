@@ -1,15 +1,155 @@
 import { createAdmin } from '@opulonjs/admin'
-import { defineCms, fields, type Item, type Menu, type SiteSettings } from '@opulonjs/cms/api'
+import {
+  defineCms,
+  fields,
+  type Item,
+  type Menu,
+  type SiteSettings,
+  type Page,
+} from '@opulonjs/cms/api'
 import { cmsAdmin } from '@opulonjs/cms/admin'
 import { expect, onTestFinished, test } from 'vitest'
 import { brand } from '../../admin/brand.ts'
 import { adminModules } from '../../admin/modules.ts'
 import { files } from '../media/helpers.ts'
-import { useCmsHost } from './helpers.ts'
+import { page, useCmsHost } from './helpers.ts'
 
-// Runs in the `admin` vitest project (happy-dom); the admin's fetch goes into the test Worker.
-// The editor's admin locale is sk.
 const host = useCmsHost()
+
+test('a late page request cannot replace the editor after navigation', async () => {
+  const a = (await host.create(page({ en: '/admin-race-a' }))).body
+  const b = (await host.create(page({ en: '/admin-race-b' }))).body
+  let release: (() => void) | undefined
+  const held = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let requested = false
+  const fetch: typeof host.fetch = async (input, init) => {
+    const request = new Request(input, init)
+    const response = await host.fetch(request)
+    if (request.url.endsWith(`/pages/${a.id}`)) {
+      requested = true
+      await held
+    }
+    return response
+  }
+  const text = mountAdmin(`/admin/cms/pages/${a.id}`, fetch)
+  await expect.poll(() => requested).toBe(true)
+  history.pushState(null, '', `/admin/cms/pages/${b.id}`)
+  window.dispatchEvent(new PopStateEvent('popstate'))
+  await expect.poll(text).toContain('/admin-race-b')
+  release!()
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  expect(document.querySelector<HTMLInputElement>('input[name="locales.en.path"]')?.value).toBe(
+    '/admin-race-b',
+  )
+})
+
+test('revision history views a snapshot and restores it to the editor without publishing', async () => {
+  const created = (await host.create(page({ en: '/admin-revision-old' }))).body
+  const first = (await host.publish(created.id)).body
+  await host.save(created.id, page({ en: '/admin-revision-new' }))
+  const second = (await host.publish(created.id)).body
+  const text = mountAdmin(`/admin/cms/pages/${created.id}`)
+  await expect.poll(text).toContain('História revízií')
+  await expect.poll(() => document.querySelectorAll('tbody tr').length).toBe(2)
+  const views = [...document.querySelectorAll<HTMLButtonElement>('tbody button')].filter(
+    (b) => b.textContent?.trim() === 'Zobraziť revíziu',
+  )
+  views[1]!.click()
+  await expect
+    .poll(() => document.querySelector('input[name="revision.locales.en.path"]'))
+    .toBeTruthy()
+  expect(
+    document.querySelector<HTMLInputElement>('input[name="revision.locales.en.path"]')?.value,
+  ).toBe('/admin-revision-old')
+  button('Obnoviť do konceptu')!.click()
+  await expect.poll(text).toContain('Nahradí aktuálny koncept')
+  const confirm = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(
+    (b) => b.textContent?.trim() === 'Obnoviť do konceptu',
+  )
+  confirm!.click()
+  await expect.poll(text).toContain('Revízia bola obnovená do konceptu.')
+  await expect
+    .poll(() => document.querySelector<HTMLInputElement>('input[name="locales.en.path"]')?.value)
+    .toBe('/admin-revision-old')
+  const stored = (await host.call<Page>('GET', `/pages/${created.id}`)).body
+  expect(stored.draft).toEqual(first.draft)
+  expect(stored.publishedRevisionId).toBe(second.publishedRevisionId)
+  expect(stored.published).toEqual(second.published)
+})
+
+test('view-only editors can inspect revisions and cannot restore', async () => {
+  const created = (await host.create(page({ en: '/admin-revision-view-only' }))).body
+  await host.publish(created.id)
+  const text = mountAdmin(`/admin/cms/pages/${created.id}`, host.fetchAs(['cms.pages.view']))
+  await expect.poll(text).toContain('História revízií')
+  await expect.poll(() => button('Zobraziť revíziu')).toBeTruthy()
+  button('Zobraziť revíziu')!.click()
+  await expect
+    .poll(() => document.querySelector('input[name="revision.locales.en.path"]'))
+    .toBeTruthy()
+  expect(button('Obnoviť do konceptu')).toBeUndefined()
+})
+
+test.each([
+  {
+    kind: 'item',
+    route: (id: string) => `/admin/cms/items/${id}`,
+    path: (id: string) => `/items/${id}`,
+    create: '/collections/posts/items',
+    first: { locales: {}, data: { title: { en: 'Revision first item' } } },
+    second: { locales: {}, data: { title: { en: 'Revision second item' } } },
+  },
+  {
+    kind: 'settings',
+    route: () => '/admin/cms/settings',
+    path: () => '/settings',
+    create: undefined,
+    first: { data: { siteName: { en: 'Revision first site' } } },
+    second: { data: { siteName: { en: 'Revision second site' } } },
+  },
+  {
+    kind: 'menu',
+    route: () => '/admin/cms/menus/footer',
+    path: () => '/menus/footer',
+    create: undefined,
+    first: { items: [] },
+    second: {
+      items: [
+        {
+          id: crypto.randomUUID(),
+          label: { en: 'Revision second menu' },
+          link: { type: 'url', url: '/second' },
+          children: [],
+        },
+      ],
+    },
+  },
+])('$kind screen exposes history, view and restore with the normal editor', async (c) => {
+  const id = c.create ? (await host.call<Item>('POST', c.create, { body: c.first })).body.id : ''
+  const path = c.path(id)
+  if (!c.create) await host.call('PUT', `${path}/draft`, { body: c.first })
+  const first = (await host.call<Item | Menu | SiteSettings>('POST', `${path}/publish`)).body
+  await host.call('PUT', `${path}/draft`, { body: c.second })
+  const second = (await host.call<Item | Menu | SiteSettings>('POST', `${path}/publish`)).body
+  const text = mountAdmin(c.route(id))
+  await expect.poll(() => document.querySelectorAll('tbody tr').length).toBeGreaterThanOrEqual(2)
+  const views = [...document.querySelectorAll<HTMLButtonElement>('tbody button')].filter(
+    (b) => b.textContent?.trim() === 'Zobraziť revíziu',
+  )
+  views[1]!.click()
+  await expect.poll(() => button('Obnoviť do konceptu')).toBeTruthy()
+  button('Obnoviť do konceptu')!.click()
+  await expect.poll(text).toContain('Nahradí aktuálny koncept')
+  ;[...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')]
+    .find((b) => b.textContent?.trim() === 'Obnoviť do konceptu')!
+    .click()
+  await expect.poll(text).toContain('Revízia bola obnovená do konceptu.')
+  const stored = (await host.call<Item | Menu | SiteSettings>('GET', path)).body
+  expect(stored.draft).toEqual(first.draft)
+  expect(stored.published).toEqual(second.published)
+})
 
 const failed = useCmsHost(undefined, async () => ({
   success: false,
@@ -186,7 +326,7 @@ test('editors manage collection items in generated forms and publish them', asyn
   history.replaceState(null, '', `/admin/cms/items/${post.id}`)
   window.dispatchEvent(new PopStateEvent('popstate'))
   await expect.poll(() => input('data.title.en')).toBeTruthy()
-  // Routed collections edit path and SEO; references offer the collection's items.
+
   expect(input('locales.en.path')).toBeTruthy()
   await expect.poll(text).toContain('News')
 

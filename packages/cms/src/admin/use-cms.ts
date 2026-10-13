@@ -1,5 +1,5 @@
 import { useAdmin, useApiClient } from '@opulonjs/admin'
-import { computed, inject, ref, type Component, type InjectionKey } from 'vue'
+import { computed, inject, onBeforeUnmount, ref, type Component, type InjectionKey } from 'vue'
 import {
   CmsConflict,
   type CmsDefinitions,
@@ -42,7 +42,6 @@ export const useCmsContext = () => {
   return context
 }
 
-/** The pages API for admin screens, plus what they show around it. */
 export const usePages = () => {
   const cms = useApiClient(CmsGroup)
   const admin = useAdmin()
@@ -60,7 +59,6 @@ export const usePages = () => {
   }
 }
 
-/** The redirects API for the redirects screen. */
 export const useRedirects = () => {
   const cms = useApiClient(CmsGroup)
   const admin = useAdmin()
@@ -76,7 +74,6 @@ export const useRedirects = () => {
   }
 }
 
-/** The collections, site settings and menus API for admin screens. */
 export const useContent = () => {
   const cms = useApiClient(CmsGroup)
   const admin = useAdmin()
@@ -107,28 +104,36 @@ export const useContent = () => {
   }
 }
 
-/** Runs an editor action: pending flag, then a success or failure message to show. */
 export const useAction = (failed: () => string) => {
   const pending = ref(false)
   const status = ref<{ kind: 'ok' | 'error'; message: string }>()
+  let ticket = 0
+  const invalidate = () => {
+    ticket++
+    pending.value = false
+    status.value = undefined
+  }
+  onBeforeUnmount(invalidate)
   const run = async <T>(action: () => Promise<T>, done: string): Promise<T | undefined> => {
+    const request = ++ticket
     pending.value = true
     status.value = undefined
     try {
       const result = await action()
+      if (request !== ticket) return undefined
       status.value = { kind: 'ok', message: done }
       return result
     } catch (error) {
-      status.value = { kind: 'error', message: failureMessage(error, failed()) }
+      if (request === ticket)
+        status.value = { kind: 'error', message: failureMessage(error, failed()) }
       return undefined
     } finally {
-      pending.value = false
+      if (request === ticket) pending.value = false
     }
   }
-  return { pending, status, run }
+  return { pending, status, run, invalidate }
 }
 
-/** System pages go by their label in the admin locale, other pages by the server's title. */
 export const pageTitle = (
   definitions: CmsDefinitions,
   page: Pick<PageSummary, 'systemKey' | 'title'>,
@@ -138,6 +143,5 @@ export const pageTitle = (
   return system ? labelText(system.label, locale) : page.title
 }
 
-/** The editor-facing message of a failure: the server's own for validation and conflicts. */
 export const failureMessage = (error: unknown, fallback: string) =>
   error instanceof CmsInvalid || error instanceof CmsConflict ? error.message : fallback

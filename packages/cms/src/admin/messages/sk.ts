@@ -1,4 +1,19 @@
 export default {
+  revisions: {
+    title: 'História revízií',
+    description:
+      'Predchádzajúce publikované verzie. Obnovenie nahradí koncept; živý web aktualizujete samostatným publikovaním.',
+    date: 'Publikované',
+    author: 'Autor',
+    empty: 'Zatiaľ žiadne publikované revízie.',
+    view: 'Zobraziť revíziu',
+    restore: 'Obnoviť do konceptu',
+    restored: 'Revízia bola obnovená do konceptu.',
+    warning:
+      'Nahradí aktuálny koncept vrátane neuložených úprav. Publikovaný obsah zostane rovnaký až do ďalšieho publikovania.',
+    loading: 'Načítava sa revízia…',
+    snapshot: 'Úplná snímka',
+  },
   nav: {
     collections: 'Kolekcie',
     menus: 'Menu',
