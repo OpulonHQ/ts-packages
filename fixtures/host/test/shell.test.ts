@@ -277,3 +277,21 @@ test('an unmounted admin leaves the document language alone when its catalogs ar
   expect(loads.length).toBeGreaterThan(0)
   expect(document.documentElement.lang).toBe('xx')
 })
+
+test('an unmounted admin stops following the browser history', async () => {
+  const app = createAdmin({
+    brand,
+    modules: adminModules,
+    buildId: 'b1',
+    fetch: hosts.b1.browserFetch({ cookie }),
+  })
+  history.replaceState(null, '', '/admin/')
+  document.body.innerHTML = '<div id="app"></div>'
+  app.mount('#app')
+  await expect.poll(() => document.querySelector('nav')).toBeTruthy()
+  app.unmount()
+  history.replaceState(null, '', '/elsewhere')
+  window.dispatchEvent(new PopStateEvent('popstate'))
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  expect(location.pathname).toBe('/elsewhere')
+})

@@ -412,6 +412,7 @@ export const createAdmin = (options: AdminOptions): App => {
     .provide(failedScreenKey, failedScreen)
   app.onUnmount(() => {
     unmounted = true
+    router.options.history.destroy()
   })
   return app
 }
