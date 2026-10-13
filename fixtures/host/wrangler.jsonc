@@ -13,9 +13,14 @@
 // --connection-string=... --caching-disabled`): the cms Read API is purged by Cache-Tag on
 // publish, and a cached database read would rebuild it from stale rows (docs/adr/0006).
 // Then drive it with `SMOKE_URL=<origin> DATABASE_URL_DIRECT=<direct url> pnpm smoke`
-// (scripts/smoke.ts; waits for a real */5 cron tick, so allow ~6 minutes). Cleanup: wrangler
-// delete, hyperdrive delete, empty the R2 bucket (r2 object delete) before r2 bucket delete,
-// and delete the throwaway database.
+// (scripts/smoke.ts; waits for a real */5 cron tick, so allow ~6 minutes; it reruns against a
+// host that already has its Super admin). Cleanup: do not delete a Worker that ever had a cron
+// trigger; deploy it with "crons": [] and keep it (TSPACK-40). Deleting one left its trigger
+// firing as an unknown script with internalError, and afterwards no new trigger on that account
+// fired. Removing the crons first (an empty /schedules list) and deleting seconds later did the
+// same, on two accounts.
+// Then hyperdrive delete, empty the R2 bucket (r2 object delete) before r2 bucket delete, and
+// delete the throwaway database.
 {
   "name": "tspack-fixture-host",
   "main": "worker.ts",
