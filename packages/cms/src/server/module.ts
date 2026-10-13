@@ -42,12 +42,15 @@ const cached = <A, E, R>(effect: Effect.Effect<Tagged<A>, E, R>) =>
     const tag = cacheTagHeader(tags)
     yield* HttpEffect.appendPreResponseHandler((_request, response) =>
       Effect.succeed(
-        response.status === 200
-          ? HttpServerResponse.setHeaders(response, {
-              'cache-control': readCacheControl,
-              'cache-tag': tag,
-            })
-          : response,
+        response.status !== 200
+          ? response
+          : tag === undefined
+            ? // Too many tags to purge it by: not edge-cached.
+              HttpServerResponse.setHeader(response, 'cache-control', 'private, no-store')
+            : HttpServerResponse.setHeaders(response, {
+                'cache-control': readCacheControl,
+                'cache-tag': tag,
+              }),
       ),
     )
     return body

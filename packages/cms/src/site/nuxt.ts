@@ -104,14 +104,16 @@ export const cmsNitroHooks = <Env>(worker: CmsWorker<Env>) => ({
   renderResponse: (response: CmsRenderResponse, { event }: { event: CmsEvent }) => {
     const cms = event.context.cms
     if (!cms) return
-    if (cms.preview || cms.uncacheable) {
+    // A union too large for one Cache-Tag header could not be purged: not edge-cached either.
+    const tag = cacheTagHeader(cms.tags)
+    if (cms.preview || cms.uncacheable || tag === undefined) {
       response.headers = { ...response.headers, 'cache-control': 'private, no-store' }
       delete response.headers['cache-tag']
       return
     }
     if (cms.tags.size === 0 || (response.statusCode ?? 200) >= 500) return
     const headers = (response.headers ??= {})
-    headers['cache-tag'] = cacheTagHeader(cms.tags)
+    headers['cache-tag'] = tag
     if (!headers['cache-control'] && !event.node?.res?.getHeader('cache-control')) {
       headers['cache-control'] = readCacheControl
     }

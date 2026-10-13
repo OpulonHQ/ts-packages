@@ -9,7 +9,8 @@ import { Config, Context, Effect, Layer, Option, Redacted, Schema } from 'effect
  * - a redirect, not found and the sitemaps: `cms:routes`, purged whenever a published path or
  *   a redirect may have changed (any publish, unpublish or delete of a page or item, any
  *   redirect write).
- * A header past 8 KiB collapses the page and item tags into `cms:routes` (`cacheTagHeader`).
+ * A header past 8 KiB collapses the page and item tags into `cms:routes`; still past it, the
+ * answer is not edge-cached (`cacheTagHeader`).
  */
 export const cacheTags = {
   all: 'cms',

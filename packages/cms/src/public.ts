@@ -18,13 +18,15 @@ const maxCacheTagBytes = 8 * 1024
  * The Cache-Tag header for `tags`, deduplicated. Above 8 KiB the per-document tags
  * (`cms:page:<id>`, `cms:item:<id>`, mostly link targets) collapse into `cms:routes`: every
  * publish, unpublish or delete of a page or item purges it too, so invalidation stays complete,
- * only coarser.
+ * only coarser. Undefined when still above: such an answer must not be edge-cached.
  */
 export const cacheTagHeader = (tags: Iterable<string>) => {
   const unique = new Set(tags)
+  const fits = (header: string) => new TextEncoder().encode(header).length <= maxCacheTagBytes
   const header = [...unique].join(',')
-  if (new TextEncoder().encode(header).length <= maxCacheTagBytes) return header
-  return [
+  if (fits(header)) return header
+  const collapsed = [
     ...new Set([...unique].map((t) => (/^cms:(?:page|item):/.test(t) ? 'cms:routes' : t))),
   ].join(',')
+  return fits(collapsed) ? collapsed : undefined
 }

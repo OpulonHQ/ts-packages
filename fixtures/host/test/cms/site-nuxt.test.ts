@@ -159,6 +159,40 @@ test('the HTML Cache-Tag union stays bounded: link tags collapse into cms:routes
   expect(header.split(',').sort()).toEqual(['cms', 'cms:routes'])
 })
 
+test('an HTML Cache-Tag union over the bound after collapsing is not edge-cached', async () => {
+  // Collection tags do not collapse: 160 of them (one per list read) exceed 8 KiB.
+  let call = 0
+  const stub = cmsNitroHooks({
+    fetch: async () =>
+      new Response('{}', {
+        headers: {
+          'cache-control': readCacheControl,
+          'cache-tag': `cms,cms:collection:${'c'.repeat(40)}-${call++}`,
+        },
+      }),
+  })
+  const event: CmsEvent = {
+    path: '/lists',
+    headers: new Headers(),
+    context: {
+      cloudflare: {
+        request: new Request('https://example.com/lists'),
+        env: {},
+        context: { waitUntil: () => {} },
+      },
+    },
+  }
+  stub.request(event)
+  for (let i = 0; i < 160; i++) await event.context.cms!.fetch('/api/cms/collections/x')
+  const response = {
+    statusCode: 200,
+    headers: { 'cache-control': 'public, s-maxage=60' } as Record<string, string>,
+  }
+  stub.renderResponse(response, { event })
+  expect(response.headers['cache-tag']).toBeUndefined()
+  expect(response.headers['cache-control']).toBe('private, no-store')
+})
+
 test('outside Workers (no cloudflare context) nothing is installed or added', () => {
   const event: CmsEvent = { path: '/', headers: new Headers(), context: {} }
   hooks.request(event)
