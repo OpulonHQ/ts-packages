@@ -13,6 +13,7 @@ import {
   UDashboardSidebar,
   UDashboardSidebarCollapse,
   UDropdownMenu,
+  languageName,
   UNavigationMenu,
   useToast,
 } from '@opulonjs/ui'
@@ -50,9 +51,6 @@ const items = computed<NavigationMenuItem[][]>(() => [
       })),
     ]),
 ])
-// Each language in its own language: "English", "slovenčina".
-const languageName = (code: string) =>
-  new Intl.DisplayNames([code], { type: 'language' }).of(code) ?? code
 const chooseLocale = (code: string) =>
   setLocale?.(code).catch(() =>
     toast.add({ title: t('admin.languageFailed'), color: 'error', icon: 'i-lucide-circle-alert' }),

@@ -1,8 +1,7 @@
 <script setup lang="ts">
 /** Picks an admin locale (or the admin default) from the locales the admin has messages for. */
 import { useI18n } from '@opulonjs/admin'
-import { UButton } from '@opulonjs/ui'
-import { localeName } from './client.ts'
+import { languageName, UButton } from '@opulonjs/ui'
 
 defineProps<{ label: string; modelValue: string | null; disabled?: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [locale: string | null] }>()
@@ -27,7 +26,7 @@ const { t, availableLocales } = useI18n()
         :variant="modelValue === locale ? 'solid' : 'outline'"
         :aria-pressed="modelValue === locale"
         :disabled="disabled"
-        :label="localeName(locale)"
+        :label="languageName(locale)"
         @click="emit('update:modelValue', locale)"
       />
     </div>

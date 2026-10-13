@@ -10,6 +10,15 @@ export const humanize = (value: string): string => {
   return words.charAt(0).toUpperCase() + words.slice(1)
 }
 
+/**
+ * A language's name with a leading capital (`Slovenčina`, `Angličtina`), as a label stands
+ * alone; in its own language by default. An unknown code comes back as is.
+ */
+export const languageName = (code: string, inLocale: string = code): string => {
+  const name = new Intl.DisplayNames([inLocale], { type: 'language', fallback: 'none' }).of(code)
+  return name ? name.charAt(0).toLocaleUpperCase(inLocale) + name.slice(1) : code
+}
+
 /** Reads a dotted path (`status.name`) from a row. */
 export const getPath = (row: unknown, path: string): unknown =>
   path

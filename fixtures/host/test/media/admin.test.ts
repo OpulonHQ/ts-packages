@@ -70,7 +70,7 @@ test('the library lists media; editors set alt text per content locale', async (
   row('lake.png')!.click()
   await expect.poll(text).toContain('Alternatívny text')
   // One tab per content locale of the host (en, it), named in the admin locale.
-  expect(text()).toMatch(/angličtina.*taliančina/)
+  expect(text()).toMatch(/Angličtina.*Taliančina/)
   const alt = document.querySelector<HTMLInputElement>('input[name="alt.en"]')!
   alt.value = 'A lake at dawn'
   alt.dispatchEvent(new Event('input'))

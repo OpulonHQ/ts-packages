@@ -48,7 +48,7 @@ export { default as UTooltip } from '@nuxt/ui/components/Tooltip.vue'
 
 export { defaultRichTextToolbar } from './fields.ts'
 export type { FieldProps, RichTextButton, SelectItem } from './fields.ts'
-export { EMPTY_PLACEHOLDER, humanize, statusColor } from './format.ts'
+export { EMPTY_PLACEHOLDER, humanize, languageName, statusColor } from './format.ts'
 export type { BadgeColor } from './format.ts'
 export { nextSort, queryRows } from './table.ts'
 export type {

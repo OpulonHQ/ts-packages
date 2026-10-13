@@ -189,8 +189,8 @@ test('users pick their admin language on their account screen', async () => {
   const user = await seedUser(db.url, { permissions: [] })
   const jar = { cookie: await host.signIn(user.email, user.password) }
   const admin = mountAdmin('/admin/account', jar)
-  await expect.poll(() => button('slovenčina')).toBeDefined()
-  button('slovenčina')!.click()
+  await expect.poll(() => button('Slovenčina')).toBeDefined()
+  button('Slovenčina')!.click()
   await expect.poll(admin.text).toContain('Jazyk administrácie')
   expect((await host.me(jar.cookie)).locale).toBe('sk')
 })

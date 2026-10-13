@@ -41,7 +41,3 @@ export const useUsersClient = () => useApiClient(UsersGroup)
 /** The message key for a failed users or roles change: the guard's reason when it refused. */
 export const failureKey = (error: unknown) =>
   error instanceof Refused ? `users.refused.${error.reason}` : 'users.errors.failed'
-
-/** A locale's own name, e.g. `slovenčina` for `sk`. */
-export const localeName = (locale: string) =>
-  new Intl.DisplayNames([locale], { type: 'language' }).of(locale) ?? locale

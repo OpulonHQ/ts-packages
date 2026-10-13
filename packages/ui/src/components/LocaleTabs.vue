@@ -12,6 +12,7 @@ import type { TabsItem } from '@nuxt/ui'
 import UTabs from '@nuxt/ui/components/Tabs.vue'
 import { useLocale } from '@nuxt/ui/composables'
 import { computed } from 'vue'
+import { languageName } from '../format.ts'
 
 const props = defineProps<{
   locales: ReadonlyArray<string>
@@ -21,9 +22,8 @@ const props = defineProps<{
 
 const { code } = useLocale()
 const items = computed<TabsItem[]>(() => {
-  const names = new Intl.DisplayNames([code.value], { type: 'language' })
   return props.locales.map((locale) => ({
-    label: props.labels?.[locale] ?? names.of(locale) ?? locale,
+    label: props.labels?.[locale] ?? languageName(locale, code.value),
     value: locale,
     slot: locale,
   }))
