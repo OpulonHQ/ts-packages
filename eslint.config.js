@@ -35,7 +35,16 @@ function restrict(self, allowed, { allowNuxtUi = false } = {}) {
 }
 
 export default defineConfig(
-  { ignores: ['**/dist/', '**/node_modules/', '.packed/', 'fixtures/host/public/', '.claude/'] },
+  {
+    ignores: [
+      '**/dist/',
+      '**/node_modules/',
+      '.packed/',
+      'fixtures/host/public/',
+      '.claude/',
+      '.vitest/',
+    ],
+  },
   js.configs.recommended,
   tseslint.configs.recommended,
   vue.configs['flat/recommended'],

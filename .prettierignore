@@ -4,3 +4,4 @@ dist/
 .changeset/*.md
 fixtures/host/public/
 .claude/
+.vitest/
