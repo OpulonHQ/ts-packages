@@ -19,8 +19,13 @@ const files: Record<string, string> = {
 }
 const assets: Env['ASSETS'] = {
   fetch: async (request) => {
-    const body = files[new URL(request.url).pathname]
-    return body === undefined ? new Response('not found', { status: 404 }) : new Response(body)
+    const path = new URL(request.url).pathname
+    const body = files[path]
+    if (body === undefined) return new Response('not found', { status: 404 })
+    // Like the real binding: the file's own ETag revalidates the cached copy.
+    if (request.headers.get('if-none-match') === `"${path}"`)
+      return new Response(null, { status: 304 })
+    return new Response(body)
   },
 }
 
@@ -85,4 +90,13 @@ test('hashed /admin/assets/* are immutable; other admin files are served as they
   })
   expect((await request('/admin/assets/missing.js')).status).toBe(404)
   expect(await request('/admin/favicon.svg')).toMatchObject({ status: 200, body: '<svg/>' })
+})
+
+test('a revalidated admin file answers 304, not the index.html fallback', async () => {
+  expect(
+    await request('/admin/favicon.svg', { 'if-none-match': '"/admin/favicon.svg"' }),
+  ).toMatchObject({
+    status: 304,
+    body: '',
+  })
 })
