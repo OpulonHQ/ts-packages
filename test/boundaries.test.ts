@@ -32,6 +32,8 @@ describe('package graph', () => {
     ['packages/cms/src/x.ts', '@opulonjs/emails'],
     ['packages/ui/src/x.ts', '@opulonjs/admin'],
     ['packages/admin/src/x.ts', '@opulonjs/users'],
+    ['packages/admin/src/x.ts', '@opulonjs/core'],
+    ['packages/admin/src/x.ts', '@opulonjs/core/workers'],
     ['packages/admin/src/x.ts', '@nuxt/ui'],
     ['packages/cms/src/admin/x.ts', '@nuxt/ui/components/Button.vue'],
     ['fixtures/host/x.ts', '@nuxt/ui'],
