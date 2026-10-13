@@ -167,6 +167,8 @@ export default async (ctx) => {
   await page.getByRole('textbox', { name: 'Search…', exact: true }).fill('Paging 600')
   await table.getByRole('row').filter({ hasText: 'Paging 600' }).waitFor()
   check((await table.locator('tbody tr').count()) === 1, 'item search resets to page one')
+  const selectedDraft =
+    (await api('GET', `/cms/items/${state.posts[0].id}`)).draft.data.categories ?? []
   await page.goto(`${base}/admin/cms/items/${state.posts[0].id}`)
   const picker = page.getByRole('group', { name: 'Categories', exact: true })
   const pickerTable = picker.getByRole('table', { name: 'Categories', exact: true })
@@ -174,7 +176,8 @@ export default async (ctx) => {
   await shot('reference-first-page')
   await picker.getByRole('button', { name: 'Page 2', exact: true }).click()
   await pickerTable.getByRole('row').filter({ hasText: 'Paging 026' }).waitFor()
-  await pickerTable.getByRole('row').filter({ hasText: 'Paging 026' }).click()
+  if (!selectedDraft.includes(state.categories[25].id))
+    await pickerTable.getByRole('row').filter({ hasText: 'Paging 026' }).click()
   await picker.getByRole('button', { name: 'Remove Paging 026', exact: true }).waitFor()
   let release
   const blocked = new Promise((resolve) => {
@@ -212,7 +215,8 @@ export default async (ctx) => {
       (await pickerTable.getByRole('row').filter({ hasText: 'Paging 001' }).count()) === 0,
     'slow older picker response cannot overwrite newer search',
   )
-  await pickerTable.getByRole('row').filter({ hasText: 'Paging 045' }).click()
+  if (!selectedDraft.includes(state.categories[44].id))
+    await pickerTable.getByRole('row').filter({ hasText: 'Paging 045' }).click()
   await picker.getByRole('button', { name: 'Remove Paging 045', exact: true }).waitFor()
   await shot('reference-search-and-selection')
   const savedDraft = page.waitForResponse(
@@ -240,6 +244,11 @@ export default async (ctx) => {
   await page.goto(`${base}/admin/cms/settings`)
   const clearLink = page.getByRole('button', { name: 'Remove Paging 600', exact: true })
   await clearLink.waitFor()
+  await page
+    .getByRole('table', { name: 'Target', exact: true })
+    .getByRole('row')
+    .filter({ hasText: 'Paging 001' })
+    .waitFor()
   await shot('single-reference-beyond-first-page')
   await clearLink.click()
   const savedSettings = page.waitForResponse(
