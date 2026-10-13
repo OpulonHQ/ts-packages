@@ -95,13 +95,15 @@ const lucideSubset = (names: ReadonlySet<string>): IconSet => {
   return { ...set, icons, aliases }
 }
 
-// Tailwind 4 resets buttons to the default cursor; everything clickable gets the pointer again.
+// Tailwind 4 resets buttons to the default cursor; everything clickable gets the pointer again,
+// table rows with a row action (Nuxt UI marks them data-selectable) included.
 // In the base layer, so a component's own cursor utility (cursor-not-allowed) still wins.
 const pointer = `@layer base {
   :is(button, [role='button'], [role='menuitem'], [role='menuitemcheckbox'], [role='menuitemradio'],
     [role='option'], [role='tab'], [role='checkbox'], [role='radio'], [role='switch'], summary,
     select, label[for], input[type='checkbox'], input[type='radio'], input[type='file'],
-    input[type='submit'], input[type='button'], a[href]):not(:disabled, [aria-disabled='true'], [data-disabled]) {
+    input[type='submit'], input[type='button'], a[href],
+    tr[data-selectable='true']):not(:disabled, [aria-disabled='true'], [data-disabled]) {
     cursor: pointer;
   }
 }`
