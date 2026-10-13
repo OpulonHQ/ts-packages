@@ -5,7 +5,8 @@ import type { Brand } from '@opulonjs/admin'
 export const brand = {
   name: 'Fixture host',
   logo: '/admin/logo.svg',
-  colors: { primary: 'brand', neutral: 'slate' },
+  // Primary and neutral stay the kit default (black/white over neutral grays).
+  colors: { secondary: 'brand' },
   palettes: {
     brand: {
       50: '#eef6ff',

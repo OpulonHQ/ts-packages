@@ -16,7 +16,8 @@ export interface Brand {
   readonly logo?: string
   /**
    * Semantic colors to Tailwind palettes, e.g. `{ primary: 'indigo', neutral: 'slate' }`; a
-   * name from `palettes` works too.
+   * name from `palettes` works too. Default: the `neutral` grays, and a primary that is black
+   * in light mode and white in dark mode.
    */
   readonly colors?: Readonly<Record<string, string>>
   /** Custom palettes, every shade required: `{ brand: { 50: '#...', ..., 950: '#...' } }`. */
@@ -51,6 +52,9 @@ const require = createRequire(import.meta.url)
 // Nuxt UI's own default icons (chevrons, close, loading, ...) are Lucide names in its runtime.
 const nuxtUiDir = dirname(fileURLToPath(import.meta.resolve('@nuxt/ui/vite')))
 const semanticColors = ['primary', 'secondary', 'success', 'info', 'warning', 'error']
+// Black-and-white primary over achromatic grays; the CSS overrides --ui-primary itself, the
+// palette only backs primary's shade utilities.
+const defaultColors = { primary: 'neutral', neutral: 'neutral' }
 const lucide = /\bi-lucide-[a-z0-9]+(?:-[a-z0-9]+)*/g
 const skip = new Set(['node_modules', 'dist', 'public'])
 
@@ -105,6 +109,9 @@ const css = (brand: Brand | undefined, sources: ReadonlyArray<string>): string =
     ),
     `@theme {\n  --font-sans: ${brand?.font ? `"${brand.font}"` : '"Inter Variable"'}, ui-sans-serif, system-ui, sans-serif;\n}`,
     brand?.radius ? `:root {\n  --ui-radius: ${brand.radius};\n}` : '',
+    brand?.colors?.primary
+      ? ''
+      : ':root {\n  --ui-primary: black;\n}\n.dark {\n  --ui-primary: white;\n}',
   ]
     .filter(Boolean)
     .join('\n')
@@ -149,7 +156,7 @@ export const opulonUi = (options: UiPresetOptions = {}): Array<PluginOption> => 
     nuxtUi({
       dts: false,
       router: true,
-      ui: { ...brand?.ui, ...(brand?.colors ? { colors: { ...brand.colors } } : {}) },
+      ui: { ...brand?.ui, colors: { ...defaultColors, ...brand?.colors } },
       theme: {
         colors: [
           ...new Set(
