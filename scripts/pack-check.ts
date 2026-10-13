@@ -2,7 +2,7 @@
 // and imports each export subpath from the packed output, so CI tests what npm would ship.
 // Against the same tarballs it then bundles every `/api` entry for the browser (no server-only
 // imports), bundles `@opulonjs/cms/site` for the browser (no Effect) and compares the fixture
-// host's server and admin module id lists, and renders a cms screen from the admin dev server.
+// host's server and admin module id lists.
 import { execFileSync } from 'node:child_process'
 import {
   cpSync,
@@ -175,8 +175,6 @@ try {
   if (!table?.code.includes('/overrides/EmptyState.vue')) throw new Error('published DataTable bypassed the host override in dev')
   ;({ adminModules } = await vite.ssrLoadModule('/modules.ts'))
   console.log('ok published admin dev imports use host kit overrides without prebundling')
-  // A package both prebundled and served raw runs as two instances that reject each other's
-  // values (Effect schemas): walk the dev module graph and compare.
   const packageOf = (path) => path.match(/node_modules\\/(?:\\.pnpm\\/[^/]+\\/node_modules\\/)?((?:@[^/]+\\/)?[^/]+)\\//)?.[1]
   const raw = new Set()
   const seen = new Set()
@@ -200,7 +198,7 @@ try {
   const prebundled = [...Object.values(optimizer.metadata.optimized), ...Object.values(optimizer.metadata.chunks)]
   const bundled = new Set(prebundled.flatMap(({ file }) => [...readFileSync(file, 'utf8').matchAll(/^\\/\\/#region (.+)$/gm)].map((m) => packageOf(m[1]))))
   const twice = [...raw].filter((name) => bundled.has(name))
-  if (twice.length > 0) throw new Error('admin dev loads packages both prebundled and raw: ' + twice.join(', '))
+  if (twice.length > 0) throw new Error('admin dev loads packages both prebundled and raw, as two instances: ' + twice.join(', '))
   console.log('ok admin dev loads', raw.size, 'packages raw and', bundled.size, 'prebundled, none in both')
   const screen = spawn(process.execPath, ['--import', './dev-modules.mjs', 'dev-screen.mjs', 'http://127.0.0.1:' + vite.httpServer.address().port + vite.config.base, vite.config.base + '@fs' + require.resolve('@opulonjs/admin')], { stdio: 'inherit' })
   if ((await new Promise((done) => screen.on('exit', done))) !== 0) throw new Error('the cms Collections screen failed to load its items in dev')
@@ -212,8 +210,7 @@ const missing = adminModules.map((m) => m.id).filter((id) => !serverIds.has(id))
 if (missing.length > 0) throw new Error('admin modules without a server module: ' + missing.join(', '))
 `
 
-// Node loads the admin modules from the dev server, as a browser would; the HMR client is a stub.
-const devModules = String.raw`import { register } from 'node:module'
+const httpModuleHooks = String.raw`import { register } from 'node:module'
 const hooks = ${'`'}
 const viteClient = 'const noop = () => {}; export const createHotContext = () => ({ data: {}, accept: noop, dispose: noop, prune: noop, invalidate: noop, on: noop, off: noop, send: noop }); export const updateStyle = noop, removeStyle = noop, injectQuery = (url) => url'
 export const resolve = (spec, context, next) => context.parentURL?.startsWith('http:') && !spec.startsWith('node:') ? { url: new URL(spec, context.parentURL).href, shortCircuit: true } : next(spec, context)
@@ -222,8 +219,6 @@ ${'`'}
 register('data:text/javascript,' + encodeURIComponent(hooks))
 `
 
-// The fixture admin in happy-dom, signed in, on the cms Collections screen: its DataTable decodes
-// the items response and shows the host's EmptyState copy, not a load failure.
 const devScreen = String.raw`import { Window } from 'happy-dom'
 const [origin, adminEntry] = process.argv.slice(2)
 const window = new Window({ url: origin + 'cms/collections/posts' })
@@ -304,8 +299,6 @@ try {
     JSON.stringify({
       private: true,
       type: 'module',
-      // The fixture host's own third-party dependencies (effect, vite, ...), the tarballs and
-      // the repo's happy-dom for the dev screen check.
       dependencies: {
         ...hostDependencies(),
         ...tarballs,
@@ -349,7 +342,7 @@ for (const name of names) {
   }
   await checkBrowserApi(scratch, tarballs)
   await checkPublicSite(scratch)
-  writeFileSync(join(scratch, 'dev-modules.mjs'), devModules)
+  writeFileSync(join(scratch, 'dev-modules.mjs'), httpModuleHooks)
   writeFileSync(join(scratch, 'dev-screen.mjs'), devScreen)
   run('node', ['--input-type=module', '-e', adminCheck], scratch)
   console.log('ok server and admin module id lists match')
