@@ -7,8 +7,6 @@
  *   a redirect may have changed (any publish, unpublish or delete of a page or item, any
  *   redirect write).
  * Media dependencies carry `media:<id>` tags, including unresolved ids.
- * A header past 8 KiB collapses document tags into `cms:routes` and media tags into `media`; the
- * answer is not edge-cached (`cacheTagHeader`).
  */
 export const cacheTags = {
   all: 'cms',

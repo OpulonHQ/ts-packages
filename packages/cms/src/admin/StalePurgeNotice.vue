@@ -48,7 +48,8 @@ const exhausted = computed(() => summary.value.failed > 0)
   <UAlert
     v-if="canRead && (summary.total || unavailable)"
     role="status"
-    color="warning"
+    color="neutral"
+    variant="outline"
     icon="i-lucide-triangle-alert"
     class="w-full"
     :title="unavailable ? t('cms.cachePurges.unavailable') : message"
