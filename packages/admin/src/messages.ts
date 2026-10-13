@@ -50,6 +50,8 @@ const en = {
       previous: 'Previous events',
       next: 'Next events',
       page: 'Page {page} of {pages}',
+      depthLimit:
+        'Only the newest {count} matching events can be paged. Use filters in the Audit log to see older history.',
     },
   },
   permissions: { 'core.audit.view': 'View the audit log' } satisfies Labels<CorePermission>,
@@ -102,6 +104,8 @@ const sk: typeof en = {
       previous: 'Predchádzajúce udalosti',
       next: 'Ďalšie udalosti',
       page: 'Strana {page} z {pages}',
+      depthLimit:
+        'Stránkovať možno len najnovších {count} zhodných udalostí. Staršie udalosti vyhľadajte pomocou filtrov v auditnom zázname.',
     },
   },
   permissions: { 'core.audit.view': 'Zobraziť auditný záznam' },

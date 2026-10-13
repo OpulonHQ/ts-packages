@@ -95,7 +95,10 @@ watch([() => props.subjectType, () => props.subjectId, allowed], refresh, { imme
             @click="movePage(-1)"
           />
           <span class="text-sm text-muted">{{
-            t('admin.audit.page', { page, pages: Math.ceil(events.total / perPage) })
+            t('admin.audit.page', {
+              page,
+              pages: Math.min(maxPage, Math.ceil(events.total / perPage)),
+            })
           }}</span>
           <UButton
             color="neutral"
@@ -105,6 +108,9 @@ watch([() => props.subjectType, () => props.subjectId, allowed], refresh, { imme
             @click="movePage(1)"
           />
         </div>
+        <p v-if="events.total > maxPage * perPage" class="mt-2 text-sm text-muted">
+          {{ t('admin.audit.depthLimit', { count: maxPage * perPage }) }}
+        </p>
       </template>
     </UCard>
   </section>

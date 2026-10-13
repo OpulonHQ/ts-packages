@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CoreGroup, type AuditQuery, type AuditEvent } from '@opulonjs/core/api'
+import { CoreGroup, auditMaxOffset, type AuditQuery, type AuditEvent } from '@opulonjs/core/api'
 import {
   UButton,
   UCard,
@@ -30,6 +30,8 @@ const fields = [
 const filters = reactive(Object.fromEntries(fields.map((field) => [field, ''])))
 const applied = ref<AuditQuery>({})
 const revision = ref(0)
+const perPage = 25
+const maxPage = Math.floor(auditMaxOffset / perPage) + 1
 const invalid = ref(false)
 const columns = computed<ReadonlyArray<DataTableColumn<AuditEvent>>>(() => [
   { key: 'action', label: t('admin.audit.event') },
@@ -104,6 +106,8 @@ const load = (query: TableQuery) =>
       :key="revision"
       :columns="columns"
       :load="load"
+      :per-page="perPage"
+      :max-page="maxPage"
       :caption="t('admin.audit.title')"
       :empty-title="t('admin.audit.empty')"
     >
@@ -112,6 +116,9 @@ const load = (query: TableQuery) =>
           <p class="text-sm text-error">{{ t('admin.audit.failed') }}</p>
           <UButton :label="t('admin.audit.retry')" @click="refresh" />
         </div>
+      </template>
+      <template #pagination-limit="{ limit }">
+        <p class="text-sm text-muted">{{ t('admin.audit.depthLimit', { count: limit }) }}</p>
       </template>
       <template #action-cell="{ row }"><AuditEventDetails :event="row.original" /></template>
     </DataTable>

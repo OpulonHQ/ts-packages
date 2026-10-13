@@ -138,6 +138,55 @@ test('an obsolete audit request cannot show Retry after new filters succeed', as
 const button = (label: string) =>
   [...document.querySelectorAll('button')].find((el) => el.textContent?.trim() === label)
 const rows = () => [...document.querySelectorAll('tbody tr')].map((el) => el.textContent ?? '')
+
+test('audit pagination stays within the offset limit while showing the true total', async () => {
+  onTestFinished(async () => {
+    await sqlQuery(db.url, 'delete from core.audit_event where action = $1', ['large.note.changed'])
+  })
+  const user = await seedUser(db.url, { permissions: ['core.audit.view'] })
+  const cookie = await host.signIn(user.email, user.password)
+  await sqlQuery(
+    db.url,
+    `insert into core.audit_event (actor_kind, action, subject_type, subject_id, subject_label)
+    select 'system', 'large.note.changed', 'note', n::text, 'Large note ' || n
+    from generate_series(1, 10026) n`,
+  )
+  const admin = mount('/admin/audit', cookie)
+  await expect.poll(() => rows()[0]).toContain('Large note 10026')
+  type('module', 'large')
+  button('Apply filters')!.click()
+  await expect
+    .poll(() => admin.requests.some((url) => new URL(url).searchParams.get('module') === 'large'))
+    .toBe(true)
+  await expect.poll(() => rows()[0]).toContain('Large note 10026')
+  document.querySelector<HTMLButtonElement>('button[data-slot="last"]')!.click()
+  await expect.poll(() => rows()[0]).toContain('Large note 26')
+  expect(admin.text()).toContain('Only the newest 10025 matching events')
+  expect(admin.text()).toContain('10001–10025 of 10026')
+  expect(document.querySelector('[role="alert"]')).toBeNull()
+  const request = admin.requests.filter((url) => new URL(url).pathname === '/api/audit').at(-1)
+  expect(request && new URL(request).searchParams.get('page')).toBe('401')
+})
+
+test('the timeline labels the reachable page count and explains the history window', async () => {
+  onTestFinished(async () => {
+    await sqlQuery(db.url, 'delete from core.audit_event where action = $1', ['large.user.changed'])
+  })
+  const user = await seedUser(db.url, { permissions: ['users.manage', 'core.audit.view'] })
+  const cookie = await host.signIn(user.email, user.password)
+  await sqlQuery(
+    db.url,
+    `insert into core.audit_event (actor_kind, action, subject_type, subject_id, subject_label)
+    select 'system', 'large.user.changed', 'user', $1, 'Deep snapshot ' || n
+    from generate_series(1, 10011) n`,
+    [user.id],
+  )
+  mount(`/admin/users/${user.id}`, cookie)
+  const timeline = () => document.querySelector('[aria-label="Audit timeline"]')?.textContent ?? ''
+  await expect.poll(timeline).toContain('Deep snapshot 10011')
+  expect(timeline()).toContain('Page 1 of 1001')
+  expect(timeline()).toContain('Only the newest 10010 matching events')
+})
 function type(name: string, value: string) {
   const input = document.querySelector<HTMLInputElement>(`input[name="${name}"]`)
   if (!input) throw new Error(`Missing ${name} filter`)
