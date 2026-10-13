@@ -15,12 +15,13 @@ interface SourceProvenance {
   readonly path: string
 }
 
-const provenance = (source: string): SourceProvenance | undefined => {
+const provenance = (source: string): SourceProvenance | 'invalid' | undefined => {
   const line = source.replace(/^\uFEFF/, '').split(/\r?\n/, 1)[0] ?? ''
   const comment = sourceComment.exec(line)
   const header = comment?.[1] ?? comment?.[2] ?? comment?.[3]
-  const match = header ? sourceHeader.exec(header) : null
-  if (!match) return undefined
+  if (!header?.startsWith('@opulonjs/source')) return undefined
+  const match = sourceHeader.exec(header)
+  if (!match) return 'invalid'
   const [, packageName, version, path] = match
   if (
     !packageName ||
@@ -30,7 +31,7 @@ const provenance = (source: string): SourceProvenance | undefined => {
     path.startsWith('/') ||
     path.split('/').includes('..')
   )
-    return undefined
+    return 'invalid'
   return { packageName, version, path }
 }
 
@@ -44,12 +45,18 @@ export const adminOverrides = (
   const versions = new Map<string, string | undefined>()
   const warned = new Set<string>()
   const unchecked = new Set<string>()
-  const missingHeaders = new Set<string>()
-  const warnMissingHeader = (context: { warn: (message: string) => void }, file: string) => {
-    if (missingHeaders.has(file)) return
-    missingHeaders.add(file)
+  const headerWarnings = new Set<string>()
+  const warnHeader = (
+    context: { warn: (message: string) => void },
+    file: string,
+    header: 'invalid' | undefined,
+  ) => {
+    if (headerWarnings.has(file)) return
+    headerWarnings.add(file)
     context.warn(
-      `opulonAdmin: ${file} is missing @opulonjs/source header; record the copied package version.`,
+      header === 'invalid'
+        ? `opulonAdmin: ${file} has an invalid @opulonjs/source header; use @opulonjs/source <package>@<exact SemVer> <path in the package>.`
+        : `opulonAdmin: ${file} is missing @opulonjs/source header; record the copied package version.`,
     )
   }
 
@@ -95,10 +102,11 @@ export const adminOverrides = (
       canonicalToOriginal.clear()
       warned.clear()
       unchecked.clear()
-      missingHeaders.clear()
+      headerWarnings.clear()
       versions.clear()
       for (const [canonical, target] of canonicalToHost) {
-        if (!provenance(readFileSync(target, 'utf8'))) warnMissingHeader(this, target)
+        const header = provenance(readFileSync(target, 'utf8'))
+        if (!header || header === 'invalid') warnHeader(this, target, header)
         const original = await this.resolve(canonical, join(config.root, 'index.html'), {
           skipSelf: true,
         })
@@ -132,8 +140,8 @@ export const adminOverrides = (
         !isAbsolute(hostPath) &&
         !hostPath.startsWith('../') &&
         hostPath.split('/').slice(0, -1).includes('overrides')
-      if (!header && screenCopy) warnMissingHeader(this, file)
-      if (!header || warned.has(file)) return
+      if (header === 'invalid' || (!header && screenCopy)) warnHeader(this, file, header)
+      if (!header || header === 'invalid' || warned.has(file)) return
       if (!versions.has(header.packageName)) {
         const resolvers = [
           createRequire(join(config.root, 'package.json')),

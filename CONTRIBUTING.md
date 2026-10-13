@@ -79,7 +79,7 @@ Register this file as `EmptyState: './overrides/EmptyState.mjs'` in the Vite opt
 
 For TypeScript, use `// @opulonjs/source @opulonjs/admin@0.1.0 src/shell/Dashboard.vue`. A single-line `/* @opulonjs/source ... */` comment also works. The header contains the package name, exact SemVer, and original path relative to the package. The Vite preset warns when an imported copy's version is older than the installed package. Compare the upstream source before updating the header. A warning does not stop the build.
 
-Keep copied screens in an `overrides/` directory under the Vite root. With component overrides configured, the build warns once per file when a registered component or an imported file under that directory is missing its source header. Headers may start with a UTF-8 BOM and use CRLF. If the host cannot resolve a package version, the preset tries its own dependencies, then warns that it could not check the version.
+Keep copied screens in an `overrides/` directory under the Vite root. With component overrides configured, the build warns once per file when a registered component or an imported file under that directory is missing its source header. A malformed header warns as invalid in any imported file. Headers may start with a UTF-8 BOM and use CRLF. If the host cannot resolve a package version, the preset tries its own dependencies, then warns that it could not check the version.
 
 Register a screen's host component by route name:
 

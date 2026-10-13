@@ -232,31 +232,25 @@ test('warns once per registered component or conventional screen copy without a 
   }
 })
 
-test.each(['1.0.0-01', '1.0', 'v1.0.0'])(
-  'treats a header with invalid version %s as missing',
+test.each(['1.0.0-01', '1.0', 'v1.0.0', '1.2.0 extra'])(
+  'reports a header with invalid version %s as invalid, outside overrides too',
   async (version) => {
     const fixture = host()
     fixture.write(
-      'overrides/Screen.vue',
+      'Screen.vue',
       `<!-- @opulonjs/source @opulonjs/ui@${version} src/components/EmptyState.vue -->\n<template>bad header</template>`,
     )
-    fixture.write('entry.js', "import Screen from './overrides/Screen.vue'; console.log(Screen)")
+    fixture.write('entry.js', "import Screen from './Screen.vue'; console.log(Screen)")
     const warnings: string[] = []
     const logger = createLogger('silent')
     logger.warn = (message) => {
       warnings.push(message)
     }
-    await fixture.bundle(
-      { overrides: { components: { EmptyState: 'HostEmpty.vue' } } },
-      { customLogger: logger },
-    )
-    expect(
-      warnings.filter(
-        (message) =>
-          message.includes('overrides/Screen.vue') &&
-          message.includes('missing @opulonjs/source header'),
-      ),
-    ).toHaveLength(1)
+    await fixture.bundle({}, { customLogger: logger })
+    const provenance = warnings.filter((message) => message.includes('@opulonjs/source'))
+    expect(provenance).toHaveLength(1)
+    expect(provenance[0]).toContain('Screen.vue')
+    expect(provenance[0]).toContain('invalid @opulonjs/source header')
   },
 )
 
@@ -369,6 +363,8 @@ test.each([
   ['1.2.0-beta.2', '1.2.0', false],
   ['1.2.0', '1.2.0+host.1', false],
   ['1.3.0', '1.2.0+host.1', true],
+  ['1.2.0-beta.2', '1.2.0-beta.2+copy.1', false],
+  ['1.2.0', '1.2.0-beta.2+copy.1', true],
   ['1.2.0', '1.3.0', false],
   ['1.2.0', '1.2.0', false],
 ])('warns for copied screen version %s vs header %s: %s', async (installed, copied, warns) => {
