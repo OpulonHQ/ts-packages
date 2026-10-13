@@ -71,11 +71,11 @@ test.each([{ conditions: [] }, { conditions: ['@opulonjs/source'] }])(
     const fixture = host()
     fixture.write(
       'node_modules/@opulonjs/ui/src/components/Table.vue',
-      `<script setup>import Empty from './EmptyState.vue'; import Text from './Field/Text.vue'</script><template><Empty/><Text/></template>`,
+      `<script setup>import Empty from '@opulonjs/ui/components/EmptyState'; import Text from '@opulonjs/ui/components/Field/Text'</script><template><Empty/><Text/></template>`,
     )
     fixture.write(
       'node_modules/@opulonjs/ui/dist/components/Table.mjs',
-      "import Empty from './EmptyState.mjs'; import Text from './Field/Text.mjs'; export default [Empty, Text]",
+      "import Empty from '@opulonjs/ui/components/EmptyState'; import Text from '@opulonjs/ui/components/Field/Text'; export default [Empty, Text]",
     )
     fixture.write(
       'entry.js',
@@ -119,9 +119,14 @@ test('does not capture unrelated same-named host imports or Vue query modules', 
     fixture.root,
     'node_modules/@opulonjs/ui/dist/components/Table.mjs',
   )
-  expect((await server.pluginContainer.resolveId('./EmptyState.mjs', publishedImporter))?.id).toBe(
-    join(fixture.root, 'HostEmpty.vue'),
-  )
+  expect(
+    (
+      await server.pluginContainer.resolveId(
+        '@opulonjs/ui/components/EmptyState',
+        publishedImporter,
+      )
+    )?.id,
+  ).toBe(join(fixture.root, 'HostEmpty.vue'))
   const query = './EmptyState.vue?vue&type=script&lang.ts'
   expect((await server.pluginContainer.resolveId(query, importer))?.id).not.toContain(
     'HostEmpty.vue',
@@ -129,6 +134,135 @@ test('does not capture unrelated same-named host imports or Vue query modules', 
   expect((await server.pluginContainer.resolveId('./EmptyState.vue', unrelated))?.id).not.toContain(
     'HostEmpty.vue',
   )
+})
+
+test('a host wrapper imports the original kit component instead of itself', async () => {
+  const fixture = host()
+  fixture.write(
+    'HostEmpty.vue',
+    `<script setup>import Original from '@opulonjs/ui/components/EmptyState'</script><template><Original/>host wrapper</template>`,
+  )
+  const output = await fixture.bundle({
+    overrides: { components: { EmptyState: 'HostEmpty.vue' } },
+  })
+  expect(output).toContain('host wrapper')
+  expect(output).toContain('kit EmptyState')
+})
+
+test('dev transforms a published module screen through the host kit override', async () => {
+  const fixture = host()
+  fixture.write(
+    'package.json',
+    JSON.stringify({ type: 'module', dependencies: { '@opulonjs/screen': '1.0.0' } }),
+  )
+  fixture.write(
+    'node_modules/@opulonjs/screen/package.json',
+    JSON.stringify({
+      name: '@opulonjs/screen',
+      version: '1.0.0',
+      type: 'module',
+      exports: './index.mjs',
+    }),
+  )
+  fixture.write(
+    'node_modules/@opulonjs/screen/index.mjs',
+    "import Empty from '@opulonjs/ui/components/EmptyState'; export default Empty",
+  )
+  fixture.write('entry.js', "import Screen from '@opulonjs/screen'; console.log(Screen)")
+  const server = await createServer(
+    fixture.config(
+      { overrides: { components: { EmptyState: 'HostEmpty.vue' } } },
+      { server: { middlewareMode: true }, optimizeDeps: { entries: ['entry.js'] } },
+    ),
+  )
+  onTestFinished(() => server.close())
+  const entry = await server.transformRequest('/entry.js')
+  expect(entry?.code).not.toContain('/.vite/deps/')
+  const screen = await server.transformRequest('/node_modules/@opulonjs/screen/index.mjs')
+  expect(screen?.code).toContain('/HostEmpty.vue')
+  expect(screen?.code).not.toContain('ui/dist/components/EmptyState')
+})
+
+test('checks indirectly installed UI versions through the preset package', async () => {
+  const fixture = host()
+  rmSync(join(fixture.root, 'node_modules/@opulonjs/ui'), { recursive: true })
+  fixture.write(
+    'Screen.js',
+    '// @opulonjs/source @opulonjs/ui@0.0.0-copy src/components/EmptyState.vue\nexport default "indirect copy"',
+  )
+  fixture.write('entry.js', "import Screen from './Screen.js'; console.log(Screen)")
+  const warnings: string[] = []
+  const logger = createLogger('silent')
+  logger.warn = (message) => {
+    warnings.push(message)
+  }
+  await fixture.bundle({}, { customLogger: logger })
+  expect(
+    warnings.some(
+      (message) =>
+        message.includes('@opulonjs/ui@0.0.0-copy') &&
+        message.includes('installed version 0.0.0 is newer'),
+    ),
+  ).toBe(true)
+})
+
+test('warns once per registered component or conventional screen copy without a header', async () => {
+  const fixture = host()
+  fixture.write('overrides/Screen.vue', '<template>headerless screen</template>')
+  fixture.write(
+    'entry.js',
+    "import Screen from './overrides/Screen.vue'; import Empty from '@opulonjs/ui/components/EmptyState'; console.log(Screen, Empty)",
+  )
+  const warnings: string[] = []
+  const logger = createLogger('silent')
+  logger.warn = (message) => {
+    warnings.push(message)
+  }
+  await fixture.bundle(
+    { overrides: { components: { EmptyState: 'HostEmpty.vue' } } },
+    { customLogger: logger },
+  )
+  for (const file of ['HostEmpty.vue', 'overrides/Screen.vue']) {
+    expect(
+      warnings.filter(
+        (message) => message.includes(file) && message.includes('missing @opulonjs/source header'),
+      ),
+    ).toHaveLength(1)
+  }
+})
+
+test('reads BOM and CRLF headers and warns for unresolvable package versions once', async () => {
+  const fixture = host()
+  fixture.write(
+    'Screen.vue',
+    '\uFEFF<!-- @opulonjs/source @opulonjs/ui@1.0.0 src/components/EmptyState.vue -->\r\n<template>BOM copy</template>',
+  )
+  fixture.write(
+    'Unknown.js',
+    '// @opulonjs/source @opulonjs/missing@1.0.0 src/Screen.ts\r\nexport default "unknown copy"',
+  )
+  fixture.write(
+    'Other.js',
+    '// @opulonjs/source @opulonjs/missing@1.0.0 src/Other.ts\nexport default "other copy"',
+  )
+  fixture.write(
+    'entry.js',
+    `import Screen from './Screen.vue'; import Unknown from './Unknown.js'; import Other from './Other.js'; console.log(Screen, Unknown, Other)`,
+  )
+  const warnings: string[] = []
+  const logger = createLogger('silent')
+  logger.warn = (message) => {
+    warnings.push(message)
+  }
+  await fixture.bundle({}, { customLogger: logger })
+  expect(
+    warnings.filter((message) => message.includes('installed version 1.2.0 is newer')),
+  ).toHaveLength(1)
+  expect(
+    warnings.filter(
+      (message) => message.includes('could not check') && message.includes('@opulonjs/missing'),
+    ),
+  ).toHaveLength(1)
 })
 
 test.each([

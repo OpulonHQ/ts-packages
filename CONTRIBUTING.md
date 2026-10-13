@@ -47,15 +47,30 @@ const db = useTestDatabase() // fresh clone per file, dropped afterwards; use db
 
 ## Replace an admin screen or UI component
 
-Copy the source file from the package's Git tag matching your installed version. Preserve its props and slots, and change private relative imports to public package imports. Put a source header on the first line:
-
-For example, from a checkout of `OpulonHQ/ts-packages`, copy version `0.1.0` to a host file:
+From your host project root, copy the installed EmptyState module and record its installed version. This works before release tags exist:
 
 ```sh
-mkdir -p /path/to/host/admin/overrides
-printf '%s\n' '<!-- @opulonjs/source @opulonjs/ui@0.1.0 src/components/EmptyState.vue -->' > /path/to/host/admin/overrides/EmptyState.vue
-git show '@opulonjs/ui@0.1.0:packages/ui/src/components/EmptyState.vue' >> /path/to/host/admin/overrides/EmptyState.vue
+node --input-type=module <<'JS'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { dirname, relative } from 'node:path'
+let require = createRequire(import.meta.url)
+try { require.resolve('@opulonjs/ui/package.json') }
+catch { require = createRequire(require.resolve('@opulonjs/admin/package.json')) }
+const manifest = require.resolve('@opulonjs/ui/package.json')
+const { version } = JSON.parse(readFileSync(manifest, 'utf8'))
+const original = require.resolve('@opulonjs/ui/components/EmptyState')
+const source = readFileSync(original, 'utf8').replace(
+  /^import UIcon from ["']@nuxt\/ui\/components\/Icon\.vue["'];?$/m,
+  'import { UIcon } from "@opulonjs/ui";'
+)
+mkdirSync('admin/overrides', { recursive: true })
+writeFileSync('admin/overrides/EmptyState.mjs',
+  `// @opulonjs/source @opulonjs/ui@${version} ${relative(dirname(manifest), original)}\n${source}`)
+JS
 ```
+
+Register this file as `EmptyState: './overrides/EmptyState.mjs'` in the Vite options below. The command copies compiled Vue code and replaces its Nuxt UI import with the kit's public export. Preserve props and slots when editing it. For other files, change private imports to public package imports. If you copy Vue source from the repository, put a header on its first line:
 
 ```vue
 <!-- @opulonjs/source @opulonjs/ui@0.1.0 src/components/EmptyState.vue -->
@@ -63,15 +78,19 @@ git show '@opulonjs/ui@0.1.0:packages/ui/src/components/EmptyState.vue' >> /path
 
 For TypeScript, use `// @opulonjs/source @opulonjs/admin@0.1.0 src/shell/Dashboard.vue`. A single-line `/* @opulonjs/source ... */` comment also works. The header contains the package name, exact SemVer, and original path relative to the package. The Vite preset warns when an imported copy's version is older than the installed package. Compare the upstream source before updating the header. A warning does not stop the build.
 
+Keep copied screens in an `overrides/` directory. The build warns once per file when a registered component or an imported file under `overrides/` is missing its source header. Headers may start with a UTF-8 BOM and use CRLF. If the host cannot resolve a package version, the preset tries its own dependencies, then warns that it could not check the version.
+
 Register a screen's host component by route name:
 
 ```ts
-import Dashboard from './overrides/Dashboard.vue'
-
-createAdmin({ brand, modules, overrides: { dashboard: Dashboard } }).mount('#app')
+createAdmin({
+  brand,
+  modules,
+  overrides: { dashboard: () => import('./overrides/Dashboard.vue') },
+}).mount('#app')
 ```
 
-Module routes and the built-in `dashboard`, `core.audit`, and `notFound` routes accept replacements. The original path, navigation, module availability, and access checks remain attached to the route. Unknown names throw before startup. For a lazy replacement, pass Vue's `defineAsyncComponent(() => import('./overrides/Screen.vue'))`.
+Module routes and the built-in `dashboard`, `core.audit`, and `notFound` routes accept replacements. The original path, navigation, module availability, and access checks remain attached to the route. Unknown names throw before startup. Pass a host component or a lazy loader returning a component or its default-export module. A dynamic import keeps the copied screen in a separate chunk.
 
 Register UI components in the Vite config:
 
@@ -82,7 +101,7 @@ opulonAdmin({
 })
 ```
 
-Component names are relative to `@opulonjs/ui/components/`, including names such as `Field/Text`. Host paths are absolute or relative to the Vite root. The preset replaces direct imports and imports between kit components. A host copy must not import its own canonical component name, which would resolve back to itself.
+Component names are relative to `@opulonjs/ui/components/`, including names such as `Field/Text`. Host paths are absolute or relative to the Vite root. The preset replaces direct imports and imports between kit components. A host copy can import its own canonical name to wrap the original component; that import resolves to the package's original file.
 
 The fixture's `admin/overrides/Dashboard.vue` adds “Fixture dashboard override”; its `EmptyState.vue` adds “Fixture UI override”, including empty states inside the kit's DataTable. Run `pnpm build`, start `wtdev` from `fixtures/host`, sign in, and open Dashboard and an empty list to see both. `pnpm pack:check` repeats the alias check using installed tarballs and rejects a bundle containing the original EmptyState.
 

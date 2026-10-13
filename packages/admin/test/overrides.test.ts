@@ -30,6 +30,20 @@ const demo = defineAdminModule({
   messages,
 })
 
+test.each([false, true])(
+  'renders a lazy override returning a component or module: %s',
+  async (module) => {
+    mount('/protected', {
+      overrides: {
+        'demo.protected': async () =>
+          module ? { default: screen('lazy host screen') } : screen('lazy host screen'),
+      },
+    })
+    await expect.poll(() => document.body.textContent).toContain('lazy host screen')
+    expect(document.body.textContent).not.toContain('original screen')
+  },
+)
+
 function mount(
   path: string,
   options: Partial<AdminOptions> = {},

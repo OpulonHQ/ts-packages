@@ -2,20 +2,17 @@ import 'virtual:opulon-ui.css'
 import { Me as MeSchema } from '@opulonjs/core/api'
 import { Schema } from 'effect'
 import { type Brand, uiPlugin } from '@opulonjs/ui'
-import {
-  computed,
-  createApp,
-  defineAsyncComponent,
-  shallowRef,
-  type App,
-  type Component,
-} from 'vue'
+import { computed, createApp, defineAsyncComponent, shallowRef, type App } from 'vue'
 import { createI18n } from 'vue-i18n'
-import { createRouter, createWebHistory, type RouteRecordSingleView } from 'vue-router'
+import {
+  createRouter,
+  createWebHistory,
+  type RouteComponent,
+  type RouteRecordSingleView,
+} from 'vue-router'
 import { apiContextKey } from './api-client.ts'
 import { shellMessages } from './messages.ts'
 import type { Access, AdminModule, Messages } from './module.ts'
-import Dashboard from './shell/Dashboard.vue'
 import NotFound from './shell/NotFound.vue'
 import Shell from './shell/Shell.vue'
 import {
@@ -31,7 +28,12 @@ export interface AdminOptions {
   readonly brand: Brand
   readonly modules: ReadonlyArray<AdminModule>
   /** Host components by route name; the route's path, access and navigation stay intact. */
-  readonly overrides?: Readonly<Record<string, Component>>
+  readonly overrides?: Readonly<
+    Record<
+      string,
+      RouteComponent | (() => Promise<RouteComponent | { readonly default: RouteComponent }>)
+    >
+  >
   /** Host messages by admin locale, merged over the shell's; a new locale key adds a locale. */
   readonly messages?: Readonly<Record<string, Messages>>
   /** Host nav groups (`admin.groups.<id>` labels) by order; built-ins are 100, 200, 300. */
@@ -54,6 +56,19 @@ declare module 'vue-router' {
 }
 
 const builtInGroups: Readonly<Record<string, number>> = { content: 100, users: 200, settings: 300 }
+
+const isRouteComponent = (
+  component:
+    RouteComponent | (() => Promise<RouteComponent | { readonly default: RouteComponent }>),
+): component is RouteComponent =>
+  typeof component !== 'function' ||
+  'displayName' in component ||
+  'props' in component ||
+  '__vccOpts' in component
+
+const lazy =
+  (component: () => Promise<RouteComponent | { readonly default: RouteComponent }>) => () =>
+    component().then((loaded) => ('default' in loaded ? loaded.default : loaded))
 
 const injected = (name: string) =>
   document.querySelector<HTMLMetaElement>(`meta[name="${name}"]`)?.content
@@ -294,7 +309,12 @@ export const createAdmin = (options: AdminOptions): App => {
   }
 
   const routes: Array<RouteRecordSingleView> = [
-    { path: '/', name: 'dashboard', component: Dashboard, meta: { access: { signedIn: true } } },
+    {
+      path: '/',
+      name: 'dashboard',
+      component: lazy(() => import('./shell/Dashboard.vue')),
+      meta: { access: { signedIn: true } },
+    },
     ...(!auditOverride
       ? [
           {
@@ -308,9 +328,12 @@ export const createAdmin = (options: AdminOptions): App => {
     ...options.modules.flatMap((m) =>
       m.routes.map((r) => {
         const { name, path, component, ...access } = r
-        // Lazy modules may be plain `{ default }` objects, which neither Vue nor the router unwrap.
-        const lazy = () => component().then((loaded) => loaded.default)
-        return { path, name, component: lazy, meta: { module: m.id, access: access as Access } }
+        return {
+          path,
+          name,
+          component: lazy(component),
+          meta: { module: m.id, access: access as Access },
+        }
       }),
     ),
     { path: '/:rest(.*)*', name: 'notFound', component: NotFound },
@@ -319,7 +342,9 @@ export const createAdmin = (options: AdminOptions): App => {
     history: createWebHistory('/admin/'),
     routes: routes.map((route) => {
       const component = typeof route.name === 'string' ? options.overrides?.[route.name] : undefined
-      return component ? { ...route, component } : route
+      return component
+        ? { ...route, component: isRouteComponent(component) ? component : lazy(component) }
+        : route
     }),
   })
   router.beforeEach(async (to) => {

@@ -1,8 +1,14 @@
 import signedIn from './signed-in.mjs'
+import { readFileSync } from 'node:fs'
 
 export default async (ctx) => {
   const { page, base, shot, check } = ctx
   await signedIn(ctx)
+  const manifest = JSON.parse(readFileSync(new URL('../../../../fixtures/host/public/admin/.vite/manifest.json', import.meta.url), 'utf8'))
+  const original = Object.entries(manifest).find(([id]) => id.includes('/admin/dist/Dashboard-'))?.[1].file
+  check(typeof original === 'string', 'original Dashboard has its own lazy chunk')
+  const requested = new Set()
+  page.on('request', (request) => requested.add(new URL(request.url()).pathname))
   await page.goto(`${base}/admin/`)
   await page.getByText('Fixture dashboard override', { exact: true }).waitFor()
   await shot('dashboard-override')
@@ -19,4 +25,5 @@ export default async (ctx) => {
   await page.getByText('Fixture UI override', { exact: true }).waitFor()
   await shot('kit-internal-override')
   check(true, 'package DataTable renders its EmptyState through the host override')
+  check(!requested.has(`/admin/${original}`), `original Dashboard chunk never fetched: ${original}`)
 }

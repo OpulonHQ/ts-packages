@@ -10,5 +10,5 @@ export default defineConfig({
     // The @opulonjs packages' admin screens are found from package.json; no sources needed.
     opulonAdmin({ brand, overrides: { components } }),
   ],
-  build: { outDir: '../public/admin', emptyOutDir: true },
+  build: { outDir: '../public/admin', emptyOutDir: true, manifest: true },
 })

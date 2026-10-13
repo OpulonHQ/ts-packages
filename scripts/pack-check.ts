@@ -125,10 +125,16 @@ const { components } = await import('./host/admin/override-components.ts')
 const checkOverrides = {
   name: 'check-packed-ui-override',
   generateBundle(_options, bundle) {
-    const modules = Object.values(bundle).filter((output) => output.type === 'chunk').flatMap((chunk) => chunk.moduleIds)
+    const chunks = Object.values(bundle).filter((output) => output.type === 'chunk')
+    const modules = chunks.flatMap((chunk) => chunk.moduleIds)
     if (modules.some((id) => id.split('?')[0].endsWith('/ui/dist/components/EmptyState.mjs'))) {
       throw new Error('kit internal import bypassed the host EmptyState override')
     }
+    const dashboard = chunks.find((chunk) => chunk.moduleIds.some((id) => id.endsWith('/admin/overrides/Dashboard.vue')))
+    if (!dashboard || dashboard.isEntry || !dashboard.isDynamicEntry) throw new Error('host Dashboard override is not a separate lazy chunk')
+    const originalDashboard = chunks.find((chunk) => chunk.moduleIds.some((id) => id.includes('/admin/dist/') && id.split('/').pop().startsWith('Dashboard-')))
+    if (!originalDashboard || originalDashboard.isEntry || !originalDashboard.isDynamicEntry) throw new Error('original Dashboard is not in an unused lazy chunk')
+    console.log('ok dashboard chunks: host', dashboard.fileName, 'original', originalDashboard.fileName)
   },
 }
 const config = { root: 'host/admin', configFile: false, logLevel: 'warn', plugins: [...opulonAdmin({ brand, overrides: { components } }), checkOverrides] }
@@ -154,7 +160,18 @@ const vite = await createServer({
   // Every @opulonjs package: module admin entries import the shell and kit (virtual modules).
   ssr: { noExternal: [/^@opulonjs\\//, '@nuxt/ui'] },
 })
-const { adminModules } = await vite.ssrLoadModule('/modules.ts').finally(() => vite.close())
+let adminModules
+try {
+  const transformed = await vite.transformRequest('/modules.ts')
+  if (!transformed || transformed.code.split('\\n').some((line) => line.includes('.vite/deps/') && line.includes('opulonjs'))) throw new Error('published admin module was prebundled in dev')
+  const { createRequire } = await import('node:module')
+  const { resolve } = await import('node:path')
+  const require = createRequire(resolve('package.json'))
+  const table = await vite.transformRequest('/@fs/' + require.resolve('@opulonjs/ui/components/DataTable'))
+  if (!table?.code.includes('/overrides/EmptyState.vue')) throw new Error('published DataTable bypassed the host override in dev')
+  ;({ adminModules } = await vite.ssrLoadModule('/modules.ts'))
+  console.log('ok published admin dev imports use host kit overrides without prebundling')
+} finally { await vite.close() }
 const { server } = await import('./host/server/opulon.ts')
 const serverIds = new Set(server.modules.map((m) => m.id))
 const missing = adminModules.map((m) => m.id).filter((id) => !serverIds.has(id))
