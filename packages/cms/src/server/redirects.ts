@@ -253,7 +253,11 @@ export class Redirects extends Context.Service<
        * `/x`) and answers other locales under theirs, so a `from` there would never be reached
        * (a `to` there is a cross-locale target).
        */
-      const localePath = (locale: string, raw: string, side: 'from' | 'to') => {
+      const localePath = (
+        locale: string,
+        raw: string,
+        side: 'from' | 'to',
+      ): { path: string } | { error: string } => {
         const path = redirectPath(raw)
         if (path === undefined) return { error: notAPath(raw) }
         const first = path.split('/')[1]!

@@ -1,7 +1,7 @@
 import { sitemapSource } from '@opulonjs/cms/server'
 import { cms } from '@opulonjs/cms/server'
 import { composeServer, core, CompositionError, defineModule } from '@opulonjs/core'
-import { defineCms } from '@opulonjs/cms/api'
+import type { CmsDefinitions } from '@opulonjs/cms/api'
 import { media } from '@opulonjs/media/server'
 import { Effect, Layer } from 'effect'
 import { expect, test } from 'vitest'
@@ -79,7 +79,10 @@ test('the index links the children under the API prefix the host mounted', async
 
 test('a routed collection may be named like a cms source', () => {
   const pages = { ...definitions.collections.posts, routed: true }
-  const named = defineCms({ ...definitions, collections: { ...definitions.collections, pages } })
+  const named: CmsDefinitions = {
+    ...definitions,
+    collections: { ...definitions.collections, pages },
+  }
   expect(() =>
     composeServer({ modules: [core(), media(), cms({ definitions: named })] }),
   ).not.toThrow()
