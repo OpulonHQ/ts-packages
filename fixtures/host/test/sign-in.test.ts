@@ -97,6 +97,11 @@ test('sign-in attempts are rate limited per client address', async () => {
   const limited = await signIn(user.email, user.password, ip)
   expect(limited.status).toBe(429)
   expect(limited.body).toMatchObject({ _tag: 'TooManyRequests' })
+  // Within the 60 s window: pg returns the bigint last_request as a string, which once made
+  // Better Auth concatenate instead of add.
+  const { retryAfter } = limited.body as { retryAfter: number }
+  expect(retryAfter).toBeGreaterThanOrEqual(1)
+  expect(retryAfter).toBeLessThanOrEqual(60)
   expect((await signIn(user.email, user.password)).status).toBe(200)
 })
 

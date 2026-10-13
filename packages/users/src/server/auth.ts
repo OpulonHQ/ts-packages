@@ -72,6 +72,12 @@ export class BetterAuth extends Context.Service<
           connectionString: Redacted.value(url.value),
           max: 1,
           connectionTimeoutMillis: 10_000,
+          // int8 as a number: Better Auth does arithmetic on rate_limit.last_request (epoch ms,
+          // well within 2^53), and the default string made it concatenate retry-after values.
+          types: {
+            getTypeParser: (oid: number, format?: 'text' | 'binary') =>
+              oid === pg.types.builtins.INT8 ? Number : pg.types.getTypeParser(oid, format),
+          },
         })
         // An idle connection the server closes must not crash the isolate; the next query
         // through the pool reconnects or fails on its own.
