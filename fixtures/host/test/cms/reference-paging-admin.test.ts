@@ -36,16 +36,33 @@ const largeHost = useCmsHost(
     contentLocales: ['en', 'it'],
   }),
 )
+const createItems = async (
+  target: typeof host,
+  collection: string,
+  count: number,
+  data: (n: string) => Record<string, unknown>,
+) => {
+  const items: Item[] = []
+  for (let start = 1; start <= count; start += 10) {
+    const created = await Promise.all(
+      Array.from({ length: Math.min(10, count - start + 1) }, (_, i) =>
+        target.call<Item>('POST', `/collections/${collection}/items`, {
+          body: { locales: {}, data: data(String(start + i).padStart(String(count).length, '0')) },
+        }),
+      ),
+    )
+    for (const item of created) {
+      expect(item.status).toBe(200)
+      items.push(item.body)
+    }
+  }
+  return items
+}
 
 test('a reference picker searches beyond page one, retains selections and discards a slow older search', async () => {
-  const ids: string[] = []
-  for (let n = 1; n <= 31; n++) {
-    const result = await host.call<Item>('POST', '/collections/categories/items', {
-      body: { locales: {}, data: { name: { en: `Picker ${String(n).padStart(2, '0')}` } } },
-    })
-    expect(result.status).toBe(200)
-    ids.push(result.body.id)
-  }
+  const ids = (
+    await createItems(host, 'categories', 31, (n) => ({ name: { en: `Picker ${n}` } }))
+  ).map((item) => item.id)
   const post = await host.call<Item>('POST', '/collections/posts/items', {
     body: { locales: {}, data: { title: { en: 'References' }, categories: [ids[30]] } },
   })
@@ -114,14 +131,8 @@ test('a reference picker searches beyond page one, retains selections and discar
 })
 
 test('a single item link resolves a target beyond page one and can be cleared and saved', async () => {
-  let late: Item | undefined
-  for (let n = 1; n <= 31; n++) {
-    late = (
-      await host.call<Item>('POST', '/collections/posts/items', {
-        body: { locales: {}, data: { title: { en: `Link ${String(n).padStart(2, '0')}` } } },
-      })
-    ).body
-  }
+  const links = await createItems(host, 'posts', 31, (n) => ({ title: { en: `Link ${n}` } }))
+  const late = links.at(-1)
   if (!late) throw new Error('no item was created')
   expect(
     (
@@ -182,14 +193,9 @@ test('saved reference labels load together while individual document requests ca
 })
 
 test('a host with larger many-reference fields resolves all 101 saved references without a load error', async () => {
-  const ids: string[] = []
-  for (let n = 1; n <= 101; n++) {
-    const item = await largeHost.call<Item>('POST', '/collections/categories/items', {
-      body: { locales: {}, data: { name: { en: `Bulk ${String(n).padStart(3, '0')}` } } },
-    })
-    expect(item.status).toBe(200)
-    ids.push(item.body.id)
-  }
+  const ids = (
+    await createItems(largeHost, 'categories', 101, (n) => ({ name: { en: `Bulk ${n}` } }))
+  ).map((item) => item.id)
   const post = await largeHost.call<Item>('POST', '/collections/posts/items', {
     body: { locales: {}, data: { title: { en: 'Large reference field' }, categories: ids } },
   })
