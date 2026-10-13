@@ -145,7 +145,11 @@ test('an invalid address is refused and no email is sent', async () => {
  * Runs `invite` while `write` (another users/roles change) is in flight: held just before its
  * audit row (`action`), so its changes are made but not yet committed. Resolves with the invite.
  */
-async function inviteDuring(write: () => Promise<unknown>, action: string, invite: () => Promise<{ status: number }>) {
+async function inviteDuring(
+  write: () => Promise<unknown>,
+  action: string,
+  invite: () => Promise<{ status: number }>,
+) {
   await using barrier = await pauseInserts(db.url, 'core.audit_event', `new.action = '${action}'`)
   const writing = write()
   await barrier.reached()

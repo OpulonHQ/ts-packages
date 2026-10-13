@@ -123,7 +123,10 @@ describe('composeServer fails at startup on', () => {
     fails(
       [
         module('demo', {
-          group: HttpApiGroup.make('demo').add(ping).middleware(Authorization).annotate(Public, true),
+          group: HttpApiGroup.make('demo')
+            .add(ping)
+            .middleware(Authorization)
+            .annotate(Public, true),
         }),
       ],
       /demo.ping: public endpoint with the Authorization middleware/,
