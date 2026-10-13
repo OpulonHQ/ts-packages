@@ -528,12 +528,7 @@ export const CmsGroup = HttpApiGroup.make('cms')
 
 export { ResolvedMedia }
 
-/**
- * The public path of a locale-relative path: unprefixed in the default locale (the first of
- * `locales`), else `/<locale><path>` (`/<locale>` for the root).
- */
-export const publicPath = (locales: ReadonlyArray<string>, locale: string, path: string) =>
-  locale === locales[0] ? path : path === '/' ? `/${locale}` : `/${locale}${path}`
+export { publicPath, readCacheControl } from './public.ts'
 
 const href = { href: Schema.NullOr(Schema.String) }
 /** A link field's value in the Read API: the stored link plus its public href (null when the
@@ -677,9 +672,6 @@ export const PublicItemsQuery = {
 }
 
 const xml = Schema.String.pipe(HttpApiSchema.asText({ contentType: 'application/xml' }))
-
-/** Cache-Control of every successful Read API answer; publishing purges by Cache-Tag. */
-export const readCacheControl = 'public, max-age=0, s-maxage=86400'
 
 /**
  * The Read API under `/api/cms`, public on purpose (no auth). Every successful answer carries

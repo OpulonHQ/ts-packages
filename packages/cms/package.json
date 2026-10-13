@@ -34,6 +34,16 @@
       "types": "./dist/admin/index.d.mts",
       "default": "./dist/admin/index.mjs"
     },
+    "./site": {
+      "@opulonjs/source": "./src/site/index.ts",
+      "types": "./dist/site/index.d.mts",
+      "default": "./dist/site/index.mjs"
+    },
+    "./site/nuxt": {
+      "@opulonjs/source": "./src/site/nuxt.ts",
+      "types": "./dist/site/nuxt.d.mts",
+      "default": "./dist/site/nuxt.mjs"
+    },
     "./package.json": "./package.json"
   },
   "publishConfig": {
@@ -55,6 +65,11 @@
     "effect": "4.0.3",
     "vue": "^3.5.0",
     "vue-router": "^5.4.0"
+  },
+  "peerDependenciesMeta": {
+    "nuxt": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/sanitize-html": "2.16.2",
