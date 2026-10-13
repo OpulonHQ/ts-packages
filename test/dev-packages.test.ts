@@ -1,11 +1,16 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { createServer } from 'vite'
+import { createServer, type Plugin } from 'vite'
 import { expect, onTestFinished, test } from 'vitest'
 import { packagesLoadedTwice } from '../scripts/dev-packages.ts'
 
-async function devServer(name: string, lazyImport: string) {
+async function devServer(
+  name: string,
+  main: string,
+  files: Record<string, string> = {},
+  plugins: Array<Plugin> = [],
+) {
   const root = mkdtempSync(join(tmpdir(), 'dev-packages-'))
   onTestFinished(() => rmSync(root, { recursive: true, force: true }))
   const write = (path: string, source: string) => {
@@ -18,16 +23,15 @@ async function devServer(name: string, lazyImport: string) {
   write(`node_modules/${name}/common.js`, 'export const state = {}')
   write(`node_modules/${name}/index.js`, 'export { state } from "./common.js"')
   write(`node_modules/${name}/sub.js`, 'export { state } from "./common.js"')
-  write(
-    'main.ts',
-    `import { state } from '${name}'; console.log(state); export const lazy = () => ${lazyImport.replace('PACKAGE', name)}`,
-  )
+  write('main.ts', `import { state } from '${name}'; console.log(state); ${main}`)
+  for (const [path, source] of Object.entries(files)) write(path, source)
   const vite = await createServer({
     root,
     configFile: false,
     logLevel: 'silent',
     optimizeDeps: { include: [name], exclude: [`${name}/sub`] },
     server: { middlewareMode: true },
+    plugins,
   })
   onTestFinished(() => vite.close())
   await vite.pluginContainer.buildStart({})
@@ -35,10 +39,29 @@ async function devServer(name: string, lazyImport: string) {
 }
 
 test.each([
-  ['dual', "import('PACKAGE/sub')"],
-  ['@probe/dual', "import('PACKAGE/sub')"],
-  ['@probe/dual', 'import(/* webpackChunkName: "lazy" */ \'PACKAGE/sub\')'],
+  ['dual', "import('dual/sub')"],
+  ['@probe/dual', "import('@probe/dual/sub')"],
+  ['@probe/dual', 'import(/* webpackChunkName: "lazy" */ \'@probe/dual/sub\')'],
 ])('finds %s loaded both prebundled and raw through %s', async (name, lazyImport) => {
-  const vite = await devServer(name, lazyImport)
+  const vite = await devServer(name, `export const lazy = () => ${lazyImport}`)
   expect((await packagesLoadedTwice(vite, '/main.ts')).twice).toEqual([name])
+})
+
+test('follows a runtime import a plugin adds to a stylesheet module', async () => {
+  const vite = await devServer(
+    '@probe/dual',
+    "import './style.css?url'",
+    { 'style.css': ':root { color: black }' },
+    [
+      {
+        name: 'css-runtime-import',
+        enforce: 'post',
+        transform: (code, id) =>
+          id.endsWith('/style.css?url')
+            ? `${code}\nimport { state } from '@probe/dual/sub'; globalThis.cssState = state`
+            : undefined,
+      },
+    ],
+  )
+  expect((await packagesLoadedTwice(vite, '/main.ts')).twice).toEqual(['@probe/dual'])
 })

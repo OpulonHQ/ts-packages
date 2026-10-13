@@ -15,10 +15,10 @@ export const packagesLoadedTwice = async (vite: ViteDevServer, entry: string) =>
   for (let frontier = [entry]; frontier.length > 0;) {
     const imported = await Promise.all(
       frontier.map(async (url) => {
-        await vite.transformRequest(url)
-        // Stylesheet edges are Tailwind's content sources, not modules the page loads.
-        if (/\.css(?:$|\?)/.test(url)) return []
-        return [...((await graph.getModuleByUrl(url))?.importedModules ?? [])]
+        const code = (await vite.transformRequest(url))?.code ?? ''
+        const edges = [...((await graph.getModuleByUrl(url))?.importedModules ?? [])]
+        // A stylesheet's other edges are Tailwind's content sources, not modules the page loads.
+        return /\.css(?:$|\?)/.test(url) ? edges.filter((edge) => code.includes(edge.url)) : edges
       }),
     )
     frontier = []
