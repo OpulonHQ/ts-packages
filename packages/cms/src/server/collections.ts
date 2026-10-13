@@ -4,6 +4,8 @@ import type { Forbidden } from 'effect/http-api/HttpApiError'
 import {
   type CmsConflict,
   type CmsDefinitions,
+  type ItemRevision,
+  type RevisionList,
   CmsInvalid,
   CmsNotFound,
   type Collection,
@@ -32,6 +34,12 @@ export class Items extends Context.Service<
     readonly list: (
       collection: string,
     ) => Effect.Effect<{ rows: ReadonlyArray<ItemSummary>; total: number }, Failure>
+    readonly listRevisions: (id: string, page?: number) => Effect.Effect<RevisionList, Failure>
+    readonly getRevision: (id: string, revisionId: string) => Effect.Effect<ItemRevision, Failure>
+    readonly restoreRevision: (
+      id: string,
+      revisionId: string,
+    ) => Effect.Effect<Item, Failure | CmsInvalid | CmsConflict>
     readonly get: (id: string) => Effect.Effect<Item, Failure>
     readonly create: (
       collection: string,
@@ -115,6 +123,7 @@ export class Items extends Context.Service<
             publish: 'cms.collections.publish',
           },
           actions: {
+            restored: 'cms.item.restored',
             published: 'cms.item.published',
             unpublished: 'cms.item.unpublished',
             deleted: 'cms.item.deleted',
@@ -130,7 +139,10 @@ export class Items extends Context.Service<
                   collection.routed ?? false,
                 )
                 const data = yield* cleanData(definitions, collection, document.data, locales)
-                return { locales: itemLocales, data }
+                return {
+                  locales: itemLocales,
+                  data,
+                }
               }),
             ),
           checkRequired: (key, document) =>
@@ -141,6 +153,10 @@ export class Items extends Context.Service<
         })
 
         return {
+          listRevisions: (id, page) => documents.listRevisions(id, page),
+          getRevision: (id, revisionId) => documents.getRevision(id, revisionId),
+          restoreRevision: (id, revisionId) =>
+            documents.restoreRevision(id, revisionId).pipe(Effect.map(toItem)),
           list: (collection) =>
             known(collection).pipe(
               Effect.andThen(documents.list(collection)),

@@ -32,14 +32,18 @@ export const cmsPermissions = [
 
 /** The publish family (TSPACK-11); drafts are not audited. */
 export const cmsAuditActions = [
+  { key: 'cms.page.restored', subject: 'page' },
   { key: 'cms.page.published', subject: 'page' },
   { key: 'cms.page.unpublished', subject: 'page' },
   { key: 'cms.page.deleted', subject: 'page' },
+  { key: 'cms.item.restored', subject: 'item' },
   { key: 'cms.item.published', subject: 'item' },
   { key: 'cms.item.unpublished', subject: 'item' },
   { key: 'cms.item.deleted', subject: 'item' },
+  { key: 'cms.settings.restored', subject: 'settings' },
   { key: 'cms.settings.published', subject: 'settings' },
   { key: 'cms.settings.unpublished', subject: 'settings' },
+  { key: 'cms.menu.restored', subject: 'menu' },
   { key: 'cms.menu.published', subject: 'menu' },
   { key: 'cms.menu.unpublished', subject: 'menu' },
   { key: 'cms.redirect.created', subject: 'redirect' },
@@ -290,12 +294,131 @@ export const RedirectImportResult = Schema.Struct({
 })
 export type RedirectImportResult = typeof RedirectImportResult.Type
 
+export const revisionPageSize = 25
+export const RevisionSummary = Schema.Struct({
+  id: Schema.String,
+  createdAt: Schema.String,
+  author: Schema.Struct({ id: Schema.NullOr(Schema.String), name: Schema.String }),
+})
+export type RevisionSummary = typeof RevisionSummary.Type
+export const RevisionList = Schema.Struct({
+  rows: Schema.Array(RevisionSummary),
+  total: Schema.Number,
+})
+export type RevisionList = typeof RevisionList.Type
+export const RevisionQuery = {
+  page: Schema.optionalKey(
+    Schema.NumberFromString.check(
+      Schema.isInt(),
+      Schema.isBetween({ minimum: 1, maximum: 10_000 }),
+    ),
+  ),
+}
+export const PageRevision = Schema.Struct({ ...RevisionSummary.fields, document: PageDocument })
+export type PageRevision = typeof PageRevision.Type
+export const ItemRevision = Schema.Struct({ ...RevisionSummary.fields, document: ItemDocument })
+export type ItemRevision = typeof ItemRevision.Type
+export const SettingsRevision = Schema.Struct({
+  ...RevisionSummary.fields,
+  document: SettingsDocument,
+})
+export type SettingsRevision = typeof SettingsRevision.Type
+export const MenuRevision = Schema.Struct({ ...RevisionSummary.fields, document: MenuDocument })
+export type MenuRevision = typeof MenuRevision.Type
+
 const id = { id: Schema.String }
 const collection = { collection: Schema.String }
 const key = { key: Schema.String }
 const localeQuery = { locale: Schema.optionalKey(Schema.String) }
 
 export const CmsGroup = HttpApiGroup.make('cms')
+  .add(
+    HttpApiEndpoint.get('listPageRevisions', '/pages/:id/revisions', {
+      params: id,
+      query: RevisionQuery,
+      success: RevisionList,
+      error: CmsNotFound,
+    }).annotate(Policy, 'cms.pages.view'),
+  )
+  .add(
+    HttpApiEndpoint.get('getPageRevision', '/pages/:id/revisions/:revisionId', {
+      params: { ...id, revisionId: Schema.String },
+      success: PageRevision,
+      error: CmsNotFound,
+    }).annotate(Policy, 'cms.pages.view'),
+  )
+  .add(
+    HttpApiEndpoint.post('restorePageRevision', '/pages/:id/revisions/:revisionId/restore', {
+      params: { ...id, revisionId: Schema.String },
+      success: Page,
+      error: [CmsInvalid, CmsConflict, CmsNotFound],
+    }).annotate(Policy, 'cms.pages.publish'),
+  )
+  .add(
+    HttpApiEndpoint.get('listItemRevisions', '/items/:id/revisions', {
+      params: id,
+      query: RevisionQuery,
+      success: RevisionList,
+      error: CmsNotFound,
+    }).annotate(Policy, 'cms.collections.view'),
+  )
+  .add(
+    HttpApiEndpoint.get('getItemRevision', '/items/:id/revisions/:revisionId', {
+      params: { ...id, revisionId: Schema.String },
+      success: ItemRevision,
+      error: CmsNotFound,
+    }).annotate(Policy, 'cms.collections.view'),
+  )
+  .add(
+    HttpApiEndpoint.post('restoreItemRevision', '/items/:id/revisions/:revisionId/restore', {
+      params: { ...id, revisionId: Schema.String },
+      success: Item,
+      error: [CmsInvalid, CmsConflict, CmsNotFound],
+    }).annotate(Policy, 'cms.collections.publish'),
+  )
+  .add(
+    HttpApiEndpoint.get('listSettingsRevisions', '/settings/revisions', {
+      query: RevisionQuery,
+      success: RevisionList,
+      error: CmsNotFound,
+    }).annotate(Policy, 'cms.site.view'),
+  )
+  .add(
+    HttpApiEndpoint.get('getSettingsRevision', '/settings/revisions/:revisionId', {
+      params: { revisionId: Schema.String },
+      success: SettingsRevision,
+      error: CmsNotFound,
+    }).annotate(Policy, 'cms.site.view'),
+  )
+  .add(
+    HttpApiEndpoint.post('restoreSettingsRevision', '/settings/revisions/:revisionId/restore', {
+      params: { revisionId: Schema.String },
+      success: SiteSettings,
+      error: [CmsInvalid, CmsConflict, CmsNotFound],
+    }).annotate(Policy, 'cms.site.publish'),
+  )
+  .add(
+    HttpApiEndpoint.get('listMenuRevisions', '/menus/:key/revisions', {
+      params: key,
+      query: RevisionQuery,
+      success: RevisionList,
+      error: CmsNotFound,
+    }).annotate(Policy, 'cms.site.view'),
+  )
+  .add(
+    HttpApiEndpoint.get('getMenuRevision', '/menus/:key/revisions/:revisionId', {
+      params: { ...key, revisionId: Schema.String },
+      success: MenuRevision,
+      error: CmsNotFound,
+    }).annotate(Policy, 'cms.site.view'),
+  )
+  .add(
+    HttpApiEndpoint.post('restoreMenuRevision', '/menus/:key/revisions/:revisionId/restore', {
+      params: { ...key, revisionId: Schema.String },
+      success: Menu,
+      error: [CmsInvalid, CmsConflict, CmsNotFound],
+    }).annotate(Policy, 'cms.site.publish'),
+  )
   .add(
     HttpApiEndpoint.get('listPages', '/pages', {
       success: Schema.Struct({ rows: Schema.Array(PageSummary), total: Schema.Number }),

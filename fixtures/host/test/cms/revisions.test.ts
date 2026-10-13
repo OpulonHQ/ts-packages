@@ -12,7 +12,7 @@ const cases = [
     kind: 'page',
     permission: 'cms.pages',
     create: '/pages',
-    path: (d: Document) => `/pages/${'id' in d ? d.id : ''}`,
+    path: (d?: Document) => `/pages/${d && 'id' in d ? d.id : ''}`,
     first: page({ en: '/revision-page' }),
     second: page({ en: '/revision-page-new' }),
   },
@@ -20,7 +20,7 @@ const cases = [
     kind: 'item',
     permission: 'cms.collections',
     create: '/collections/posts/items',
-    path: (d: Document) => `/items/${'id' in d ? d.id : ''}`,
+    path: (d?: Document) => `/items/${d && 'id' in d ? d.id : ''}`,
     first: { locales: {}, data: { title: { en: 'First post' } } },
     second: { locales: {}, data: { title: { en: 'Second post' } } },
   },
@@ -54,7 +54,7 @@ test.each(cases)(
   async (c) => {
     const path = c.create
       ? c.path((await host.call<Document>('POST', c.create, { body: c.first })).body)
-      : c.path({} as Document)
+      : c.path()
     if (!c.create)
       expect((await host.call('PUT', `${path}/draft`, { body: c.first })).status).toBe(200)
     expect(

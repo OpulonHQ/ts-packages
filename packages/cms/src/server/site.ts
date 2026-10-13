@@ -5,6 +5,9 @@ import { SqlClient } from 'effect/sql/SqlClient'
 import {
   type CmsConflict,
   type CmsDefinitions,
+  type MenuRevision,
+  type SettingsRevision,
+  type RevisionList,
   CmsInvalid,
   CmsNotFound,
   labelText,
@@ -113,6 +116,11 @@ type Failure = Forbidden | CmsNotFound
 export class Settings extends Context.Service<
   Settings,
   {
+    readonly listRevisions: (page?: number) => Effect.Effect<RevisionList, Failure>
+    readonly getRevision: (revisionId: string) => Effect.Effect<SettingsRevision, Failure>
+    readonly restoreRevision: (
+      revisionId: string,
+    ) => Effect.Effect<SiteSettings, Failure | CmsInvalid>
     readonly get: () => Effect.Effect<SiteSettings, Forbidden>
     readonly saveDraft: (
       draft: SettingsDocument,
@@ -143,7 +151,11 @@ export class Settings extends Context.Service<
             edit: 'cms.site.edit',
             publish: 'cms.site.publish',
           },
-          actions: { published: 'cms.settings.published', unpublished: 'cms.settings.unpublished' },
+          actions: {
+            restored: 'cms.settings.restored',
+            published: 'cms.settings.published',
+            unpublished: 'cms.settings.unpublished',
+          },
           subject: (row) => ({ type: 'settings', id: row.id, label: 'Site settings' }),
           tags: () => siteTags,
           normalize: (_key, document) =>
@@ -157,6 +169,12 @@ export class Settings extends Context.Service<
         const orDie = <A, E>(effect: Effect.Effect<A, E | CmsNotFound>) =>
           effect.pipe(Effect.catchTag('CmsNotFound', Effect.die))
         return {
+          listRevisions: (page) => documents.listRevisions(settingsKey, page),
+          getRevision: (revisionId) => documents.getRevision(settingsKey, revisionId),
+          restoreRevision: (revisionId) =>
+            documents
+              .restoreRevision(settingsKey, revisionId)
+              .pipe(noConflict, Effect.map(toSettings)),
           get: () => orDie(documents.get(settingsKey)).pipe(Effect.map(toSettings)),
           saveDraft: (draft) =>
             orDie(documents.saveDraft(settingsKey, draft)).pipe(noConflict, Effect.map(toSettings)),
@@ -185,6 +203,12 @@ export class Menus extends Context.Service<
       { rows: ReadonlyArray<MenuSummary>; total: number },
       Forbidden
     >
+    readonly listRevisions: (key: string, page?: number) => Effect.Effect<RevisionList, Failure>
+    readonly getRevision: (key: string, revisionId: string) => Effect.Effect<MenuRevision, Failure>
+    readonly restoreRevision: (
+      key: string,
+      revisionId: string,
+    ) => Effect.Effect<Menu, Failure | CmsInvalid>
     readonly get: (key: string) => Effect.Effect<Menu, Failure>
     readonly saveDraft: (
       key: string,
@@ -284,7 +308,11 @@ export class Menus extends Context.Service<
             edit: 'cms.site.edit',
             publish: 'cms.site.publish',
           },
-          actions: { published: 'cms.menu.published', unpublished: 'cms.menu.unpublished' },
+          actions: {
+            restored: 'cms.menu.restored',
+            published: 'cms.menu.published',
+            unpublished: 'cms.menu.unpublished',
+          },
           subject: (row) => ({
             type: 'menu',
             id: row.id,
@@ -301,6 +329,14 @@ export class Menus extends Context.Service<
             : Effect.fail(new CmsNotFound({ id: key }))
 
         return {
+          listRevisions: (key, page) =>
+            declared(key).pipe(Effect.andThen(documents.listRevisions(key, page))),
+          getRevision: (key, revisionId) =>
+            declared(key).pipe(Effect.andThen(documents.getRevision(key, revisionId))),
+          restoreRevision: (key, revisionId) =>
+            declared(key)
+              .pipe(Effect.andThen(documents.restoreRevision(key, revisionId)))
+              .pipe(noConflict, Effect.map(toMenu)),
           list: () =>
             Effect.forEach(Object.keys(definitions.menus), (key) => documents.get(key)).pipe(
               Effect.catchTag('CmsNotFound', Effect.die),

@@ -130,6 +130,32 @@ const handlers = (api: HttpApi.HttpApi<'opulon', typeof CmsGroup | typeof CmsRea
       const menus = yield* Menus
       const redirects = yield* Redirects
       return h
+        .handle('listPageRevisions', ({ params, query }) =>
+          pages.listRevisions(params.id, query.page),
+        )
+        .handle('getPageRevision', ({ params }) => pages.getRevision(params.id, params.revisionId))
+        .handle('restorePageRevision', ({ params }) =>
+          pages.restoreRevision(params.id, params.revisionId),
+        )
+        .handle('listItemRevisions', ({ params, query }) =>
+          items.listRevisions(params.id, query.page),
+        )
+        .handle('getItemRevision', ({ params }) => items.getRevision(params.id, params.revisionId))
+        .handle('restoreItemRevision', ({ params }) =>
+          items.restoreRevision(params.id, params.revisionId),
+        )
+        .handle('listSettingsRevisions', ({ query }) => settings.listRevisions(query.page))
+        .handle('getSettingsRevision', ({ params }) => settings.getRevision(params.revisionId))
+        .handle('restoreSettingsRevision', ({ params }) =>
+          settings.restoreRevision(params.revisionId),
+        )
+        .handle('listMenuRevisions', ({ params, query }) =>
+          menus.listRevisions(params.key, query.page),
+        )
+        .handle('getMenuRevision', ({ params }) => menus.getRevision(params.key, params.revisionId))
+        .handle('restoreMenuRevision', ({ params }) =>
+          menus.restoreRevision(params.key, params.revisionId),
+        )
         .handle('listPages', () => pages.list())
         .handle('getPage', ({ params }) => pages.get(params.id))
         .handle('createPage', ({ payload }) => pages.create(payload))
