@@ -127,8 +127,10 @@ const title = computed(() => {
       <p v-else-if="status === 'loading'" class="p-6 text-muted" aria-live="polite">
         {{ t('admin.loading') }}
       </p>
-      <ScreenFailed v-else-if="failedScreen" />
-      <RouterView v-else />
+      <template v-else>
+        <ScreenFailed v-if="failedScreen" />
+        <RouterView />
+      </template>
     </main>
 
     <UDashboardGroup v-else unit="rem" storage="local">
@@ -206,7 +208,7 @@ const title = computed(() => {
         </template>
         <template #body>
           <ScreenFailed v-if="failedScreen" />
-          <RouterView v-else />
+          <RouterView />
         </template>
       </UDashboardPanel>
     </UDashboardGroup>

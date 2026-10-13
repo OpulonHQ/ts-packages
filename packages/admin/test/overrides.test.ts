@@ -204,3 +204,37 @@ test('returning to the current screen clears a failed screen error', async () =>
   await expect.poll(() => document.querySelector('[role="alert"]')).toBeNull()
   expect(document.body.textContent).toContain('Nothing to show here yet.')
 })
+
+test('a failed navigation keeps the current screen usable', async () => {
+  const app = mount('/', {
+    overrides: { 'demo.protected': () => Promise.reject(new Error('screen download failed')) },
+  })
+  const router = app.config.globalProperties.$router
+  await expect.poll(() => document.body.textContent).toContain('Nothing to show here yet.')
+  await expect(router.push('/protected')).rejects.toThrow('screen download failed')
+  await expect.poll(() => document.querySelector('[role="alert"]')).not.toBeNull()
+  expect(document.body.textContent).toContain('Nothing to show here yet.')
+})
+
+test('a failed route load re-checks the build and asks for a reload', async () => {
+  let deployed = 'test'
+  const app = mount('/', {
+    buildId: 'test',
+    overrides: { 'demo.protected': () => Promise.reject(new Error('chunk deleted by deploy')) },
+    fetch: async () =>
+      Response.json({
+        permissions: ['demo.view'],
+        modules: ['auth', 'demo', 'core'],
+        buildId: deployed,
+        user: { id: 'staff', name: 'Staff', email: 'staff@example.com' },
+        locale: 'en',
+        permissionCatalog: ['demo.view'],
+        contentLocales: ['en'],
+      }),
+  })
+  const router = app.config.globalProperties.$router
+  await expect.poll(() => document.body.textContent).toContain('Nothing to show here yet.')
+  deployed = 'next'
+  await expect(router.push('/protected')).rejects.toThrow('chunk deleted by deploy')
+  await expect.poll(() => document.body.textContent).toContain('A new admin version is available.')
+})

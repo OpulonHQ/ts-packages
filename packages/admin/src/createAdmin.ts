@@ -367,15 +367,9 @@ export const createAdmin = (options: AdminOptions): App => {
     if (!allowed(access)) return { name: 'dashboard' }
     return true
   })
-  const failedScreen = shallowRef<string>()
-  router.onError((error: unknown, to) => {
-    console.error(error)
-    failedScreen.value = to.fullPath
-  })
   // Re-check the build after each navigation, so an open tab learns about a deploy.
-  router.afterEach((_to, from) => {
-    failedScreen.value = undefined
-    if (from.matched.length === 0 || !me.value) return
+  const recheckBuild = () => {
+    if (!me.value) return
     getMe().then(
       (next) => {
         if (next !== 'signedOut') me.value = { ...next, modules: me.value?.modules ?? next.modules }
@@ -383,6 +377,17 @@ export const createAdmin = (options: AdminOptions): App => {
       // A failed re-check keeps the last known state; the next navigation retries.
       (error: unknown) => console.warn(error),
     )
+  }
+  const failedScreen = shallowRef<string>()
+  router.onError((error: unknown, to) => {
+    console.error(error)
+    failedScreen.value = to.fullPath
+    // A screen chunk missing after a deploy surfaces as a failed load.
+    recheckBuild()
+  })
+  router.afterEach((_to, from) => {
+    failedScreen.value = undefined
+    if (from.matched.length > 0) recheckBuild()
   })
 
   document.title = options.brand.name
