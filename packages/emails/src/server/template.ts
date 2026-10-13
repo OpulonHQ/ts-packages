@@ -147,10 +147,9 @@ const options: sanitizeHtml.IOptions = {
     // A safe URL or exactly one placeholder (whose value is checked at send time); else no href.
     a: (tagName, { href }) => {
       const trimmed = href?.trim() ?? ''
-      return {
-        tagName,
-        attribs: exactPlaceholder.test(trimmed) || isSafeUrl(trimmed) ? { href: trimmed } : {},
-      }
+      const attribs: sanitizeHtml.Attributes =
+        exactPlaceholder.test(trimmed) || isSafeUrl(trimmed) ? { href: trimmed } : {}
+      return { tagName, attribs }
     },
   },
 }
