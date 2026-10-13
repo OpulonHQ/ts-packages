@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { useCmsClient } from '@opulonjs/cms/site/nuxt'
+import { useCmsClient, useCmsPublicPage } from '@opulonjs/cms/site/nuxt'
 
+// Nothing here depends on the visitor (a preview stays private anyway): cache it publicly.
+useCmsPublicPage()
 // `?preview=<page id>` reads the draft with the editor's session; otherwise the published page.
 const props = defineProps<{ path: string; preview: string | null }>()
 const cms = useCmsClient()

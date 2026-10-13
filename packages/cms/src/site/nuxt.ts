@@ -23,8 +23,13 @@ export interface CmsRequestContext {
   readonly tags: Set<string>
   /** The page was requested with `?preview`: the session is forwarded, the HTML not cached. */
   readonly preview: boolean
-  /** Some cms answer read for this page was not publicly cacheable: the HTML is not cached. */
+  /**
+   * Some cms answer read for this page was not publicly cacheable, or a read carried the
+   * visitor's credentials: the HTML is not cached.
+   */
   uncacheable: boolean
+  /** The page declared its whole render public (`useCmsPublicPage()`). */
+  publicPage: boolean
 }
 
 /** The parts of an H3 event the hooks use (nitropack 2 on the cloudflare-module preset). */
@@ -65,27 +70,25 @@ export interface CmsRenderRoute {
 }
 
 const cachingHeader = /^(cache-control|cache-tag)$/i
+const notCached = 'private, no-store'
 
 /**
- * Every answer's Cache-Control on Workers until a public cms page or the host sets one: Workers
- * Cache keys by URL alone and keeps a 200 without Cache-Control for two hours, so a page
- * personalized from a cookie would be served to every visitor. (Nitro's error handler replaces it
- * with `no-cache`, which Workers Cache revalidates with the Worker every time.) Spelled apart
- * from a host's own `private, no-store` so that one is never taken for the default and opened.
- */
-const notCached = 'private, no-store, max-age=0'
-
-/**
- * Nitro runtime hooks for a public site on Workers. `request` gives every request an in-process
- * cms fetch (no subrequest; the request's own env and ctx) and starts its answer as
- * `private, no-store, max-age=0` for Workers Cache; `renderResponse` copies the
- * Cache-Tags the page read onto its HTML with the Read API's `s-maxage` (a Cache-Control the host
- * set is kept), or, for `?preview`, when a cms answer was not publicly cacheable or when the page was
- * streamed, answers `private, no-store` without tags. A streamed page sends its headers before its
- * reads finish, and which pages read the cms is known only once they render, so `renderRoute`
- * (Nuxt's `render:route`) turns streaming off for every page on Workers, cms reads or not. Only
- * `?preview` requests forward the visitor's cookie, and only to the page's own origin
- * (credentials the page passes itself are dropped), so a draft is never read for a cacheable page.
+ * Nitro runtime hooks for a public site on Workers, where Workers Cache keeps any answer by its
+ * URL alone (a 200 without Cache-Control for two hours). Private is the default, public is
+ * declared:
+ * - `request` gives every request an in-process cms fetch (no subrequest; the request's own env
+ *   and ctx).
+ * - `renderResponse` makes a page public only when it called `useCmsPublicPage()` during its
+ *   render and every cms read was public: the HTML then gets the Read API's `s-maxage` and the
+ *   union of the reads' Cache-Tags. `?preview`, a read that was not public or carried credentials,
+ *   a streamed page or a tag union too large to purge answer `private, no-store` without tags.
+ * - `beforeResponse` answers `private, no-store` wherever nothing set a Cache-Control (pages that
+ *   did not opt in, other routes). A Cache-Control the host set is never replaced (Nitro's error
+ *   pages keep their `no-cache`, which Workers Cache revalidates with the Worker every time).
+ * - `renderRoute` (Nuxt's `render:route`) turns streaming off on Workers: a streamed page sends
+ *   its headers before its reads finish.
+ * Only `?preview` requests forward the visitor's cookie, and only to the page's own origin
+ * (credentials the page passes itself are dropped), so a draft is never read for a cached page.
  *
  * ```ts
  * // server/plugins/cms.ts
@@ -93,6 +96,7 @@ const notCached = 'private, no-store, max-age=0'
  *   const cms = cmsNitroHooks(worker)
  *   nitro.hooks.hook('request', cms.request)
  *   nitro.hooks.hook('render:response', cms.renderResponse)
+ *   nitro.hooks.hook('beforeResponse', cms.beforeResponse)
  *   nitro.hooks.hook('render:route', cms.renderRoute)
  * })
  * ```
@@ -119,6 +123,7 @@ export const cmsNitroHooks = <Env>(worker: CmsWorker<Env>) => ({
       // Only to the page's own origin: a session never leaves with a read meant for elsewhere.
       if (preview && cookie && new URL(request.url).origin === url.origin) {
         request.headers.set('cookie', cookie)
+        context.uncacheable = true
       }
       // The env is the Worker's own (`cloudflare.env`); the host types it through `worker`.
       const response = await worker.fetch(request, cloudflare.env as Env, cloudflare.context)
@@ -132,11 +137,14 @@ export const cmsNitroHooks = <Env>(worker: CmsWorker<Env>) => ({
       }
       return response
     }
-    const context: CmsRequestContext = { fetch, tags, preview, uncacheable: false }
+    const context: CmsRequestContext = {
+      fetch,
+      tags,
+      preview,
+      uncacheable: false,
+      publicPage: false,
+    }
     event.context.cms = context
-    // Set first, so the host's policies (route rules, its handlers) and the cms's replace it, and
-    // so it holds for Nitro's error answers, which skip render:response.
-    event.node?.res?.setHeader('cache-control', notCached)
   },
   renderResponse: (response: CmsRenderResponse, { event }: { event: CmsEvent }) => {
     const cms = event.context.cms
@@ -150,19 +158,25 @@ export const cmsNitroHooks = <Env>(worker: CmsWorker<Env>) => ({
       response.headers = Object.fromEntries(
         Object.entries(response.headers ?? {}).filter(([name]) => !cachingHeader.test(name)),
       )
-      response.headers['cache-control'] = 'private, no-store'
+      response.headers['cache-control'] = notCached
       event.node?.res?.removeHeader('cache-tag')
       return
     }
-    if (cms.tags.size === 0 || (response.statusCode ?? 200) >= 500) return
+    // Public only by declaration: cms reads cannot prove the rest of the render is.
+    if (!cms.publicPage || cms.tags.size === 0 || (response.statusCode ?? 200) >= 500) return
     const headers = (response.headers ??= {})
-    headers['cache-tag'] = tag
+    // Only a host sets Cache-Control before this hook, and its policy stays; the answer is
+    // tagged only when it ends up public.
+    const own = Object.entries(headers).find(([name]) => /^cache-control$/i.test(name))?.[1]
     const sent = event.node?.res?.getHeader('cache-control')
-    const hostPolicy =
-      Object.keys(headers).some((name) => /^cache-control$/i.test(name)) ||
-      (sent !== undefined && sent !== notCached)
-    if (!hostPolicy) {
-      headers['cache-control'] = readCacheControl
+    const policy = own ?? (sent === undefined ? undefined : String(sent))
+    if (policy === undefined) headers['cache-control'] = readCacheControl
+    if (policy === undefined || /\bpublic\b/.test(policy)) headers['cache-tag'] = tag
+  },
+  beforeResponse: (event: CmsEvent) => {
+    const res = event.node?.res
+    if (event.context.cms && res && res.getHeader('cache-control') === undefined) {
+      res.setHeader('cache-control', notCached)
     }
   },
   // Every page `request` equipped (all of them on Workers): reads happen during the render.
@@ -170,6 +184,17 @@ export const cmsNitroHooks = <Env>(worker: CmsWorker<Env>) => ({
     if (event.context.cms) route.prefersStream = false
   },
 })
+
+/**
+ * Declares, during a page's SSR render, that the whole page is the same for every visitor, so
+ * `cmsNitroHooks` may cache it publicly under the Cache-Tags of its cms reads. Never call it on a
+ * page that renders anything from the visitor's session. In the browser it does nothing.
+ */
+export const useCmsPublicPage = (): void => {
+  if ('window' in globalThis) return
+  const cms = useSSRContext<{ event?: CmsEvent }>()?.event?.context.cms
+  if (cms) cms.publicPage = true
+}
 
 /**
  * The cms client for a component's setup: during SSR on Workers it reads in-process through

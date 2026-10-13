@@ -5,5 +5,6 @@ export default defineNitroPlugin((nitro) => {
   const cms = cmsNitroHooks(worker)
   nitro.hooks.hook('request', cms.request)
   nitro.hooks.hook('render:response', cms.renderResponse)
+  nitro.hooks.hook('beforeResponse', cms.beforeResponse)
   nitro.hooks.hook('render:route', cms.renderRoute)
 })

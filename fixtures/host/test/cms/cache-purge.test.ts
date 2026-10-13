@@ -1,5 +1,5 @@
 import { CachePurge, type WorkersCache, workersCachePurge } from '@opulonjs/cms/server'
-import { Effect, Fiber } from 'effect'
+import { Effect, Fiber, Logger } from 'effect'
 import * as TestClock from 'effect/testing/TestClock'
 import { expect, test } from 'vitest'
 
@@ -42,7 +42,7 @@ test('a failed purge is logged, never failing the caller, and not retried', asyn
   expect(down.purged).toHaveLength(1)
 })
 
-test('a stalled purge ends at its deadline', async () => {
+test('a stalled purge ends at its 25 s deadline', async () => {
   const called = Promise.withResolvers<void>()
   const stalled = fakeCache(() => {
     called.resolve()
@@ -53,7 +53,7 @@ test('a stalled purge ends at its deadline', async () => {
       const cache = yield* CachePurge
       const fiber = yield* Effect.forkChild(cache.purge(['cms']))
       yield* Effect.promise(() => called.promise)
-      yield* TestClock.adjust('11 seconds')
+      yield* TestClock.adjust('25 seconds')
       yield* Fiber.join(fiber)
     }).pipe(
       Effect.provide(workersCachePurge({ cache: stalled.cache })),
@@ -89,4 +89,47 @@ test('a refused (rate-limited) purge is retried as a token refills (12 s), at mo
   const refused = fakeCache(refusedReply)
   await expect(purgeOverTime(refused.cache, 4)).resolves.toBeUndefined()
   expect(refused.purged).toHaveLength(3)
+})
+
+test('one 25 s deadline covers calls, retries and sleeps; the failure is logged within it', async () => {
+  // Refusals that take 8 s to arrive: per-attempt deadlines would log at 56 s, long after
+  // Workers stopped keeping the Worker alive for waitUntil (30 s).
+  let now = 0
+  const pending: Array<{ start: number; resolve: () => void }> = []
+  const slow = fakeCache(
+    () =>
+      new Promise((resolve) => {
+        pending.push({
+          start: now,
+          resolve: () =>
+            resolve({ success: false, errors: [{ code: 1, message: 'rate limited' }] }),
+        })
+      }),
+  )
+  const logged: Array<number> = []
+  const errors = Logger.make(({ logLevel, date }) => {
+    if (logLevel === 'Error') logged.push(date.getTime())
+  })
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const purger = yield* CachePurge
+      const fiber = yield* Effect.forkChild(purger.purge(['cms']))
+      for (let second = 0; second < 60; second++) {
+        yield* Effect.yieldNow
+        yield* TestClock.adjust('1 second')
+        now += 1000
+        for (const call of pending.splice(0)) {
+          if (now - call.start >= 8000) call.resolve()
+          else pending.push(call)
+        }
+      }
+      yield* Fiber.join(fiber)
+    }).pipe(
+      Effect.provide(workersCachePurge({ cache: slow.cache })),
+      Effect.provide(TestClock.layer()),
+      Effect.provide(Logger.layer([errors])),
+    ),
+  )
+  expect(logged).toHaveLength(1)
+  expect(logged[0]).toBeLessThanOrEqual(25_000)
 })

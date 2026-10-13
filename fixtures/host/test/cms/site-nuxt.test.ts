@@ -1,13 +1,19 @@
 import { readCacheControl } from '@opulonjs/cms/api'
 import type { CmsClient } from '@opulonjs/cms/site'
-import { type CmsEvent, cmsNitroHooks, useCmsClient } from '@opulonjs/cms/site/nuxt'
+import {
+  type CmsEvent,
+  cmsNitroHooks,
+  useCmsClient,
+  useCmsPublicPage,
+} from '@opulonjs/cms/site/nuxt'
 import { createSSRApp, defineComponent, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import { expect, test } from 'vitest'
 import { page, section, useCmsHost } from './helpers.ts'
 
 // Nitro is simulated: the event carries what nitropack's cloudflare-module preset puts on it
-// (`context.cloudflare = { request, env, context }`), and the hooks run as Nitro calls them.
+// (`context.cloudflare = { request, env, context }`), H3's response headers live in `sent`, and
+// the hooks run in Nitro's order.
 const host = useCmsHost()
 const hooks = cmsNitroHooks(host.worker)
 
@@ -18,46 +24,31 @@ const h3Response = (sent: Headers) => ({
   removeHeader: (name: string) => sent.delete(name),
 })
 
-const request = (url: string, cookie?: string) => {
-  const pending: Array<Promise<unknown>> = []
+const workersEvent = (url: string, env: unknown, sent: Headers, cookie?: string): CmsEvent => {
   const { pathname, search } = new URL(url)
-  const sent = new Headers()
-  const event: CmsEvent = {
+  return {
     path: pathname + search,
     headers: new Headers(cookie ? { cookie } : {}),
     context: {
-      cloudflare: {
-        request: new Request(url),
-        env: host.env(),
-        context: { waitUntil: (p: Promise<unknown>) => void pending.push(p) },
-      },
+      cloudflare: { request: new Request(url), env, context: { waitUntil: () => {} } },
     },
     node: { res: h3Response(sent) },
   }
+}
+
+/** A request through the `request` hook; `sent` may hold a policy an earlier hook set. */
+const request = (url: string, cookie?: string, sent = new Headers()) => {
+  const event = workersEvent(url, host.env(), sent, cookie)
   hooks.request(event)
-  return { event, sent, settled: () => Promise.all(pending) }
+  return { event, sent }
 }
 
-/**
- * The headers that go out: what H3's response holds, then the `render:response` payload's (Nitro
- * sets those last). Error answers skip `render:response`: pass `rendered: false`.
- */
-const sentHeaders = (
-  { event, sent }: { event: CmsEvent; sent: Headers },
-  response: { statusCode?: number; headers?: Record<string, string> } = {},
-  { rendered = true } = {},
-) => {
-  if (rendered) hooks.renderResponse(response, { event })
-  const out = new Headers(sent)
-  for (const [name, value] of Object.entries(response.headers ?? {})) out.set(name, value)
-  return Object.fromEntries(out)
-}
-
-/** The client a Vue component gets during SSR of `event`, as a page's setup sees it. */
-const ssrClient = async (event: CmsEvent) => {
+/** Renders a page component during SSR of `event`; it opts in with `publicPage`. */
+const render = async (event: CmsEvent, { publicPage = false } = {}) => {
   let client: CmsClient | undefined
   const app = createSSRApp(
     defineComponent(() => {
+      if (publicPage) useCmsPublicPage()
       client = useCmsClient()
       return () => h('div')
     }),
@@ -66,162 +57,157 @@ const ssrClient = async (event: CmsEvent) => {
   return client!
 }
 
-const respond = (
-  event: CmsEvent,
-  response: { statusCode?: number; headers?: Record<string, string> } = {},
+/**
+ * What goes out for a rendered page, in Nitro's order: `render:response`, its headers set on H3's
+ * response, then `beforeResponse`. `rendered: false` is any other handler (no render:response).
+ */
+const finish = (
+  { event, sent }: { event: CmsEvent; sent: Headers },
+  response: { statusCode?: number; headers?: Record<string, string>; body?: unknown } = {
+    statusCode: 200,
+  },
+  { rendered = true, nitro = hooks } = {},
 ) => {
-  hooks.renderResponse(response, { event })
-  return response.headers ?? {}
+  if (rendered) {
+    nitro.renderResponse(response, { event })
+    for (const [name, value] of Object.entries(response.headers ?? {})) sent.set(name, value)
+  }
+  nitro.beforeResponse(event)
+  return Object.fromEntries(sent)
 }
 
-test('SSR reads in-process and the HTML gets the union of the Read API cache tags', async () => {
+const privateNoStore = { 'cache-control': 'private, no-store' }
+
+test('an opted-in page reads in-process and its HTML gets the Read API policy and tag union', async () => {
   const created = await host.create(
     page({ en: '/about' }, [section('rich_text', { body: { en: '<p>Hi</p>' } })]),
   )
   await host.publish(created.body.id)
 
-  const { event, settled } = request('https://example.com/about')
-  const cms = await ssrClient(event)
+  const about = request('https://example.com/about')
+  const cms = await render(about.event, { publicPage: true })
   expect(await cms.resolve('/about')).toMatchObject({ kind: 'page', id: created.body.id })
   await cms.site()
-  await settled()
 
-  const headers = respond(event, { statusCode: 200, headers: { 'content-type': 'text/html' } })
+  const headers = finish(about)
   expect(headers['cache-control']).toBe(readCacheControl)
   expect(headers['cache-tag']?.split(',')).toEqual(
     expect.arrayContaining(['cms', `cms:page:${created.body.id}`, 'cms:site']),
   )
 })
 
-test('a host cache policy is kept; an error page gets no tags', async () => {
-  const kept = request('https://example.com/missing')
-  await (await ssrClient(kept.event)).resolve('/missing')
-  expect(respond(kept.event, { headers: { 'cache-control': 'private' } })).toEqual({
-    'cache-control': 'private',
-    'cache-tag': 'cms,cms:routes',
-  })
-  const mixed = request('https://example.com/missing')
-  await (await ssrClient(mixed.event)).resolve('/missing')
-  expect(respond(mixed.event, { headers: { 'Cache-Control': 'private' } })).toEqual({
-    'Cache-Control': 'private',
-    'cache-tag': 'cms,cms:routes',
-  })
+test('without the opt-in every answer is private, no-store and untagged, cms reads or not', async () => {
+  // Public cms content plus the visitor's session: cms reads do not make the render public.
+  const account = request('https://example.com/account', 'session=alice')
+  await (await render(account.event)).resolve('/missing')
+  expect(finish(account)).toEqual(privateNoStore)
 
-  const failed = request('https://example.com/missing')
-  await (await ssrClient(failed.event)).resolve('/missing')
-  expect(respond(failed.event, { statusCode: 500 })).toEqual({})
-})
-
-test('on Workers an answer is not cacheable unless a public cms page or the host says so', async () => {
-  const privateNoStore = expect.stringMatching(/^private, no-store\b/)
-  // A page without cms reads, and one personalized from the visitor's cookie.
   const plain = request('https://example.com/plain')
-  expect(sentHeaders(plain, { statusCode: 200 })['cache-control']).toEqual(privateNoStore)
-  const personal = request('https://example.com/account', 'session=abc')
-  await ssrClient(personal.event)
-  expect(sentHeaders(personal, { statusCode: 200 })['cache-control']).toEqual(privateNoStore)
+  await render(plain.event)
+  expect(finish(plain)).toEqual(privateNoStore)
 
-  // Answers that skip render:response (Nitro's error answers, its other routes) keep the default
-  // unless their handler sets a policy (Nitro's error handler sets `no-cache`).
-  for (const status of [404, 500]) {
-    const failed = request('https://example.com/nowhere')
-    await (await ssrClient(failed.event)).site()
-    expect(sentHeaders(failed, { statusCode: status }, { rendered: false })).toEqual({
-      'cache-control': privateNoStore,
-    })
-  }
+  // Any other handler (an API route, Nitro's own routes) without a policy of its own.
+  expect(finish(request('https://example.com/_payload.json'), {}, { rendered: false })).toEqual(
+    privateNoStore,
+  )
 
-  // An explicit host policy stays, on H3's response or in the render payload.
-  const hostPublic = request('https://example.com/promo')
-  hostPublic.sent.set('cache-control', 'public, max-age=60')
-  expect(sentHeaders(hostPublic, { statusCode: 200 })).toEqual({
-    'cache-control': 'public, max-age=60',
-  })
-  const hostPrivate = request('https://example.com/missing', 'session=abc')
-  hostPrivate.sent.set('cache-control', 'private, no-store')
-  await (await ssrClient(hostPrivate.event)).resolve('/missing')
-  expect(sentHeaders(hostPrivate, { statusCode: 200 })['cache-control']).toBe('private, no-store')
-
-  // A page that read only public cms answers gets the Read API's policy and its tags.
-  const cmsPage = request('https://example.com/missing')
-  await (await ssrClient(cmsPage.event)).resolve('/missing')
-  expect(sentHeaders(cmsPage, { statusCode: 200 })).toEqual({
-    'cache-control': readCacheControl,
-    'cache-tag': 'cms,cms:routes',
-  })
+  // An opted-in page that failed is not tagged either.
+  const failed = request('https://example.com/missing')
+  await (await render(failed.event, { publicPage: true })).resolve('/missing')
+  expect(finish(failed, { statusCode: 500 })).toEqual(privateNoStore)
 })
 
-test('?preview forwards the editor session to the cms and makes the HTML private, untagged', async () => {
+test('a policy the host or an earlier hook set is never replaced', async () => {
+  // The exact value the hooks use as a default, set by the host on an opted-in cms page.
+  const hostPrivate = request(
+    'https://example.com/missing',
+    undefined,
+    new Headers({ 'cache-control': 'private, no-store, max-age=0' }),
+  )
+  await (await render(hostPrivate.event, { publicPage: true })).resolve('/missing')
+  expect(finish(hostPrivate)).toEqual({ 'cache-control': 'private, no-store, max-age=0' })
+
+  // An earlier hook's public policy on a page that did not opt in: kept, untagged.
+  const earlier = request(
+    'https://example.com/promo',
+    undefined,
+    new Headers({ 'cache-control': 'public, max-age=60' }),
+  )
+  await (await render(earlier.event)).resolve('/missing')
+  expect(finish(earlier)).toEqual({ 'cache-control': 'public, max-age=60' })
+
+  // A host policy in the render payload, in any case: kept; public and opted in, it is tagged.
+  const mixed = request('https://example.com/missing')
+  await (await render(mixed.event, { publicPage: true })).resolve('/missing')
+  expect(
+    finish(mixed, { statusCode: 200, headers: { 'Cache-Control': 'public, max-age=60' } }),
+  ).toEqual({ 'cache-control': 'public, max-age=60', 'cache-tag': 'cms,cms:routes' })
+})
+
+test('?preview forwards the editor session to the cms and keeps even an opted-in page private', async () => {
   const created = await host.create(
     page({ en: '/draft' }, [section('rich_text', { body: { en: '<p>Draft</p>' } })]),
   )
   const cookie = await host.cookie()
 
   const preview = request('https://example.com/draft?preview', cookie)
-  const cms = await ssrClient(preview.event)
+  const cms = await render(preview.event, { publicPage: true })
   expect(await cms.previewPage(created.body.id)).toMatchObject({ path: '/draft' })
   await cms.resolve('/draft')
-  expect(respond(preview.event, { statusCode: 200 })).toEqual({
-    'cache-control': 'private, no-store',
-  })
+  expect(finish(preview)).toEqual(privateNoStore)
 
   // Without ?preview the session never reaches the cms, so drafts stay unreadable.
   const plain = request('https://example.com/draft', cookie)
-  await expect((await ssrClient(plain.event)).previewPage(created.body.id)).rejects.toMatchObject({
+  await expect((await render(plain.event)).previewPage(created.body.id)).rejects.toMatchObject({
     status: 401,
   })
 })
 
-test('outside ?preview, credentials passed to the cms fetch are dropped and an uncacheable read keeps the HTML private', async () => {
+test('outside ?preview, credentials passed to the cms fetch are dropped and an uncacheable read keeps an opted-in page private', async () => {
   const created = await host.create(
     page({ en: '/secret' }, [section('rich_text', { body: { en: '<p>Secret</p>' } })]),
   )
   const cookie = await host.cookie()
 
-  const { event, settled } = request('https://example.com/secret')
-  const draft = await event.context.cms!.fetch(
+  const secret = request('https://example.com/secret')
+  const draft = await secret.event.context.cms!.fetch(
     `https://example.com/api/cms/pages/${created.body.id}/preview?locale=en`,
     { headers: { cookie, authorization: 'Bearer x' } },
   )
   expect(draft.status).toBe(401)
-  await (await ssrClient(event)).site()
-  await settled()
+  await (await render(secret.event, { publicPage: true })).site()
 
   expect(
-    respond(event, { statusCode: 200, headers: { 'cache-control': 'public, max-age=60' } }),
-  ).toEqual({ 'cache-control': 'private, no-store' })
+    finish(secret, { statusCode: 200, headers: { 'cache-control': 'public, max-age=60' } }),
+  ).toEqual(privateNoStore)
 })
+
+/** An opted-in render over a stub Worker answering every cms read with `answer()`. */
+const stubbed = async (answer: () => Response, reads: Array<string>) => {
+  const nitro = cmsNitroHooks({ fetch: async () => answer() })
+  const sent = new Headers()
+  const event = workersEvent('https://example.com/big', {}, sent)
+  nitro.request(event)
+  await render(event, { publicPage: true })
+  for (const path of reads) await event.context.cms!.fetch(path)
+  return finish({ event, sent }, { statusCode: 200 }, { nitro })
+}
 
 test('the HTML Cache-Tag union stays bounded: link tags collapse into cms:routes', async () => {
   // Two answers each under the bound whose union is not (as a page and the site can be).
+  let call = 0
   const tags = (from: number) => [
     'cms',
     ...Array.from({ length: 150 }, (_, i) => `cms:page:${crypto.randomUUID()}-${from + i}`),
   ]
-  let call = 0
-  const stub = cmsNitroHooks({
-    fetch: async () =>
+  const headers = await stubbed(
+    () =>
       new Response('{}', {
         headers: { 'cache-control': readCacheControl, 'cache-tag': tags(call++ * 150).join(',') },
       }),
-  })
-  const event: CmsEvent = {
-    path: '/big',
-    headers: new Headers(),
-    context: {
-      cloudflare: {
-        request: new Request('https://example.com/big'),
-        env: {},
-        context: { waitUntil: () => {} },
-      },
-    },
-  }
-  stub.request(event)
-  await event.context.cms!.fetch('/api/cms/resolve?path=%2Fbig')
-  await event.context.cms!.fetch('/api/cms/site')
-  const response = { statusCode: 200, headers: {} as Record<string, string> }
-  stub.renderResponse(response, { event })
-  const header = response.headers['cache-tag']!
+    ['/api/cms/resolve?path=%2Fbig', '/api/cms/site'],
+  )
+  const header = headers['cache-tag']!
   expect(new TextEncoder().encode(header).length).toBeLessThanOrEqual(8 * 1024)
   expect(header.split(',').sort()).toEqual(['cms', 'cms:routes'])
 })
@@ -229,51 +215,31 @@ test('the HTML Cache-Tag union stays bounded: link tags collapse into cms:routes
 test('an HTML Cache-Tag union over the bound after collapsing is not edge-cached', async () => {
   // Collection tags do not collapse: 160 of them (one per list read) exceed 8 KiB.
   let call = 0
-  const stub = cmsNitroHooks({
-    fetch: async () =>
+  const headers = await stubbed(
+    () =>
       new Response('{}', {
         headers: {
           'cache-control': readCacheControl,
           'cache-tag': `cms,cms:collection:${'c'.repeat(40)}-${call++}`,
         },
       }),
-  })
-  const event: CmsEvent = {
-    path: '/lists',
-    headers: new Headers(),
-    context: {
-      cloudflare: {
-        request: new Request('https://example.com/lists'),
-        env: {},
-        context: { waitUntil: () => {} },
-      },
-    },
-  }
-  stub.request(event)
-  for (let i = 0; i < 160; i++) await event.context.cms!.fetch('/api/cms/collections/x')
-  const response = {
-    statusCode: 200,
-    headers: { 'cache-control': 'public, s-maxage=60' } as Record<string, string>,
-  }
-  stub.renderResponse(response, { event })
-  expect(response.headers['cache-tag']).toBeUndefined()
-  expect(response.headers['cache-control']).toBe('private, no-store')
+    Array.from({ length: 160 }, () => '/api/cms/collections/x'),
+  )
+  expect(headers).toEqual(privateNoStore)
 })
 
 test('on Workers no page is streamed, so tags read late still go on its headers', async () => {
-  const { event } = request('https://example.com/about')
+  const about = request('https://example.com/about')
   const route = { canStream: true, prefersStream: true }
-  hooks.renderRoute(route, { event })
+  hooks.renderRoute(route, { event: about.event })
   expect(route.prefersStream).toBe(false)
 
   // Which pages read the cms is known only once they render: one without reads is not streamed
-  // either, and its headers are left alone.
+  // either.
   const plain = request('https://example.com/plain')
   const plainRoute = { canStream: true, prefersStream: true }
   hooks.renderRoute(plainRoute, { event: plain.event })
-  await ssrClient(plain.event)
   expect(plainRoute.prefersStream).toBe(false)
-  expect(respond(plain.event, { statusCode: 200, headers: { 'x-a': '1' } })).toEqual({ 'x-a': '1' })
 
   // Off Workers there is no in-process cms, and the host's streaming stays.
   const offWorkers: CmsEvent = { path: '/', headers: new Headers(), context: {} }
@@ -284,21 +250,17 @@ test('on Workers no page is streamed, so tags read late still go on its headers'
 })
 
 test('a streamed page is not edge-cached: reads after the headers went out are not in its tags', async () => {
-  const { event: withRes, sent } = request('https://example.com/streamed')
+  const streamed = request('https://example.com/streamed')
   // A tag the host set on H3's response already, in any case.
-  sent.set('Cache-Tag', 'cms,cms:site')
-  await (await ssrClient(withRes)).site()
-  const response = {
-    statusCode: 200,
-    headers: { 'Cache-Control': 'public, s-maxage=60', 'Cache-Tag': 'cms,cms:site' } as Record<
-      string,
-      string
-    >,
-    body: new ReadableStream(),
-  }
-  hooks.renderResponse(response, { event: withRes })
-  expect(response.headers).toEqual({ 'cache-control': 'private, no-store' })
-  expect(sent.has('cache-tag')).toBe(false)
+  streamed.sent.set('Cache-Tag', 'cms,cms:site')
+  await (await render(streamed.event, { publicPage: true })).site()
+  expect(
+    finish(streamed, {
+      statusCode: 200,
+      headers: { 'Cache-Control': 'public, s-maxage=60', 'Cache-Tag': 'cms,cms:site' },
+      body: new ReadableStream(),
+    }),
+  ).toEqual(privateNoStore)
 })
 
 test('?preview forwards the session only to the page origin', async () => {
@@ -313,8 +275,14 @@ test('?preview forwards the session only to the page origin', async () => {
 })
 
 test('outside Workers (no cloudflare context) nothing is installed or added', () => {
-  const event: CmsEvent = { path: '/', headers: new Headers(), context: {} }
+  const sent = new Headers()
+  const event: CmsEvent = {
+    path: '/',
+    headers: new Headers(),
+    context: {},
+    node: { res: h3Response(sent) },
+  }
   hooks.request(event)
   expect(event.context.cms).toBeUndefined()
-  expect(respond(event, { statusCode: 200 })).toEqual({})
+  expect(finish({ event, sent })).toEqual({})
 })

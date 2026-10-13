@@ -52,9 +52,10 @@ class PurgeRefused extends Data.TaggedError('PurgeRefused')<{ readonly codes: st
  * token. A purge clears what this Worker cached: the Read API answers and, when the public site
  * runs in the same Worker and calls it in-process with its own `ctx`, the site's HTML. Without
  * `ctx.cache` it does nothing. Workers Cache purges get the Free tier's rate limit (5 a minute,
- * bursts of 25): a refused purge is retried twice, 12 seconds apart (one token's refill), which
- * stays inside the 30 seconds `waitUntil` keeps a Worker alive. A purge still refused, or failed,
- * is logged: the answers then expire with their `s-maxage` (one hour).
+ * bursts of 25): a refused purge is retried twice, 12 seconds apart (one token's refill). Calls,
+ * retries and sleeps share one 25 seconds deadline, inside the 30 seconds `waitUntil` keeps a
+ * Worker alive. A purge still refused, failed or late is logged: the answers then expire with
+ * their `s-maxage` (one hour).
  */
 export const workersCachePurge = (ctx: { readonly cache?: WorkersCache } | undefined) =>
   Layer.succeed(CachePurge, {
@@ -67,10 +68,7 @@ export const workersCachePurge = (ctx: { readonly cache?: WorkersCache } | undef
         ),
         (batchTags) =>
           Effect.gen(function* () {
-            // Workers keep `waitUntil` work alive only briefly: a stalled purge must not hold it.
-            const result = yield* Effect.tryPromise(() =>
-              cache.purge({ tags: [...batchTags] }),
-            ).pipe(Effect.timeout('10 seconds'))
+            const result = yield* Effect.tryPromise(() => cache.purge({ tags: [...batchTags] }))
             if (!result.success) {
               const codes = result.errors.map((e) => e.code).join(',')
               return yield* new PurgeRefused({ codes })
@@ -84,6 +82,9 @@ export const workersCachePurge = (ctx: { readonly cache?: WorkersCache } | undef
           ),
         { discard: true },
       ).pipe(
+        // One deadline over every call, retry and sleep: `waitUntil` keeps the Worker alive for
+        // 30 seconds, and the failure must still be logged inside them.
+        Effect.timeout('25 seconds'),
         Effect.catchCause((cause) =>
           Effect.logError('cms: cache purge failed', { tags: tags.join(',') }, cause),
         ),
