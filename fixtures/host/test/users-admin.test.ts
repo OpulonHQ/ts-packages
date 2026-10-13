@@ -58,7 +58,15 @@ test('signs in on the sign-in screen, lands on the requested page, and signs out
   const session = admin.jar.cookie
   expect(session).toMatch(/session_token=/)
 
-  document.querySelector<HTMLButtonElement>('button[aria-label="Sign out"]')!.click()
+  document
+    .querySelector<HTMLElement>('[aria-label="User menu"]')!
+    .dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  const signOut = () =>
+    [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+      (el) => el.textContent === 'Sign out',
+    )
+  await expect.poll(signOut).toBeDefined()
+  signOut()!.click()
   await expect.poll(() => location.pathname).toBe('/admin/sign-in')
   expect(admin.jar.cookie).toBe('')
   expect((await host.request('GET', '/me', { cookie: session })).status).toBe(401)

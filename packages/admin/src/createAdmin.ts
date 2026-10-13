@@ -205,6 +205,8 @@ export const createAdmin = (options: AdminOptions): App => {
   )
 
   const providerSignOut = auth.auth?.signOut
+  const providerSetLocale = auth.auth?.setLocale
+  const accountRoute = auth.auth?.accountRoute
   const state: AdminState = {
     brand: options.brand,
     me,
@@ -223,6 +225,17 @@ export const createAdmin = (options: AdminOptions): App => {
             me.value = undefined
             status.value = 'signedOut'
             await router.push({ name: auth.auth!.signInRoute })
+          },
+        }
+      : {}),
+    ...(accountRoute ? { accountRoute } : {}),
+    ...(providerSetLocale
+      ? {
+          setLocale: async (locale: string | null) => {
+            const userId = me.value?.user.id
+            if (!userId) return
+            await providerSetLocale({ apiPrefix, fetch, userId, locale })
+            await state.refresh()
           },
         }
       : {}),

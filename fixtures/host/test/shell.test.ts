@@ -69,7 +69,12 @@ beforeAll(async () => {
 
 function mountAdmin(
   path: string,
-  { admin = 'b1', server = 'b1' as keyof typeof hosts, signedIn = true } = {},
+  {
+    admin = 'b1',
+    server = 'b1' as keyof typeof hosts,
+    signedIn = true,
+    as = undefined as string | undefined,
+  } = {},
 ) {
   history.replaceState(null, '', path)
   document.body.innerHTML = '<div id="app"></div>'
@@ -77,7 +82,7 @@ function mountAdmin(
     brand,
     modules: [...adminModules, coreScreens, ghost],
     buildId: admin,
-    fetch: hosts[server].browserFetch({ cookie: signedIn ? cookie : '' }),
+    fetch: hosts[server].browserFetch({ cookie: signedIn ? (as ?? cookie) : '' }),
   })
   app.mount('#app')
   onTestFinished(() => app.unmount())
@@ -138,4 +143,34 @@ test('shows no reload notice when the builds match', async () => {
   const admin = mountAdmin('/admin/')
   await expect.poll(admin.text).toContain('hello widget')
   expect(admin.text()).not.toContain('Je dostupná nová verzia administrácie.')
+})
+
+const menuItem = (name: string) =>
+  [...document.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find((el) =>
+    el.textContent?.includes(name),
+  )
+
+test('the user menu holds the account settings, the language and sign-out', async () => {
+  const user = await seedUser(db.url, { name: 'Menu User', locale: 'sk' })
+  const own = await hosts.b1.signIn(user.email, user.password)
+  const admin = mountAdmin('/admin/', { as: own })
+  await expect.poll(admin.text).toContain('Prehľad')
+  // The account is no longer a nav item.
+  expect(navText()).not.toContain('Môj účet')
+
+  const trigger = document.querySelector<HTMLElement>('[aria-label="Používateľské menu"]')!
+  expect(trigger.textContent).toContain('Menu User')
+  trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  await expect.poll(() => menuItem('Nastavenia účtu')).toBeDefined()
+  expect(document.querySelector('[role="menu"]')?.textContent).toContain(user.email)
+  expect(menuItem('Odhlásiť sa')).toBeDefined()
+
+  menuItem('Jazyk')!.click()
+  await expect.poll(() => menuItem('English')).toBeDefined()
+  menuItem('English')!.click()
+  // Applied in the shell, and saved on the user.
+  await expect.poll(() => document.documentElement.lang).toBe('en')
+  await expect.poll(admin.text).toContain('Dashboard')
+  const me = await hosts.b1.browserFetch({ cookie: own })(new URL('/api/me', location.origin))
+  expect(await me.json()).toMatchObject({ locale: 'en' })
 })

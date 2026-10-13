@@ -40,7 +40,7 @@ export default {
     tooMany: 'Príliš veľa pokusov. Počkajte minútu a skúste to znova.',
     failed: 'Niečo sa pokazilo. Skúste to znova.',
   },
-  nav: { users: 'Používatelia', roles: 'Roly', account: 'Môj účet' },
+  nav: { users: 'Používatelia', roles: 'Roly' },
   status: { active: 'Aktívny', deactivated: 'Deaktivovaný' },
   users: {
     title: 'Používatelia',

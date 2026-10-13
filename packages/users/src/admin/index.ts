@@ -20,6 +20,17 @@ export const usersAdmin = () =>
         })
         if (!response.ok) throw new Error(`sign-out answered ${response.status}`)
       },
+      accountRoute: 'users.account',
+      setLocale: async ({ apiPrefix, fetch, userId, locale }) => {
+        const url = `${apiPrefix}/users/users/${encodeURIComponent(userId)}/locale`
+        const response = await fetch(new URL(url, location.origin), {
+          method: 'PUT',
+          credentials: 'same-origin',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ locale }),
+        })
+        if (!response.ok) throw new Error(`setting the locale answered ${response.status}`)
+      },
     },
     routes: [
       {
@@ -74,12 +85,6 @@ export const usersAdmin = () =>
     nav: [
       { label: 'nav.users', route: 'users.users', icon: 'i-lucide-users', group: 'users' },
       { label: 'nav.roles', route: 'users.roles', icon: 'i-lucide-shield', group: 'users' },
-      {
-        label: 'nav.account',
-        route: 'users.account',
-        icon: 'i-lucide-circle-user',
-        group: 'users',
-      },
     ],
     messages: {
       en: () => import('./messages/en.ts'),

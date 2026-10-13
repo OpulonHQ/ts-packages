@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {
+  type DropdownMenuItem,
   type NavigationMenuItem,
   nuxtUiEn,
   nuxtUiSk,
@@ -11,15 +12,18 @@ import {
   UDashboardPanel,
   UDashboardSidebar,
   UDashboardSidebarCollapse,
+  UDropdownMenu,
   UNavigationMenu,
+  useToast,
 } from '@opulonjs/ui'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { useAdmin } from '../state.ts'
 
-const { brand, me, status, stale, nav, signOut } = useAdmin()
-const { t, locale } = useI18n()
+const { brand, me, status, stale, nav, signOut, accountRoute, setLocale } = useAdmin()
+const { t, locale, availableLocales } = useI18n()
+const toast = useToast()
 const route = useRoute()
 
 const uiLocale = computed(() => (locale.value === 'sk' ? nuxtUiSk : nuxtUiEn))
@@ -45,6 +49,47 @@ const items = computed<NavigationMenuItem[][]>(() => [
         to: { name: item.route },
       })),
     ]),
+])
+// Each language in its own language: "English", "slovenčina".
+const languageName = (code: string) =>
+  new Intl.DisplayNames([code], { type: 'language' }).of(code) ?? code
+const chooseLocale = (code: string) =>
+  setLocale?.(code).catch(() =>
+    toast.add({ title: t('admin.languageFailed'), color: 'error', icon: 'i-lucide-circle-alert' }),
+  )
+const userMenu = computed<DropdownMenuItem[][]>(() => [
+  [{ type: 'label', slot: 'identity' as const }],
+  [
+    ...(accountRoute
+      ? [{ label: t('admin.account'), icon: 'i-lucide-user-cog', to: { name: accountRoute } }]
+      : []),
+    ...(setLocale
+      ? [
+          {
+            label: t('admin.language'),
+            icon: 'i-lucide-languages',
+            children: availableLocales.map((code) => ({
+              label: languageName(code),
+              type: 'checkbox' as const,
+              checked: locale.value === code,
+              onSelect: () => chooseLocale(code),
+            })),
+          },
+        ]
+      : []),
+  ],
+  ...(signOut
+    ? [
+        [
+          {
+            label: t('admin.signOut'),
+            icon: 'i-lucide-log-out',
+            color: 'error' as const,
+            onSelect: signOut,
+          },
+        ],
+      ]
+    : []),
 ])
 const reload = () => location.reload()
 const title = computed(() => {
@@ -109,28 +154,44 @@ const title = computed(() => {
           </nav>
         </template>
         <template #footer="{ collapsed }">
-          <div v-if="me" class="flex min-w-0 items-center gap-2 text-sm">
-            <span
-              class="flex size-7 shrink-0 items-center justify-center rounded-full bg-elevated font-medium text-highlighted"
-              aria-hidden="true"
-            >
-              {{ me.user.name.charAt(0) }}
-            </span>
-            <span v-if="!collapsed" class="min-w-0 flex-1">
-              <span class="block truncate font-medium text-highlighted">{{ me.user.name }}</span>
-              <span class="block truncate text-xs text-muted">{{ me.user.email }}</span>
-            </span>
+          <UDropdownMenu
+            v-if="me"
+            :items="userMenu"
+            :content="{ align: 'center', collisionPadding: 12 }"
+            :ui="{ content: collapsed ? 'w-56' : 'w-(--reka-dropdown-menu-trigger-width)' }"
+          >
             <UButton
-              v-if="signOut && !collapsed"
-              icon="i-lucide-log-out"
               color="neutral"
               variant="ghost"
-              size="sm"
-              :aria-label="t('admin.signOut')"
-              :title="t('admin.signOut')"
-              @click="signOut"
-            />
-          </div>
+              block
+              :square="collapsed"
+              :aria-label="t('admin.userMenu')"
+              :trailing-icon="collapsed ? undefined : 'i-lucide-chevrons-up-down'"
+              class="data-[state=open]:bg-elevated"
+              :ui="{ trailingIcon: 'text-dimmed' }"
+            >
+              <span
+                class="flex size-7 shrink-0 items-center justify-center rounded-full bg-elevated font-medium text-highlighted"
+                aria-hidden="true"
+              >
+                {{ me.user.name.charAt(0) }}
+              </span>
+              <span v-if="!collapsed" class="min-w-0 flex-1 text-left">
+                <span class="block truncate font-medium text-highlighted">{{ me.user.name }}</span>
+                <span class="block truncate text-xs font-normal text-muted">{{
+                  me.user.email
+                }}</span>
+              </span>
+            </UButton>
+            <template #identity>
+              <span class="block min-w-0 text-left">
+                <span class="block truncate font-medium text-highlighted">{{ me.user.name }}</span>
+                <span class="block truncate text-xs font-normal text-muted">{{
+                  me.user.email
+                }}</span>
+              </span>
+            </template>
+          </UDropdownMenu>
         </template>
       </UDashboardSidebar>
 

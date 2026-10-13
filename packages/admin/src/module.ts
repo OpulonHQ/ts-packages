@@ -71,6 +71,15 @@ export interface AuthProvider {
     readonly apiPrefix: string
     readonly fetch: typeof globalThis.fetch
   }) => Promise<void>
+  /** Name of a `signedIn` route of the same module: the user's own settings, in the user menu. */
+  readonly accountRoute?: string
+  /** Saves the user's admin locale (null: the admin default); the shell then reads /me again. */
+  readonly setLocale?: (api: {
+    readonly apiPrefix: string
+    readonly fetch: typeof globalThis.fetch
+    readonly userId: string
+    readonly locale: string | null
+  }) => Promise<void>
 }
 
 export interface AdminModule<Id extends string = string> {

@@ -51,6 +51,10 @@ export interface AdminState {
   readonly refresh: () => Promise<void>
   /** Signs out through the auth provider, when it supports it. */
   readonly signOut?: () => Promise<void>
+  /** The auth provider's account route, for the user menu. */
+  readonly accountRoute?: string
+  /** Saves and applies the user's admin locale, when the auth provider supports it. */
+  readonly setLocale?: (locale: string | null) => Promise<void>
 }
 
 export const adminStateKey: InjectionKey<AdminState> = Symbol('@opulonjs/admin/state')

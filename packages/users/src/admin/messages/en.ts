@@ -38,7 +38,7 @@ export default {
     tooMany: 'Too many attempts. Wait a minute and try again.',
     failed: 'Something went wrong. Try again.',
   },
-  nav: { users: 'Users', roles: 'Roles', account: 'My account' },
+  nav: { users: 'Users', roles: 'Roles' },
   status: { active: 'Active', deactivated: 'Deactivated' },
   users: {
     title: 'Users',
