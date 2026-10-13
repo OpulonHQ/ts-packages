@@ -7,7 +7,7 @@ import vue from 'eslint-plugin-vue'
 const packages = ['core', 'ui', 'admin', 'users', 'emails', 'media', 'cms']
 
 // Package graph (TSPACK-6, ADR 0001). Server: users->emails, cms->media, all->core.
-// Browser: ui <- admin <- module admin entries (src/admin/**); admin also imports core/api.
+// Browser: ui <- admin <- module admin entries (src/admin/**).
 const serverDeps = {
   core: [],
   ui: [],
