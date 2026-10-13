@@ -1,6 +1,9 @@
 // Client-safe entry for module `/api` files (HttpApi groups), imported by browser builds too.
 // Keep server-only code (composition, migrations, SQL) out of this graph; CI checks it.
 import { Schema } from 'effect'
+import * as HttpApiEndpoint from 'effect/http-api/HttpApiEndpoint'
+import * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
+import { Authorization, Policy } from './authz.ts'
 
 /** Editor-safe summary of a durable cache purge. Provider diagnostics are never returned. */
 export const PendingCachePurge = Schema.Struct({
@@ -19,9 +22,19 @@ export const CachePurgeSummary = Schema.Struct({
   staleUntil: Schema.NullOr(Schema.String),
 })
 export type CachePurgeSummary = typeof CachePurgeSummary.Type
-import * as HttpApiEndpoint from 'effect/http-api/HttpApiEndpoint'
-import * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
-import { Authorization, Policy } from './authz.ts'
+export const CachePurgeStatus = Schema.Struct({
+  summary: CachePurgeSummary,
+  rows: Schema.Array(
+    Schema.Struct({
+      id: PendingCachePurge.fields.id,
+      attempts: PendingCachePurge.fields.attempts,
+      state: PendingCachePurge.fields.state,
+      error: PendingCachePurge.fields.error,
+      staleUntil: PendingCachePurge.fields.staleUntil,
+    }),
+  ),
+})
+export type CachePurgeStatus = typeof CachePurgeStatus.Type
 
 export { Authorization, CurrentUser, Policy, Public } from './authz.ts'
 
@@ -48,4 +61,9 @@ export type Me = typeof Me.Type
 /** Core's group. Unlike other modules it is mounted at the API prefix itself: `/api/me`. */
 export const CoreGroup = HttpApiGroup.make('core')
   .add(HttpApiEndpoint.get('me', '/me', { success: Me }).annotate(Policy, 'signedIn'))
+  .add(
+    HttpApiEndpoint.get('cachePurges', '/cache-purges', {
+      success: CachePurgeStatus,
+    }).annotate(Policy, 'signedIn'),
+  )
   .middleware(Authorization)

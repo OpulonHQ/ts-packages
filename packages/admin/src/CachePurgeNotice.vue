@@ -1,24 +1,25 @@
 <script setup lang="ts">
-import { useAdmin, useApiClient, useI18n } from '@opulonjs/admin'
+import { CoreGroup } from '@opulonjs/core/api'
 import { UAlert } from '@opulonjs/ui'
+import { useI18n } from 'vue-i18n'
+import { useApiClient } from './api-client.ts'
+import en from './messages/cache-purges/en.ts'
+import sk from './messages/cache-purges/sk.ts'
 import { computed, onMounted, onScopeDispose, ref, watch } from 'vue'
-import { cachePurgeViewPermissions, CmsGroup } from '../api.ts'
 
 const props = defineProps<{ pending?: boolean }>()
-const admin = useAdmin()
-const cms = useApiClient(CmsGroup)
-const { t, locale } = useI18n()
-const load = () => cms((client) => client.cachePurges())
+const core = useApiClient(CoreGroup)
+const { t, locale } = useI18n({ useScope: 'local', messages: { en, sk } })
+const load = () => core((client) => client.cachePurges())
 const summary = ref<Awaited<ReturnType<typeof load>>['summary']>({
   total: 0,
   failed: 0,
   staleUntil: null,
 })
 const unavailable = ref(false)
-const canRead = computed(() => cachePurgeViewPermissions.some(admin.can))
 
 async function refresh() {
-  if (!canRead.value || props.pending) return
+  if (props.pending) return
   try {
     summary.value = (await load()).summary
     unavailable.value = false
@@ -27,7 +28,7 @@ async function refresh() {
   }
 }
 
-watch([canRead, () => props.pending], refresh, { immediate: true })
+watch(() => props.pending, refresh, { immediate: true })
 let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
   timer = setInterval(refresh, 30_000)
@@ -37,7 +38,7 @@ onScopeDispose(() => {
 })
 const staleUntil = computed(() => new Date(summary.value.staleUntil ?? 0))
 const message = computed(() =>
-  t('cms.cachePurges.stale', {
+  t('admin.cachePurges.stale', {
     time: staleUntil.value.toLocaleTimeString(locale.value, { hour: '2-digit', minute: '2-digit' }),
   }),
 )
@@ -46,15 +47,17 @@ const exhausted = computed(() => summary.value.failed > 0)
 
 <template>
   <UAlert
-    v-if="canRead && (summary.total || unavailable)"
+    v-if="summary.total || unavailable"
     role="status"
     color="neutral"
     variant="outline"
     icon="i-lucide-triangle-alert"
     class="w-full"
-    :title="unavailable ? t('cms.cachePurges.unavailable') : message"
+    :title="unavailable ? t('admin.cachePurges.unavailable') : message"
     :description="
-      unavailable ? undefined : t(exhausted ? 'cms.cachePurges.failed' : 'cms.cachePurges.queued')
+      unavailable
+        ? undefined
+        : t(exhausted ? 'admin.cachePurges.failed' : 'admin.cachePurges.queued')
     "
   />
 </template>

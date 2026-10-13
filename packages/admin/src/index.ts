@@ -1,5 +1,6 @@
 export const packageName = '@opulonjs/admin'
 
+export { default as CachePurgeNotice } from './CachePurgeNotice.vue'
 export { useApiClient } from './api-client.ts'
 export { createAdmin } from './createAdmin.ts'
 export type { AdminOptions } from './createAdmin.ts'

@@ -24,7 +24,7 @@ export type GroupClient<Group extends HttpApiGroup.Constraint> = HttpApiClient.C
 /**
  * The typed client of a module's own HttpApi group, for module screens. The group mounts where
  * composition puts it: `<apiPrefix>/<module id>`, the module id being the group identifier's
- * first segment. Returns a runner: `const demo = useApiClient(DemoGroup)` in `setup`, then
+ * first segment. Core mounts at `<apiPrefix>` itself. Returns a runner: `const demo = useApiClient(DemoGroup)` in `setup`, then
  * `await demo((client) => client.notes())`.
  */
 export const useApiClient = <Group extends HttpApiGroup.Constraint>(group: Group) => {
@@ -34,7 +34,7 @@ export const useApiClient = <Group extends HttpApiGroup.Constraint>(group: Group
   const moduleId = group.identifier.split('.')[0]
   const api = HttpApi.make('opulon')
     .add(group as unknown as HttpApiGroup.Top)
-    .prefix(`${apiPrefix}/${moduleId}` as `/${string}`)
+    .prefix((moduleId === 'core' ? apiPrefix : `${apiPrefix}/${moduleId}`) as `/${string}`)
   // Safe: `api` holds exactly `group` (prefixed), and module groups need no client middleware
   // (core's Authorization is server-only), so only the generic types are erased here.
   const client = Effect.flatMap(HttpClient.HttpClient, (httpClient) =>

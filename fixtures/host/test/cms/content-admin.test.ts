@@ -22,7 +22,7 @@ const mediaOnly = useCmsHost(undefined, async () => ({
   errors: mediaPurgeRefused ? [{ code: 1, message: 'private media diagnostic' }] : [],
 }))
 
-test('a media-only editor sees one purge warning after saving and after closing details', async () => {
+test('a media-only editor sees one purge warning after edits, replacement, archive and closing details', async () => {
   mediaPurgeRefused = false
   await mediaOnly.upload(files.png(800, 600), 'media-only.png')
   const fetch = mediaOnly.fetchAs(['media.view', 'media.upload', 'media.archive'])
@@ -45,9 +45,49 @@ test('a media-only editor sees one purge warning after saving and after closing 
     )
   await expect.poll(warnings).toHaveLength(1)
   expect(text()).not.toContain('private media diagnostic')
-  document.querySelector<HTMLButtonElement>('button[aria-label="Close"]')!.click()
+
+  const recover = async () => {
+    mediaPurgeRefused = false
+    await mediaOnly.query(
+      "update core.cache_purge set next_attempt_at = now() - interval '1 second'",
+    )
+    await mediaOnly.sweep()
+    button('Uložiť')!.click()
+    await expect.poll(warnings).toHaveLength(0)
+  }
+  await recover()
+  mediaPurgeRefused = true
+  const replacement = document.querySelector<HTMLInputElement>(
+    '[role="dialog"] input[type="file"]',
+  )!
+  Object.defineProperty(replacement, 'files', {
+    value: [new File([files.png(40, 30).slice()], 'replacement.png', { type: 'image/png' })],
+    configurable: true,
+  })
+  replacement.dispatchEvent(new Event('change'))
+  await expect.poll(text).toContain('Súbor bol nahradený.')
+  await expect.poll(warnings).toHaveLength(1)
+  await recover()
+  mediaPurgeRefused = true
+  button('Archivovať')!.click()
+  await expect.poll(text).toContain('stránky, ktoré ju už používajú')
+  ;[...document.querySelectorAll('button')]
+    .filter((button) => button.textContent?.trim() === 'Archivovať')
+    .at(-1)!
+    .click()
+  await expect.poll(text).toContain('Archivované.')
+  await expect.poll(warnings).toHaveLength(1)
+  document.querySelector<HTMLButtonElement>('button[data-slot="close"]')!.click()
   await expect.poll(() => input('alt.en')).toBeFalsy()
   await expect.poll(warnings).toHaveLength(1)
+})
+
+test('a media view-only editor does not see an unavailable purge status warning', async () => {
+  await failed.upload(files.png(800, 600), 'view-only.png')
+  const text = mountAdmin('/admin/media', failed.fetchAs(['media.view']))
+  await expect.poll(text).toContain('view-only.png')
+  expect(text()).not.toContain('Stav vymazania vyrovnávacej pamäte nie je dostupný')
+  expect(text()).not.toContain('Živý web môže zobrazovať predchádzajúcu verziu')
 })
 
 function mountAdmin(path: string, fetch = host.fetch) {

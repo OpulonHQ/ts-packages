@@ -3,12 +3,11 @@
  * One page: path, availability and SEO per content locale, its ordered sections with forms
  * generated from the definitions, and save draft / publish / unpublish / delete.
  */
-import { useI18n } from '@opulonjs/admin'
+import { CachePurgeNotice, useI18n } from '@opulonjs/admin'
 import { UButton, UCard } from '@opulonjs/ui'
 import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
 import FieldSelect from '@opulonjs/ui/components/Field/Select'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
-import StalePurgeNotice from './StalePurgeNotice.vue'
 import StatusBadge from '@opulonjs/ui/components/StatusBadge'
 import { computed, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -162,7 +161,7 @@ function move(index: number, by: -1 | 1) {
           />
         </template>
       </PageHeader>
-      <StalePurgeNotice :pending="pending" class="mb-4" />
+      <CachePurgeNotice :pending="pending" class="mb-4" />
 
       <p
         v-if="status && status.message"

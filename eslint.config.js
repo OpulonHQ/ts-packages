@@ -11,7 +11,7 @@ const packages = ['core', 'ui', 'admin', 'users', 'emails', 'media', 'cms']
 const serverDeps = {
   core: [],
   ui: [],
-  admin: ['ui'],
+  admin: ['core', 'ui'],
   emails: ['core'],
   media: ['core'],
   users: ['core', 'emails'],

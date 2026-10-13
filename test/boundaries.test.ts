@@ -16,6 +16,7 @@ describe('package graph', () => {
     ['packages/cms/src/x.ts', '@opulonjs/media'],
     ['packages/media/src/x.ts', '@opulonjs/core'],
     ['packages/admin/src/x.ts', '@opulonjs/ui'],
+    ['packages/admin/src/x.ts', '@opulonjs/core/api'],
     ['packages/cms/src/admin/x.ts', '@opulonjs/admin'],
     ['packages/ui/src/x.ts', '@nuxt/ui'],
     ['packages/ui/src/x.ts', '@nuxt/ui/components/Button.vue'],

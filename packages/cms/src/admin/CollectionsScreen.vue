@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import StalePurgeNotice from './StalePurgeNotice.vue'
 /** Content > Collections: the host's collections as tabs, the chosen one's items below. */
-import { useI18n } from '@opulonjs/admin'
+import { CachePurgeNotice, useI18n } from '@opulonjs/admin'
 import { queryRows, type TableQuery, UButton } from '@opulonjs/ui'
 import DataTable from '@opulonjs/ui/components/DataTable'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
@@ -74,7 +73,7 @@ async function create() {
         />
       </template>
     </PageHeader>
-    <StalePurgeNotice class="mb-4" />
+    <CachePurgeNotice class="mb-4" />
     <nav class="mb-4 flex flex-wrap gap-2" :aria-label="t('cms.collections.title')">
       <UButton
         v-for="key in keys"

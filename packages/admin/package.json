@@ -34,6 +34,7 @@
     "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {
+    "@opulonjs/core": "workspace:*",
     "@opulonjs/ui": "workspace:*",
     "@vitejs/plugin-vue": "6.0.10",
     "vue-i18n": "11.4.14",

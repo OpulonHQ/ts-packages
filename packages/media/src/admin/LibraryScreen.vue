@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /** Content > Media: the flat library with search, type and archived filters, upload and details. */
-import { useI18n } from '@opulonjs/admin'
+import { CachePurgeNotice, useI18n } from '@opulonjs/admin'
 import { UButton, UIcon, USlideover } from '@opulonjs/ui'
 import DataTable from '@opulonjs/ui/components/DataTable'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
@@ -102,6 +102,11 @@ function changed(item: MediaItem) {
         />
       </template>
     </PageHeader>
+    <CachePurgeNotice
+      v-if="!selected && (media.can('media.upload') || media.can('media.archive'))"
+      :pending="uploading"
+      class="mb-4"
+    />
     <p v-if="failure" role="alert" class="mb-4 text-sm text-error">{{ failure }}</p>
     <DataTable
       ref="table"
