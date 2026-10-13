@@ -241,6 +241,54 @@ test('audit pages immutable snapshots newest first with filters and a true total
   )
 })
 
+test('audit trims exact-match filters and ignores whitespace-only values', async () => {
+  const user = await seedUser(db.url, { permissions: ['core.audit.view'] })
+  const cookie = await host.signIn(user.email, user.password)
+  await sqlQuery(
+    db.url,
+    `insert into core.audit_event (occurred_at, actor_kind, action, subject_type, subject_id) values
+    ('2090-02-01T12:00:00Z', 'system', 'trimmed.note.changed', 'note', 'target'),
+    ('2090-02-01T12:00:00Z', 'system', 'trimmedExtra.note.changed', 'note-extra', 'target-extra')`,
+  )
+  const range = 'start=2090-02-01T00:00:00Z&end=2090-02-02T00:00:00Z'
+  const filters = {
+    module: 'trimmed',
+    action: 'trimmed.note.changed',
+    subjectType: 'note',
+    subjectId: 'target',
+  }
+  for (const [filter, value] of Object.entries(filters)) {
+    const padded = new URLSearchParams({ [filter]: ` \t${value}\n ` })
+    const result = await host.request('GET', `/audit?${range}&${padded}`, { cookie })
+    expect(result.status, filter).toBe(200)
+    expect(result.body, filter).toMatchObject({
+      total: 1,
+      rows: [{ action: 'trimmed.note.changed' }],
+    })
+    const blank = new URLSearchParams({ [filter]: ' \t\n ' })
+    const ignored = await host.request('GET', `/audit?${range}&${blank}`, { cookie })
+    expect(ignored.status, filter).toBe(200)
+    expect(ignored.body, filter).toMatchObject({ total: 2 })
+    const partial = new URLSearchParams({ [filter]: value.slice(0, -1) })
+    expect(
+      (await host.request('GET', `/audit?${range}&${partial}`, { cookie })).body,
+      filter,
+    ).toEqual({
+      total: 0,
+      rows: [],
+    })
+  }
+  const combined = new URLSearchParams(
+    Object.entries(filters).map(([filter, value]) => [filter, ` ${value} `]),
+  )
+  expect((await host.request('GET', `/audit?${range}&${combined}`, { cookie })).body).toMatchObject(
+    {
+      total: 1,
+      rows: [{ action: 'trimmed.note.changed' }],
+    },
+  )
+})
+
 test('audit rejects invalid paging, dates and reversed ranges at the HTTP boundary', async () => {
   const user = await seedUser(db.url, { permissions: ['core.audit.view'] })
   const cookie = await host.signIn(user.email, user.password)
