@@ -58,6 +58,70 @@ export const Me = Schema.Struct({
 })
 export type Me = typeof Me.Type
 
+/** Immutable actor, subject and change snapshots; retention may remove IP and user agent. */
+export const AuditEvent = Schema.Struct({
+  id: Schema.String,
+  occurredAt: Schema.String,
+  actor: Schema.Struct({
+    kind: Schema.Literals(['user', 'system', 'anonymous']),
+    id: Schema.NullOr(Schema.String),
+    name: Schema.NullOr(Schema.String),
+  }),
+  action: Schema.String,
+  subject: Schema.Struct({
+    type: Schema.NullOr(Schema.String),
+    id: Schema.NullOr(Schema.String),
+    label: Schema.NullOr(Schema.String),
+  }),
+  changes: Schema.Array(
+    Schema.Struct({ field: Schema.String, from: Schema.Unknown, to: Schema.Unknown }),
+  ),
+  context: Schema.NullOr(Schema.Record(Schema.String, Schema.Unknown)),
+  ip: Schema.NullOr(Schema.String),
+  userAgent: Schema.NullOr(Schema.String),
+})
+export type AuditEvent = typeof AuditEvent.Type
+
+export const AuditPage = Schema.Struct({ rows: Schema.Array(AuditEvent), total: Schema.Number })
+export type AuditPage = typeof AuditPage.Type
+
+const filterText = Schema.String.check(Schema.isMaxLength(500))
+const timestamp = Schema.String.check(
+  Schema.makeFilter<string>((value) => {
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/.test(value)) return false
+    const date = new Date(value)
+    const canonical = value.length === 20 ? `${value.slice(0, -1)}.000Z` : value
+    return (
+      Number.isFinite(date.getTime()) &&
+      date.getUTCFullYear() >= 1 &&
+      date.toISOString() === canonical
+    )
+  }),
+)
+
+/** Actor matches kind/id/name text; module/action and subject type/id match exactly.
+ * Subject label matches text. UTC ISO start is inclusive; end is exclusive. */
+export const AuditQuery = Schema.Struct({
+  page: Schema.optionalKey(
+    Schema.NumberFromString.check(
+      Schema.isInt(),
+      Schema.isBetween({ minimum: 1, maximum: 1_000_000 }),
+    ),
+  ),
+  perPage: Schema.optionalKey(
+    Schema.NumberFromString.check(Schema.isInt(), Schema.isBetween({ minimum: 1, maximum: 100 })),
+  ),
+  actor: Schema.optionalKey(filterText),
+  module: Schema.optionalKey(filterText),
+  action: Schema.optionalKey(filterText),
+  subjectType: Schema.optionalKey(filterText),
+  subjectId: Schema.optionalKey(filterText),
+  subjectLabel: Schema.optionalKey(filterText),
+  start: Schema.optionalKey(timestamp),
+  end: Schema.optionalKey(timestamp),
+}).check(Schema.makeFilter((query) => !query.start || !query.end || query.start < query.end))
+export type AuditQuery = typeof AuditQuery.Type
+
 /** Core's group. Unlike other modules it is mounted at the API prefix itself: `/api/me`. */
 export const CoreGroup = HttpApiGroup.make('core')
   .add(HttpApiEndpoint.get('me', '/me', { success: Me }).annotate(Policy, 'signedIn'))
@@ -65,5 +129,11 @@ export const CoreGroup = HttpApiGroup.make('core')
     HttpApiEndpoint.get('cachePurges', '/cache-purges', {
       success: CachePurgeStatus,
     }).annotate(Policy, 'signedIn'),
+  )
+  .add(
+    HttpApiEndpoint.get('audit', '/audit', { query: AuditQuery, success: AuditPage }).annotate(
+      Policy,
+      'core.audit.view',
+    ),
   )
   .middleware(Authorization)

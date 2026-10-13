@@ -5,6 +5,7 @@ import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import { Forbidden } from 'effect/http-api/HttpApiError'
 import { CoreGroup, corePermissions } from './api.ts'
 import { purgeAudit } from './audit.ts'
+import { listAudit } from './audit-query.ts'
 import { CurrentUser } from './authz.ts'
 import { CachePurge } from './cache-purge.ts'
 import { CachePurgeStatusAccess } from './cache-purge-access.ts'
@@ -51,6 +52,16 @@ export const core = (options: CoreOptions = {}) =>
                     }),
                   ),
                 }
+              }),
+            )
+            .handle('audit', ({ query }) =>
+              Effect.gen(function* () {
+                yield* HttpEffect.appendPreResponseHandler((_request, response) =>
+                  Effect.succeed(
+                    HttpServerResponse.setHeader(response, 'cache-control', 'private, no-store'),
+                  ),
+                )
+                return yield* listAudit(query)
               }),
             )
             .handle('me', () =>
