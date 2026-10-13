@@ -15,12 +15,13 @@ import { EmailLogPage } from '@opulonjs/emails/api'
 import {
   captureMailer,
   emailComponent,
+  type Mailer,
   emails,
   EmailService,
   emailTemplate,
   escapeHtml,
 } from '@opulonjs/emails/server'
-import { Effect, Layer, Schema } from 'effect'
+import { Clock, Effect, Layer, Schema } from 'effect'
 import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import * as HttpApiEndpoint from 'effect/http-api/HttpApiEndpoint'
 import * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
@@ -129,13 +130,18 @@ export interface ShopEnv {
   readonly permissions?: ReadonlyArray<string>
 }
 
-export function makeShop(databaseUrl: () => string) {
+/** `mailer` replaces the capturing one (still returned, unused); `clock` the Effect clock. */
+export function makeShop(
+  databaseUrl: () => string,
+  options: { readonly mailer?: Layer.Layer<Mailer>; readonly clock?: Clock.Clock } = {},
+) {
   const mailer = captureMailer()
   const worker = createWorker(shopServer, {
     infra: (env: ShopEnv) =>
       Layer.mergeAll(
         PgFromHyperdrive({ connectionString: env.url }),
-        mailer.layer,
+        options.mailer ?? mailer.layer,
+        options.clock ? Layer.succeed(Clock.Clock, options.clock) : Layer.empty,
         authorization(() =>
           Effect.succeed({
             id: 'u1',

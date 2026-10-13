@@ -1,3 +1,5 @@
+import { Mailer } from '@opulonjs/emails/server'
+import { Clock, Effect, Layer } from 'effect'
 import { expect, test } from 'vitest'
 import { adminQuery } from '../../../test/postgres/admin.ts'
 import { useTestDatabase } from '../../../test/postgres/index.ts'
@@ -11,6 +13,18 @@ const midnight = '2026-10-14T00:00:00Z'
 /** Time travel: makes every queued email due for its next attempt now. */
 const makeDue = () =>
   adminQuery(db.url, "update emails.email_log set next_attempt_at = now() where status = 'queued'")
+
+// A provider call that never answers, under a clock whose sleeps (the deadlines) end at once.
+let interrupted = 0
+const stalled = makeShop(() => db.url, {
+  mailer: Layer.succeed(
+    Mailer,
+    Mailer.of({
+      send: () => Effect.never.pipe(Effect.onInterrupt(() => Effect.sync(() => interrupted++))),
+    }),
+  ),
+  clock: Object.assign(Object.create(Clock.Clock.defaultValue()), { sleep: () => Effect.void }),
+})
 
 const entry = async (id: string) => (await shop.log()).rows.find((r) => r.id === id)
 
@@ -101,6 +115,38 @@ test('an attempt cut off before its outcome was recorded still counts toward the
     `select message from emails.email_log where id = '${body.id}'`,
   )
   expect(row?.message).toBeNull()
+})
+
+test('a provider call that never answers ends at the delivery deadline, inside its lease', async () => {
+  // The attempt is over (interrupted, outcome recorded) before the sweep could take it over.
+  const { body } = await stalled.order({ email: 'stalled@example.test' })
+  expect(interrupted).toBe(1)
+  const [first] = await adminQuery<{
+    status: string
+    attempts: number
+    error: string
+    leased: boolean
+  }>(
+    db.url,
+    `select status, attempts, error, next_attempt_at > now() as leased
+      from emails.email_log where id = '${body.id}'`,
+  )
+  expect(first).toMatchObject({ status: 'queued', attempts: 1, leased: true })
+  expect(first?.error).toContain('timed out')
+
+  // The last attempt records its own failure rather than leaving a live claim to the sweep.
+  await adminQuery(
+    db.url,
+    `update emails.email_log set attempts = 2, next_attempt_at = now() where id = '${body.id}'`,
+  )
+  await stalled.tick(fiveMinuteTick)
+  expect(interrupted).toBe(2)
+  const [last] = await adminQuery<{ status: string; attempts: number; error: string }>(
+    db.url,
+    `select status, attempts, error from emails.email_log where id = '${body.id}'`,
+  )
+  expect(last).toMatchObject({ status: 'failed', attempts: 3 })
+  expect(last?.error).toContain('timed out')
 })
 
 test('the sweep delivers a queued email once the provider is back', async () => {

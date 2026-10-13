@@ -1,4 +1,5 @@
-import { ConfigProvider, Effect, Exit, Layer } from 'effect'
+import { ConfigProvider, Effect, Exit, Fiber, Layer } from 'effect'
+import * as TestClock from 'effect/testing/TestClock'
 import { expect, test } from 'vitest'
 import { Mailer } from '../src/server/index.ts'
 
@@ -62,4 +63,27 @@ test('fails without calling Resend when the key is not set', async () => {
   const { exit, calls } = send({}, Response.json({ id: 'x' }))
   expect(JSON.stringify(await exit)).toContain('EMAILS_RESEND_KEY is not set')
   expect(calls).toHaveLength(0)
+})
+
+test('one deadline covers the answer body too: a stalled body is cancelled and the send fails', async () => {
+  const called = Promise.withResolvers<void>()
+  let cancelled = false
+  const fetch: typeof globalThis.fetch = async () => {
+    called.resolve()
+    return new Response(new ReadableStream({ cancel: () => void (cancelled = true) }))
+  }
+  const layer = Mailer.resend({ fetch }).pipe(
+    Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ EMAILS_RESEND_KEY: 'k' }))),
+  )
+  const exit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const mailer = yield* Mailer
+      const fiber = yield* Effect.forkChild(mailer.send(email))
+      yield* Effect.promise(() => called.promise)
+      yield* TestClock.adjust('31 seconds')
+      return yield* Fiber.join(fiber)
+    }).pipe(Effect.provide(layer), Effect.provide(TestClock.layer())),
+  )
+  expect(JSON.stringify(exit)).toContain('Resend timed out')
+  expect(cancelled).toBe(true)
 })

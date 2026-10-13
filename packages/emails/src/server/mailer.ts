@@ -44,9 +44,12 @@ export class Mailer extends Context.Service<
           send: Effect.fn('Mailer.send')(function* (email) {
             if (Option.isNone(key))
               return yield* new MailerError({ message: 'EMAILS_RESEND_KEY is not set' })
-            const response = yield* Effect.tryPromise({
-              try: (signal) =>
-                doFetch('https://api.resend.com/emails', {
+            // One deadline for the request and its body (a stalled body must not outlive it):
+            // expiry aborts the signal, which cancels the body read. It sits well inside the
+            // outbox's own delivery deadline.
+            const { response, body } = yield* Effect.tryPromise({
+              try: async (signal) => {
+                const response = await doFetch('https://api.resend.com/emails', {
                   method: 'POST',
                   signal,
                   headers: {
@@ -62,16 +65,20 @@ export class Mailer extends Context.Service<
                     text: email.text,
                     ...(email.replyTo ? { reply_to: email.replyTo } : {}),
                   }),
-                }),
+                })
+                const body = await new Response(
+                  response.body?.pipeThrough(new TransformStream(), { signal }),
+                )
+                  .json()
+                  .catch((): unknown => undefined)
+                return { response, body }
+              },
               catch: (cause) => new MailerError({ message: `Resend request failed: ${cause}` }),
             }).pipe(
               Effect.timeoutOrElse({
                 duration: '30 seconds',
                 orElse: () => Effect.fail(new MailerError({ message: 'Resend timed out' })),
               }),
-            )
-            const body = yield* Effect.promise(() =>
-              response.json().catch((): unknown => undefined),
             )
             const result = Schema.decodeUnknownOption(ResendResponse)(body)
             if (!response.ok)

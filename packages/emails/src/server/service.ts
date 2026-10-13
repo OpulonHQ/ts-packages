@@ -19,7 +19,7 @@ import {
   TemplateInvalid,
 } from '../api.ts'
 import type { EmailComponent } from './components.ts'
-import { Mailer, type OutgoingEmail } from './mailer.ts'
+import { Mailer, MailerError, type OutgoingEmail } from './mailer.ts'
 import {
   contentError,
   type EmailBrand,
@@ -72,6 +72,14 @@ const auditSubject = (key: string) => ({ type: 'email_template', id: key, label:
 export const maxAttempts = 3
 /** Minutes before the first retry; doubles after every failed attempt. */
 const backoffMinutes = 5
+/**
+ * The end-to-end limit of one delivery attempt, whatever the Mailer. A claim leases its row
+ * for at least `backoffMinutes`; ending every attempt well inside that means an expired lease
+ * always belongs to an attempt that is over, so the sweep never fails (or repeats) a live one.
+ * Workers keep `waitUntil` work alive only briefly anyway: an attempt cut off there is what the
+ * sweep's "interrupted" rule settles.
+ */
+const deliveryDeadline = '1 minute'
 // ponytail: fixed sweep batch; deliveries run one by one. Raise or parallelize if a host
 // queues more than ~20 emails per 5 minutes while its provider is down.
 const sweepBatch = 20
@@ -285,7 +293,17 @@ export class EmailService extends Context.Service<
           const message = yield* Schema.decodeUnknownEffect(StoredMessage)(claimed.message).pipe(
             Effect.orDie,
           )
-          const exit = yield* Effect.exit(mailer.send({ ...message, idempotencyKey: id }))
+          const exit = yield* Effect.exit(
+            mailer.send({ ...message, idempotencyKey: id }).pipe(
+              Effect.timeoutOrElse({
+                duration: deliveryDeadline,
+                orElse: () =>
+                  Effect.fail(
+                    new MailerError({ message: `delivery timed out (${deliveryDeadline})` }),
+                  ),
+              }),
+            ),
+          )
           if (Exit.isSuccess(exit)) {
             yield* sql`update emails.email_log set status = 'sent', sent_at = now(),
               provider_message_id = ${exit.value.id}, message = null, error = null
