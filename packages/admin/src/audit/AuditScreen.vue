@@ -32,7 +32,7 @@ const applied = ref<AuditQuery>({})
 const revision = ref(0)
 const perPage = 25
 const maxPage = Math.floor(auditMaxOffset / perPage) + 1
-const invalid = ref(false)
+const invalid = ref<'invalidRange' | 'invalidThrough'>()
 const columns = computed<ReadonlyArray<DataTableColumn<AuditEvent>>>(() => [
   { key: 'action', label: t('admin.audit.event') },
 ])
@@ -42,11 +42,16 @@ function apply() {
   const endDate = filters.end ? new Date(`${filters.end}T00:00:00.000Z`) : undefined
   if (endDate) endDate.setUTCDate(endDate.getUTCDate() + 1)
   const end = endDate && Number.isFinite(endDate.getTime()) ? endDate.toISOString() : undefined
-  invalid.value = Boolean(
+  if (endDate && endDate.getUTCFullYear() > 9999) {
+    invalid.value = 'invalidThrough'
+    return
+  }
+  invalid.value =
     (start && !Number.isFinite(Date.parse(start))) ||
     (filters.end && !end) ||
-    (start && end && start >= end),
-  )
+    (start && end && start >= end)
+      ? 'invalidRange'
+      : undefined
   if (invalid.value) return
   applied.value = {
     ...Object.fromEntries(
@@ -94,7 +99,7 @@ const load = (query: TableQuery) =>
         </div>
         <p class="text-sm text-muted">{{ t('admin.audit.filterHelp') }}</p>
         <p v-if="invalid" role="alert" class="text-sm text-error">
-          {{ t('admin.audit.invalidRange') }}
+          {{ t(`admin.audit.${invalid}`) }}
         </p>
         <div class="flex flex-wrap gap-2">
           <UButton type="submit" :label="t('admin.audit.apply')" />
