@@ -32,7 +32,7 @@ const pathPattern = /^\/(?!\/)[^\s?#\\\p{Cc}]*$/u
  * resolved (never above the root), empty segments (repeated or trailing slashes) dropped.
  * Undefined when it is not a locale-relative path.
  */
-const canonicalPath = (path: string) => {
+export const canonicalPath = (path: string) => {
   if (path.length > maxPath || !pathPattern.test(path)) return undefined
   const segments: Array<string> = []
   for (const segment of path.split('/'))
@@ -247,15 +247,32 @@ export class Redirects extends Context.Service<
             )}`
         })
 
+      /**
+       * `raw` as a redirect path of `locale`, identified as the Read API's `resolve` does, or why
+       * it is not one. In the default locale, resolve redirects its own prefix away (`/en/x` is
+       * `/x`) and answers other locales under theirs, so a `from` there would never be reached
+       * (a `to` there is a cross-locale target).
+       */
+      const localePath = (locale: string, raw: string, side: 'from' | 'to') => {
+        const path = redirectPath(raw)
+        if (path === undefined) return { error: notAPath(raw) }
+        const first = path.split('/')[1]!
+        if (locale !== defaultLocale || !locales.includes(first)) return { path }
+        if (first === defaultLocale) return { path: path.slice(first.length + 1) || '/' }
+        return side === 'to'
+          ? { path }
+          : { error: `"${path}" starts with "/${first}", the prefix of ${first} pages.` }
+      }
+
       const validate = (input: RedirectInput) =>
         Effect.gen(function* () {
           if (!locales.includes(input.locale))
             return yield* new CmsInvalid({ message: `"${input.locale}" is not a content locale.` })
-          const from = redirectPath(input.from)
-          if (from === undefined) return yield* new CmsInvalid({ message: notAPath(input.from) })
-          const to = redirectPath(input.to)
-          if (to === undefined) return yield* new CmsInvalid({ message: notAPath(input.to) })
-          return { locale: input.locale, from, to, status: input.status }
+          const from = localePath(input.locale, input.from, 'from')
+          if ('error' in from) return yield* new CmsInvalid({ message: from.error })
+          const to = localePath(input.locale, input.to, 'to')
+          if ('error' in to) return yield* new CmsInvalid({ message: to.error })
+          return { locale: input.locale, from: from.path, to: to.path, status: input.status }
         })
 
       const find = (p: Plan, id: string) => {
@@ -399,27 +416,25 @@ export class Redirects extends Context.Service<
                   const cell = (i: number | undefined) =>
                     i === undefined || i < 0 ? '' : (cells[i] ?? '').trim()
                   const fail = (message: string) => result.errors.push({ row: index + 2, message })
-                  const rawFrom = cell(from)
-                  const rawTo = cell(to)
-                  const fromPath = redirectPath(rawFrom)
-                  if (fromPath === undefined) return fail(notAPath(rawFrom))
-                  const toPath = redirectPath(rawTo)
-                  if (toPath === undefined) return fail(notAPath(rawTo))
+                  const rowLocale = cell(locale) || defaultLocale
+                  const fromPath = localePath(rowLocale, cell(from), 'from')
+                  if ('error' in fromPath) return fail(fromPath.error)
+                  const toPath = localePath(rowLocale, cell(to), 'to')
+                  if ('error' in toPath) return fail(toPath.error)
                   const rawStatus = cell(status) || '301'
                   if (rawStatus !== '301' && rawStatus !== '302')
                     return fail(`The status "${rawStatus.slice(0, 20)}" must be 301 or 302.`)
-                  const rowLocale = cell(locale) || defaultLocale
                   if (!locales.includes(rowLocale))
                     return fail(`"${rowLocale.slice(0, 20)}" is not a content locale.`)
-                  if (p.get(rowLocale, fromPath)) {
+                  if (p.get(rowLocale, fromPath.path)) {
                     result.skipped++
                     return
                   }
                   const outcome = p.put({
                     id: crypto.randomUUID(),
                     locale: rowLocale,
-                    from: fromPath,
-                    to: toPath,
+                    from: fromPath.path,
+                    to: toPath.path,
                     status: rawStatus === '302' ? 302 : 301,
                     auto: false,
                   })

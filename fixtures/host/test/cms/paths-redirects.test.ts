@@ -207,3 +207,28 @@ test('redirect paths are compared, stored and looked up in one canonical form', 
     ],
   })
 })
+
+test('locale prefixes are compared as resolve sees them: no loop through the default prefix', async () => {
+  // resolve answers /en/loop-review with a redirect to /loop-review: pointing back would loop.
+  expect((await create({ from: '/loop-review', to: '/en/loop-review' })).body).toMatchObject({
+    reason: 'redirect_loop',
+  })
+  expect((await create({ from: '/en/loop-review', to: '/loop-review' })).body).toMatchObject({
+    reason: 'redirect_loop',
+  })
+  // The default prefix is dropped; another locale's prefix is a cross-locale target.
+  expect((await create({ from: '/en/old', to: '/en/new' })).status).toBe(200)
+  expect((await create({ from: '/old-it', to: '/it/nuovo' })).status).toBe(200)
+  // A default-locale path under another locale's prefix is never resolved there.
+  expect((await create({ from: '/it/x', to: '/y' })).status).toBe(400)
+  expect(await rules()).toEqual(['en /old -> /new 301', 'en /old-it -> /it/nuovo 301'])
+
+  const imported = await importCsv(['from,to', '/csv-loop,/en/csv-loop', '/it/z,/y'].join('\r\n'))
+  expect(imported.body).toMatchObject({
+    created: 0,
+    errors: [
+      { row: 2, message: expect.stringContaining('loop') },
+      { row: 3, message: expect.stringContaining('prefix') },
+    ],
+  })
+})

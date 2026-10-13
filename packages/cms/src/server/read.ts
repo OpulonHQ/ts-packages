@@ -22,7 +22,7 @@ import {
 } from '../api.ts'
 import { cacheTags } from './cache.ts'
 import { localizeData, uuid } from './document.ts'
-import { Redirects } from './redirects.ts'
+import { canonicalPath, Redirects } from './redirects.ts'
 import { allLinks, resolveLinks, resolveMenuItems } from './site.ts'
 
 /** A Read API answer and its Cache-Tags. */
@@ -128,14 +128,16 @@ export const makeReader = (definitions: CmsDefinitions) =>
     }
 
     const routes = [cacheTags.all, cacheTags.routes]
-    const redirect = (locale: string, to: string, status: 301 | 302): Tagged<ResolveResult> => ({
-      body: { kind: 'redirect', locale, to, status },
-      tags: routes,
-    })
     const notFound = (locale: string): Tagged<ResolveResult> => ({
       body: { kind: 'not_found', locale },
       tags: routes,
     })
+    // Every redirect stays on the site: one leading `/`, never `//` or `/\` (which browsers read
+    // as another host), whatever a stored row holds.
+    const redirect = (locale: string, to: string, status: 301 | 302): Tagged<ResolveResult> =>
+      /^\/(?![/\\])/.test(to)
+        ? { body: { kind: 'redirect', locale, to, status }, tags: routes }
+        : notFound(locale)
 
     /** A published page or item at `path` in `locale`, rendered for the public site. */
     const document = (locale: string, path: string) =>
@@ -221,14 +223,15 @@ export const makeReader = (definitions: CmsDefinitions) =>
         } catch {
           return notFound(defaultLocale)
         }
-        if (!decoded.startsWith('/')) return notFound(defaultLocale)
-        // One canonical form per page: no trailing slash, no prefix for the default locale.
-        if (decoded.length > 1 && decoded.endsWith('/')) {
-          const to = decoded.replace(/\/+$/, '') || '/'
-          return redirect(split(to).locale, to, 301)
-        }
-        const { locale, path, prefixed } = split(decoded)
-        if (prefixed && locale === defaultLocale) return redirect(locale, path, 301)
+        // Only site paths (the redirects' rules: no `//`, `\`, control characters, query or
+        // fragment), so a canonical redirect below never points off the site.
+        const canonical = canonicalPath(decoded)
+        if (canonical === undefined) return notFound(defaultLocale)
+        const { locale, path, prefixed } = split(canonical)
+        // One canonical form per page: no empty or dot segments, no trailing slash, no prefix
+        // for the default locale.
+        if (canonical !== decoded || (prefixed && locale === defaultLocale))
+          return redirect(locale, pathOf(locale, path), 301)
         const found = yield* document(locale, path)
         if (Option.isSome(found)) return found.value
         const rule = yield* redirects.lookup(locale, path)

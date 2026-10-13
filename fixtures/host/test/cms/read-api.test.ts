@@ -100,6 +100,22 @@ test('resolve answers redirects with prefixed paths, and normalizes trailing sla
   expect((await resolve('/it')).body).toEqual({ kind: 'not_found', locale: 'it' })
 })
 
+test('resolve never redirects off-site: encoded slashes and backslashes are not paths', async () => {
+  for (const path of [
+    '/en/%2Fevil.example',
+    '/en/%2F%2Fevil.example/',
+    '/%2Fevil.example/',
+    '/%5Cevil.example/',
+    '/en/%5Cevil.example',
+    '/en/%09/evil.example',
+  ]) {
+    const { body } = await resolve(path)
+    if (body.kind === 'redirect') expect(body.to, path).toMatch(/^\/(?![/\\])/)
+  }
+  // Non-canonical but harmless paths still redirect to their canonical form.
+  expect((await resolve('/en//about/')).body).toMatchObject({ kind: 'redirect', to: '/about' })
+})
+
 test('a path change resolves the old path as a redirect to the new one', async () => {
   const id = await publishedPage({ en: '/old-name', it: '/vecchio-nome' })
   await host.save(id, page({ en: '/new-name', it: '/vecchio-nome' }))
