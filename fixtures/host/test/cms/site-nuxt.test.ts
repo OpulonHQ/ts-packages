@@ -59,20 +59,19 @@ const render = async (event: CmsEvent, { publicPage = false } = {}) => {
 
 /**
  * What goes out for a rendered page, in Nitro's order: `render:response`, its headers set on H3's
- * response, then `beforeResponse`. `rendered: false` is any other handler (no render:response).
+ * response, then `cmsNitroPlugin`'s default for an answer without a Cache-Control (checked
+ * through the real transport in fixtures/nuxt/test/transport.test.ts).
  */
 const finish = (
   { event, sent }: { event: CmsEvent; sent: Headers },
   response: { statusCode?: number; headers?: Record<string, string>; body?: unknown } = {
     statusCode: 200,
   },
-  { rendered = true, nitro = hooks } = {},
+  { nitro = hooks } = {},
 ) => {
-  if (rendered) {
-    nitro.renderResponse(response, { event })
-    for (const [name, value] of Object.entries(response.headers ?? {})) sent.set(name, value)
-  }
-  nitro.beforeResponse(event)
+  nitro.renderResponse(response, { event })
+  for (const [name, value] of Object.entries(response.headers ?? {})) sent.set(name, value)
+  if (!sent.has('cache-control')) sent.set('cache-control', 'private, no-store')
   return Object.fromEntries(sent)
 }
 
@@ -105,11 +104,6 @@ test('without the opt-in every answer is private, no-store and untagged, cms rea
   const plain = request('https://example.com/plain')
   await render(plain.event)
   expect(finish(plain)).toEqual(privateNoStore)
-
-  // Any other handler (an API route, Nitro's own routes) without a policy of its own.
-  expect(finish(request('https://example.com/_payload.json'), {}, { rendered: false })).toEqual(
-    privateNoStore,
-  )
 
   // An opted-in page that failed is not tagged either.
   const failed = request('https://example.com/missing')
@@ -284,5 +278,8 @@ test('outside Workers (no cloudflare context) nothing is installed or added', ()
   }
   hooks.request(event)
   expect(event.context.cms).toBeUndefined()
-  expect(finish({ event, sent })).toEqual({})
+  const response = { statusCode: 200, headers: {} }
+  hooks.renderResponse(response, { event })
+  expect(response.headers).toEqual({})
+  expect(Object.fromEntries(sent)).toEqual({})
 })

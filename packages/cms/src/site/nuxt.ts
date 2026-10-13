@@ -82,24 +82,11 @@ const notCached = 'private, no-store'
  *   render and every cms read was public: the HTML then gets the Read API's `s-maxage` and the
  *   union of the reads' Cache-Tags. `?preview`, a read that was not public or carried credentials,
  *   a streamed page or a tag union too large to purge answer `private, no-store` without tags.
- * - `beforeResponse` answers `private, no-store` wherever nothing set a Cache-Control (pages that
- *   did not opt in, other routes). A Cache-Control the host set is never replaced (Nitro's error
- *   pages keep their `no-cache`, which Workers Cache revalidates with the Worker every time).
  * - `renderRoute` (Nuxt's `render:route`) turns streaming off on Workers: a streamed page sends
  *   its headers before its reads finish.
  * Only `?preview` requests forward the visitor's cookie, and only to the page's own origin
  * (credentials the page passes itself are dropped), so a draft is never read for a cached page.
- *
- * ```ts
- * // server/plugins/cms.ts
- * export default defineNitroPlugin((nitro) => {
- *   const cms = cmsNitroHooks(worker)
- *   nitro.hooks.hook('request', cms.request)
- *   nitro.hooks.hook('render:response', cms.renderResponse)
- *   nitro.hooks.hook('beforeResponse', cms.beforeResponse)
- *   nitro.hooks.hook('render:route', cms.renderRoute)
- * })
- * ```
+ * A host installs them with `cmsNitroPlugin`, which also makes private the default.
  */
 export const cmsNitroHooks = <Env>(worker: CmsWorker<Env>) => ({
   request: (event: CmsEvent) => {
@@ -173,17 +160,57 @@ export const cmsNitroHooks = <Env>(worker: CmsWorker<Env>) => ({
     if (policy === undefined) headers['cache-control'] = readCacheControl
     if (policy === undefined || /\bpublic\b/.test(policy)) headers['cache-tag'] = tag
   },
-  beforeResponse: (event: CmsEvent) => {
-    const res = event.node?.res
-    if (event.context.cms && res && res.getHeader('cache-control') === undefined) {
-      res.setHeader('cache-control', notCached)
-    }
-  },
   // Every page `request` equipped (all of them on Workers): reads happen during the render.
   renderRoute: (route: CmsRenderRoute, { event }: { event: CmsEvent }) => {
     if (event.context.cms) route.prefersStream = false
   },
 })
+
+/** The parts of a NitroApp (nitropack 2) `cmsNitroPlugin` uses. */
+export interface CmsNitroApp {
+  readonly hooks: {
+    hook(name: 'request', fn: (event: CmsEvent) => void): unknown
+    hook(
+      name: 'render:response',
+      fn: (response: CmsRenderResponse, context: { event: CmsEvent }) => void,
+    ): unknown
+    hook(
+      name: 'render:route',
+      fn: (route: CmsRenderRoute, context: { event: CmsEvent }) => void,
+    ): unknown
+  }
+  localFetch: (...args: never[]) => Promise<Response>
+}
+
+/**
+ * The Nitro plugin of a public site on Workers: installs `cmsNitroHooks(worker)` and makes
+ * `private, no-store` the default of every answer. On the cloudflare-module preset each request
+ * is answered through `nitroApp.localFetch`, so wrapping it reaches every answer however it was
+ * sent (a returned value, `send`, `sendStream`, `sendRedirect`, `sendWebResponse`, `res.end`, a
+ * route-rule redirect, an error page); one without a Cache-Control gets `private, no-store`, and
+ * one with a Cache-Control (a host's, or an opted-in page's public policy) is left as it is.
+ *
+ * ```ts
+ * // server/plugins/cms.ts
+ * export default defineNitroPlugin(cmsNitroPlugin(worker))
+ * ```
+ */
+export const cmsNitroPlugin =
+  <Env>(worker: CmsWorker<Env>) =>
+  (nitro: CmsNitroApp): void => {
+    const cms = cmsNitroHooks(worker)
+    nitro.hooks.hook('request', cms.request)
+    nitro.hooks.hook('render:response', cms.renderResponse)
+    nitro.hooks.hook('render:route', cms.renderRoute)
+    const localFetch = nitro.localFetch
+    nitro.localFetch = async (...args) => {
+      const response = await localFetch(...args)
+      if (response.headers.has('cache-control')) return response
+      const answer = new Response(response.body, response)
+      answer.headers.set('cache-control', notCached)
+      return answer
+    }
+  }
 
 /**
  * Declares, during a page's SSR render, that the whole page is the same for every visitor, so
