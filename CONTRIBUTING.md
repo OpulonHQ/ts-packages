@@ -45,6 +45,39 @@ const db = useTestDatabase() // fresh clone per file, dropped afterwards; use db
 
 `createTestDatabase()` returns an extra clone (`{ url, drop }`) when one test needs its own. Package migrations are applied to the template once per run in `test/postgres/global-setup.ts`.
 
+## Replace an admin screen or UI component
+
+Copy the source file from the package's Git tag matching your installed version. Preserve its props and slots, and change private relative imports to public package imports. Put a source header on the first line:
+
+```vue
+<!-- @opulonjs/source @opulonjs/ui@0.1.0 src/components/EmptyState.vue -->
+```
+
+For TypeScript, use `// @opulonjs/source @opulonjs/admin@0.1.0 src/shell/Dashboard.vue`. The header contains the package name, exact SemVer, and original path relative to the package. The Vite preset warns when an imported copy's version is older than the installed package. Compare the upstream source before updating the header. A warning does not stop the build.
+
+Register a screen's host component by route name:
+
+```ts
+import Dashboard from './overrides/Dashboard.vue'
+
+createAdmin({ brand, modules, overrides: { dashboard: Dashboard } }).mount('#app')
+```
+
+Module routes and the built-in `dashboard`, `core.audit`, and `notFound` routes accept replacements. The original path, navigation, module availability, and access checks remain attached to the route. Unknown names throw before startup. For a lazy replacement, pass Vue's `defineAsyncComponent(() => import('./overrides/Screen.vue'))`.
+
+Register UI components in the Vite config:
+
+```ts
+opulonAdmin({
+  brand,
+  overrides: { components: { EmptyState: './overrides/EmptyState.vue' } },
+})
+```
+
+Component names are relative to `@opulonjs/ui/components/`, including names such as `Field/Text`. Host paths are absolute or relative to the Vite root. The preset replaces direct imports and imports between kit components. A host copy must not import its own canonical component name, which would resolve back to itself.
+
+The fixture's `admin/overrides/Dashboard.vue` adds “Fixture dashboard override”; its `EmptyState.vue` adds “Fixture UI override”, including empty states inside the kit's DataTable. Run `pnpm build`, start `wtdev` from `fixtures/host`, sign in, and open Dashboard and an empty list to see both. `pnpm pack:check` repeats the alias check using installed tarballs and rejects a bundle containing the original EmptyState.
+
 ## Releases
 
 All `@opulonjs/*` packages share one fixed version. They sit at 0.0.0 until the first `minor` changeset releases 0.1.0. Add a changeset to every PR that changes a package (`pnpm changeset`, or `pnpm changeset --empty` when nothing is released). Merging to `main` opens a "version packages" PR; merging that PR publishes to npm with provenance through trusted publishing. The manual **Snapshot** workflow publishes pending changes as `<version>-next-<timestamp>` under the `next` dist-tag.

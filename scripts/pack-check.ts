@@ -121,7 +121,8 @@ const adminCheck = `
 import { build, createServer } from 'vite'
 import { opulonAdmin } from '@opulonjs/admin/vite'
 const { brand } = await import('./host/admin/brand.ts')
-const config = { root: 'host/admin', configFile: false, logLevel: 'warn', plugins: opulonAdmin({ brand }) }
+const { components } = await import('./host/admin/override-components.ts')
+const config = { root: 'host/admin', configFile: false, logLevel: 'warn', plugins: opulonAdmin({ brand, overrides: { components } }) }
 await build({ ...config, build: { outDir: '../../admin-dist', emptyOutDir: true } })
 console.log('ok admin build from the packed tarballs')
 // Every icon a screen names is in the offline bundle (as an icon or an alias): package screens
@@ -129,6 +130,30 @@ console.log('ok admin build from the packed tarballs')
 const { readdirSync, readFileSync } = await import('node:fs')
 const js = readdirSync('admin-dist/assets').filter((f) => f.endsWith('.js'))
   .map((f) => readFileSync('admin-dist/assets/' + f, 'utf8')).join('\\n')
+if (!js.includes('Fixture dashboard override')) throw new Error('packed admin screen override missing')
+if (!js.includes('Fixture UI override')) throw new Error('packed admin UI override missing')
+const { writeFileSync } = await import('node:fs')
+const { resolve } = await import('node:path')
+writeFileSync('host/admin/kit-override.ts', \`import DataTable from '@opulonjs/ui/components/DataTable'
+import EmptyState from '@opulonjs/ui/components/EmptyState'
+export { DataTable, EmptyState }\`)
+let overrideIncluded = false
+await build({
+  ...config,
+  plugins: [...opulonAdmin({ brand, overrides: { components } }), {
+    name: 'check-packed-ui-override',
+    generateBundle(_options, bundle) {
+      const modules = Object.values(bundle).filter((output) => output.type === 'chunk').flatMap((chunk) => chunk.moduleIds)
+      overrideIncluded = modules.some((id) => id.split('?')[0] === resolve('host/admin/overrides/EmptyState.vue'))
+      if (modules.some((id) => id.split('?')[0].endsWith('/ui/dist/components/EmptyState.mjs'))) {
+        throw new Error('kit internal import bypassed the host EmptyState override')
+      }
+    },
+  }],
+  build: { write: false, minify: false, lib: { entry: resolve('host/admin/kit-override.ts'), formats: ['es'] } },
+})
+if (!overrideIncluded) throw new Error('packed UI alias did not include the host component')
+console.log('ok packed UI override for direct and kit internal imports')
 const used = new Set([...js.matchAll(/i-lucide-([a-z0-9]+(?:-[a-z0-9]+)*)/g)].map((m) => m[1]))
 const bundled = new Set([...js.matchAll(/[{,](?:"([a-z0-9-]+)"|([a-z0-9]+)):\\{(?:body:[\`'"]<|parent:)/g)].map((m) => m[1] ?? m[2]))
 const missingIcons = [...used].filter((name) => !bundled.has(name))
