@@ -16,13 +16,14 @@ const props = defineProps<{
 const { t, locale } = useI18n()
 const { definitions } = useCmsContext()
 const content = useContent()
+const form = computed(() => structuredClone(props.snapshot))
 const locales = computed(() => {
   const document = props.snapshot.revision.document
   return 'locales' in document ? Object.keys(document.locales) : content.contentLocales.value
 })
 const menuItems = computed<EditedMenuItem[]>(() =>
-  props.snapshot.kind === 'menu'
-    ? props.snapshot.revision.document.items.map(function copy(item): EditedMenuItem {
+  form.value.kind === 'menu'
+    ? form.value.revision.document.items.map(function copy(item): EditedMenuItem {
         return { ...item, label: { ...item.label }, children: item.children.map(copy) }
       })
     : [],
@@ -31,18 +32,18 @@ const menuItems = computed<EditedMenuItem[]>(() =>
 
 <template>
   <div class="space-y-4">
-    <template v-if="snapshot.kind === 'page'">
+    <template v-if="form.kind === 'page'">
       <LocaleDetails
-        :value="snapshot.revision.document.locales"
+        :value="form.revision.document.locales"
         :locales="locales"
         disabled
         name-prefix="revision.locales"
       />
-      <p v-if="snapshot.revision.document.sections.length === 0" class="text-sm text-muted">
+      <p v-if="form.revision.document.sections.length === 0" class="text-sm text-muted">
         {{ t('cms.page.noSections') }}
       </p>
       <div
-        v-for="(section, index) in snapshot.revision.document.sections"
+        v-for="(section, index) in form.revision.document.sections"
         :key="section.id"
         class="space-y-3"
       >
@@ -62,28 +63,28 @@ const menuItems = computed<EditedMenuItem[]>(() =>
         }}</pre>
       </div>
     </template>
-    <template v-else-if="snapshot.kind === 'item'">
+    <template v-else-if="form.kind === 'item'">
       <LocaleDetails
-        :value="snapshot.revision.document.locales"
+        :value="form.revision.document.locales"
         :locales="locales"
         disabled
         name-prefix="revision.locales"
       />
       <FieldsForm
         v-if="collection && definitions.collections[collection]"
-        :data="snapshot.revision.document.data"
+        :data="form.revision.document.data"
         :group="definitions.collections[collection]!"
         :locales="locales"
         name="revision.data"
         disabled
       />
       <pre v-else class="overflow-auto whitespace-pre-wrap text-sm">{{
-        JSON.stringify(snapshot.revision.document.data, null, 2)
+        JSON.stringify(form.revision.document.data, null, 2)
       }}</pre>
     </template>
     <FieldsForm
-      v-else-if="snapshot.kind === 'settings'"
-      :data="snapshot.revision.document.data"
+      v-else-if="form.kind === 'settings'"
+      :data="form.revision.document.data"
       :group="definitions.settings"
       :locales="locales"
       name="revision.data"

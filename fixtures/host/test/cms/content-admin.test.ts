@@ -1,4 +1,4 @@
-import { createAdmin } from '@opulonjs/admin'
+import { createAdmin, useI18n } from '@opulonjs/admin'
 import {
   defineCms,
   fields,
@@ -9,12 +9,79 @@ import {
 } from '@opulonjs/cms/api'
 import { cmsAdmin } from '@opulonjs/cms/admin'
 import { expect, onTestFinished, test } from 'vitest'
+import { defineComponent, h } from 'vue'
 import { brand } from '../../admin/brand.ts'
 import { adminModules } from '../../admin/modules.ts'
 import { files } from '../media/helpers.ts'
 import { page, useCmsHost } from './helpers.ts'
 
 const host = useCmsHost()
+
+test('read-only revision forms preserve the stored snapshot on rerender and restore by id', async () => {
+  const created = (
+    await host.call<Item>('POST', '/collections/posts/items', {
+      body: { locales: {}, data: { title: { en: 'Stored revision title' } } },
+    })
+  ).body
+  const first = (await host.call<Item>('POST', `/items/${created.id}/publish`)).body
+  await host.call('PUT', `/items/${created.id}/draft`, {
+    body: { locales: {}, data: { title: { en: 'New draft title' } } },
+  })
+  await host.call('POST', `/items/${created.id}/publish`)
+  let rerender: (() => void) | undefined
+  const modules = adminModules.map((module) =>
+    module.id !== 'cms'
+      ? module
+      : {
+          ...module,
+          routes: module.routes?.map((route) =>
+            route.name !== 'cms.item'
+              ? route
+              : {
+                  ...route,
+                  component: async () => {
+                    const inner = await route.component()
+                    return {
+                      default: defineComponent({
+                        setup() {
+                          const { locale } = useI18n()
+                          rerender = () => {
+                            locale.value = 'en'
+                          }
+                          return () => h(inner.default)
+                        },
+                      }),
+                    }
+                  },
+                },
+          ),
+        },
+  )
+  let restoreBody: string | undefined
+  const fetch: typeof host.fetch = async (input, init) => {
+    const request = new Request(input, init)
+    if (request.url.endsWith('/restore')) restoreBody = await request.clone().text()
+    return host.fetch(request)
+  }
+  const text = mountAdmin(`/admin/cms/items/${created.id}`, fetch, modules)
+  await expect.poll(() => document.querySelectorAll('tbody tr').length).toBe(2)
+  ;[...document.querySelectorAll<HTMLButtonElement>('tbody button')]
+    .filter((b) => b.textContent?.trim() === 'Zobraziť revíziu')[1]!
+    .click()
+  await expect.poll(() => button('Obnoviť do konceptu')).toBeTruthy()
+  rerender!()
+  await expect.poll(() => button('Restore to draft')).toBeTruthy()
+  expect(JSON.parse(document.querySelector('details pre')!.textContent!)).toEqual(first.draft)
+  button('Restore to draft')!.click()
+  await expect.poll(text).toContain('This replaces the current draft')
+  ;[...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')]
+    .find((b) => b.textContent?.trim() === 'Restore to draft')!
+    .click()
+  await expect.poll(text).toContain('Revision restored to draft.')
+  expect(restoreBody).toBe('')
+  const restored = (await host.call<Item>('GET', `/items/${created.id}`)).body
+  expect(JSON.stringify(restored.draft)).toBe(JSON.stringify(first.draft))
+})
 
 test('a late page request cannot replace the editor after navigation', async () => {
   const a = (await host.create(page({ en: '/admin-race-a' }))).body
@@ -230,10 +297,10 @@ test('a media view-only editor does not see an unavailable purge status warning'
   expect(text()).not.toContain('Živý web môže zobrazovať predchádzajúcu verziu')
 })
 
-function mountAdmin(path: string, fetch = host.fetch) {
+function mountAdmin(path: string, fetch = host.fetch, modules = adminModules) {
   history.replaceState(null, '', path)
   document.body.innerHTML = '<div id="app"></div>'
-  const app = createAdmin({ brand, modules: adminModules, buildId: 'build-1', fetch })
+  const app = createAdmin({ brand, modules, buildId: 'build-1', fetch })
   app.mount('#app')
   onTestFinished(() => app.unmount())
   return () => document.body.textContent ?? ''
