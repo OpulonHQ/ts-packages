@@ -11,7 +11,7 @@ const packages = ['core', 'ui', 'admin', 'users', 'emails', 'media', 'cms']
 const serverDeps = {
   core: [],
   ui: [],
-  admin: ['core', 'ui'],
+  admin: ['ui'],
   emails: ['core'],
   media: ['core'],
   users: ['core', 'emails'],
@@ -24,10 +24,12 @@ const nuxtUi = {
   message: '@nuxt/ui may only be imported inside @opulonjs/ui.',
 }
 
-function restrict(self, allowed, { allowNuxtUi = false } = {}) {
+function restrict(self, allowed, { allowNuxtUi = false, allowCoreApi = false } = {}) {
   const banned = packages.filter((p) => p !== self && !allowed.includes(p))
   const patterns = banned.map((p) => ({
-    group: [`@opulonjs/${p}`, `@opulonjs/${p}/*`],
+    ...(p === 'core' && allowCoreApi
+      ? { regex: '^@opulonjs/core(?:$|/(?!api$))' }
+      : { group: [`@opulonjs/${p}`, `@opulonjs/${p}/*`] }),
     message: `@opulonjs/${self} may not depend on @opulonjs/${p} (package graph, ADR 0001).`,
   }))
   if (!allowNuxtUi) patterns.push(nuxtUi)
@@ -67,7 +69,7 @@ export default defineConfig(
   ...packages.flatMap((p) => [
     {
       files: [`packages/${p}/**`],
-      rules: restrict(p, serverDeps[p], { allowNuxtUi: p === 'ui' }),
+      rules: restrict(p, serverDeps[p], { allowNuxtUi: p === 'ui', allowCoreApi: p === 'admin' }),
     },
     {
       files: [`packages/${p}/src/admin/**`],
