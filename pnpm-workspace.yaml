@@ -8,3 +8,4 @@ overrides:
 allowBuilds:
   esbuild: false
   vue-demi: false
+  workerd: false

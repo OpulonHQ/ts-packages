@@ -160,3 +160,14 @@ test('an opted-in cms page is still public under its tags', async () => {
     expect.arrayContaining(['cms', `cms:page:${created.body.id}`]),
   )
 })
+
+test('the plugin refuses a Nitro without localFetch rather than leave answers cacheable', () => {
+  const app = { hooks: { hook: () => {} } }
+  for (const localFetch of [undefined, 'not a function']) {
+    expect(() =>
+      cmsNitroPlugin(host.worker)({ ...app, localFetch } as unknown as Parameters<
+        ReturnType<typeof cmsNitroPlugin>
+      >[0]),
+    ).toThrow(/localFetch/)
+  }
+})

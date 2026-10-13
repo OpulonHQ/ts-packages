@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "typecheck": "nuxt prepare && vue-tsc -b --noEmit && vue-tsc --noEmit -p test",
-    "build:nuxt": "nuxt build"
+    "build:nuxt": "nuxt build",
+    "test:built": "nuxt build && node scripts/test-built.ts"
   },
   "dependencies": {
     "@opulonjs-fixtures/host": "workspace:*",
@@ -16,6 +17,7 @@
   },
   "devDependencies": {
     "h3": "1.15.11",
+    "miniflare": "4.20260730.0",
     "node-mock-http": "1.0.5"
   }
 }

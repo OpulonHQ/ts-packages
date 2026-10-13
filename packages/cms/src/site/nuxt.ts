@@ -198,6 +198,11 @@ export interface CmsNitroApp {
 export const cmsNitroPlugin =
   <Env>(worker: CmsWorker<Env>) =>
   (nitro: CmsNitroApp): void => {
+    // The private default rests on Nitro answering through `localFetch`: without it, fail now
+    // rather than serve answers Workers Cache would keep for every visitor.
+    if (typeof nitro.localFetch !== 'function') {
+      throw new Error('cmsNitroPlugin: nitroApp.localFetch is missing; this Nitro is not supported')
+    }
     const cms = cmsNitroHooks(worker)
     nitro.hooks.hook('request', cms.request)
     nitro.hooks.hook('render:response', cms.renderResponse)
