@@ -1,6 +1,7 @@
 import * as PgClient from '@effect/sql-pg/PgClient'
 import { describeError } from '@opulonjs/core'
 import { betterAuth } from 'better-auth'
+import { isAPIError } from 'better-auth/api'
 import { Config, Context, Effect, Layer, Option, Redacted } from 'effect'
 import { PostgresDialect } from 'kysely'
 import pg from 'pg'
@@ -229,9 +230,15 @@ export class BetterAuth extends Context.Service<
         session: Effect.fn('BetterAuth.session')(function* (headers) {
           const auth = yield* make({})
           const result = yield* Effect.promise(() =>
-            auth.api.getSession({ headers, returnHeaders: true }),
+            auth.api
+              .getSession({ headers, returnHeaders: true })
+              // A session revoked between its read and its refresh: signed out, not a failure.
+              .catch((error: unknown) => {
+                if (isAPIError(error) && error.status === 'UNAUTHORIZED') return undefined
+                throw error
+              }),
           )
-          if (!result.response) return undefined
+          if (!result?.response) return undefined
           return {
             userId: result.response.user.id,
             setCookies: result.headers.getSetCookie(),

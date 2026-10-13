@@ -154,6 +154,13 @@ export class Users extends Context.Service<
           })
       })
 
+      /** CSRF: the request says it comes from another origin than the host's own. */
+      const foreignOrigin = (headers: Headers) =>
+        Effect.map(Effect.orDie(usersConfig), (config) => {
+          const origin = headers.get('origin')
+          return origin !== null && origin !== new URL(config.baseUrl).origin
+        })
+
       const failOnServerError = (result: AuthResult) =>
         result.status >= 500
           ? Effect.die(
@@ -164,12 +171,8 @@ export class Users extends Context.Service<
       return Users.of({
         authenticate: Effect.fn('Users.authenticate')(function* (headers, method) {
           if (!headers.get('cookie')) return undefined
-          // CSRF: a state-changing request must come from the host's own origin, if it says.
-          const origin = headers.get('origin')
-          if (origin && !['GET', 'HEAD', 'OPTIONS'].includes(method)) {
-            const config = yield* Effect.orDie(usersConfig)
-            if (origin !== new URL(config.baseUrl).origin) return undefined
-          }
+          if (!['GET', 'HEAD', 'OPTIONS'].includes(method) && (yield* foreignOrigin(headers)))
+            return undefined
           const session = yield* auth.session(headers)
           if (!session) return undefined
           const loaded = yield* loadUser(session.userId)
@@ -177,6 +180,8 @@ export class Users extends Context.Service<
         }),
 
         signIn: Effect.fn('Users.signIn')(function* (headers, input) {
+          // Login CSRF: another site must not sign a visitor in to an account it controls.
+          if (yield* foreignOrigin(headers)) return yield* new Unauthorized()
           const email = normalizeEmail(input.email)
           const result = yield* auth.post('/sign-in/email', headers, {
             email,

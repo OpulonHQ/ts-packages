@@ -211,3 +211,41 @@ test("Better Auth's log lines reach our log without their messages", async () =>
   // Its messages can quote request data (an origin, a URL); this one is fixed text.
   expect(log).not.toContain('Invalid password')
 })
+
+test('a sign-in from another origin is refused (login CSRF)', async () => {
+  const user = await seedUser(db.url)
+  const response = await host.request('POST', '/users/auth/sign-in', {
+    body: { email: user.email, password: user.password },
+    headers: { origin: 'https://evil.test' },
+  })
+  expect(response.status).toBe(401)
+  expect(response.headers.getSetCookie()).toEqual([])
+})
+
+test('a session gone while it is being refreshed signs out, not a 500', async () => {
+  const user = await seedUser(db.url)
+  const cookie = await host.signIn(user.email, user.password)
+  // Due for refresh (as in the test above), but the refresh finds no row: as when the session
+  // is revoked between Better Auth's read and its update.
+  await sqlQuery(
+    db.url,
+    `update users.session set expires_at = now() + interval '1 hour' where user_id = $1`,
+    [user.id],
+  )
+  await sqlQuery(
+    db.url,
+    `create function users.skip_session_update() returns trigger language plpgsql as
+       $$ begin return null; end $$;
+     create trigger skip_session_update before update on users.session
+       for each row execute function users.skip_session_update()`,
+  )
+  try {
+    expect((await host.request('GET', '/me', { cookie })).status).toBe(401)
+  } finally {
+    await sqlQuery(
+      db.url,
+      `drop trigger skip_session_update on users.session;
+       drop function users.skip_session_update()`,
+    )
+  }
+})
