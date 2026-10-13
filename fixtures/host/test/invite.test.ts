@@ -4,6 +4,7 @@ import {
   lockWaits,
   makeHost,
   pauseInserts,
+  randomIp,
   seedRole,
   seedUser,
   sqlQuery,
@@ -177,6 +178,21 @@ test('an invitation is checked against a role edit that commits while it is bein
   )
   expect(invited).toMatchObject({ status: 403, body: { reason: 'escalation' } })
   expect(host.mailer.sent.length).toBe(sent)
+})
+
+test('accepting invitations is rate limited per client address', async () => {
+  const admin = await signedIn({ superAdmin: true })
+  const token = await invite(admin.cookie, 'throttled@example.test')
+  const ip = randomIp()
+  const attempt = (t: string, from = ip) =>
+    host.request('POST', '/users/invitations/accept', {
+      body: { token: t, name: 'Tess', password: 'invitee password 1' },
+      ip: from,
+    })
+  for (let i = 0; i < 5; i++) expect((await attempt(`guess-${i}`.padEnd(43, 'x'))).status).toBe(400)
+  const limited = await attempt(token)
+  expect(limited).toMatchObject({ status: 429, body: { _tag: 'TooManyRequests' } })
+  expect((await attempt(token, randomIp())).status).toBe(204)
 })
 
 test('two invitations sent at once to one address leave one valid link', async () => {

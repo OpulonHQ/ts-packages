@@ -81,6 +81,17 @@ test('reset requests are rate limited per client address', async () => {
   expect((await requestReset('x@example.test', ip)).status).toBe(429)
 })
 
+test('confirming a reset is rate limited per client address', async () => {
+  const ip = randomIp()
+  const confirm = () =>
+    host.request('POST', '/users/auth/reset-password', {
+      body: { token: 'not-a-token', password: 'brand new password' },
+      ip,
+    })
+  for (let i = 0; i < 5; i++) expect((await confirm()).status).toBe(400)
+  expect((await confirm()).status).toBe(429)
+})
+
 test('a sign-in with the old password racing a reset never yields a working session', async () => {
   const user = await seedUser(db.url)
   const sent = host.mailer.sent.length

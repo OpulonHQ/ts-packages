@@ -69,12 +69,14 @@ export class Users extends Context.Service<
     ) => Effect.Effect<void, InvalidToken | TooManyRequests>
     /** The invited address of a pending invitation. */
     readonly invitation: (token: string) => Effect.Effect<{ readonly email: string }, InvalidToken>
-    /** Creates the invitee's user with the password and roles; counts as email verification. */
-    readonly acceptInvitation: (input: {
-      readonly token: string
-      readonly name: string
-      readonly password: string
-    }) => Effect.Effect<void, InvalidToken | Conflict>
+    /**
+     * Creates the invitee's user with the password and roles; counts as email verification.
+     * Rate limited per client address (`cf-connecting-ip` of `headers`).
+     */
+    readonly acceptInvitation: (
+      headers: Headers,
+      input: { readonly token: string; readonly name: string; readonly password: string },
+    ) => Effect.Effect<void, InvalidToken | Conflict | TooManyRequests>
     /** Invites `email` with roles, emailing the link. Needs `users.manage`. */
     readonly invite: (input: {
       readonly email: string
@@ -108,6 +110,42 @@ export class Users extends Context.Service<
           Effect.map((rows) => rows[0]),
           Effect.orDie,
         )
+
+      const pendingInvitation = (tokenHash: string) =>
+        Effect.gen(function* () {
+          const [row] = yield* sql<{ email: string }>`select email from users.invitation
+            where token_hash = ${tokenHash} and accepted_at is null
+              and expires_at > now()`.pipe(Effect.orDie)
+          if (!row) return yield* new InvalidToken()
+          return row
+        })
+
+      /**
+       * A fixed-window limit per client address for our own public endpoints, in Better Auth's
+       * database rate_limit table (its rules cover sign-in and password reset); `path` keeps the
+       * keys apart from Better Auth's.
+       */
+      const throttle = Effect.fn('Users.throttle')(function* (
+        headers: Headers,
+        path: string,
+        rule: { readonly window: number; readonly max: number },
+      ) {
+        const now = Date.now()
+        const expired = now - rule.window * 1000
+        const [row] = yield* sql<{ count: number; since: string }>`
+          insert into users.rate_limit as r (id, key, count, last_request)
+          values (${crypto.randomUUID()}, ${`${headers.get('cf-connecting-ip') ?? ''}${path}`},
+            1, ${now})
+          on conflict (key) do update set
+            count = case when r.last_request <= ${expired} then 1 else r.count + 1 end,
+            last_request = case when r.last_request <= ${expired} then ${now}
+              else r.last_request end
+          returning count, last_request::text as since`.pipe(Effect.orDie)
+        if (row && row.count > rule.max)
+          return yield* new TooManyRequests({
+            retryAfter: Math.max(1, Math.ceil((Number(row.since) - expired) / 1000)),
+          })
+      })
 
       const failOnServerError = (result: AuthResult) =>
         result.status >= 500
@@ -217,15 +255,14 @@ export class Users extends Context.Service<
         }, withSql),
 
         invitation: Effect.fn('Users.invitation')(function* (token) {
-          const [row] = yield* sql<{ email: string }>`select email from users.invitation
-            where token_hash = ${yield* hashToken(token)} and accepted_at is null
-              and expires_at > now()`.pipe(Effect.orDie)
-          if (!row) return yield* new InvalidToken()
-          return row
+          return yield* pendingInvitation(yield* hashToken(token))
         }),
 
-        acceptInvitation: Effect.fn('Users.acceptInvitation')(function* (input) {
+        acceptInvitation: Effect.fn('Users.acceptInvitation')(function* (headers, input) {
+          yield* throttle(headers, '/invitations/accept', { window: 60, max: 5 })
           const tokenHash = yield* hashToken(input.token)
+          // A cheap lookup first: unknown tokens never cost a password hash.
+          yield* pendingInvitation(tokenHash)
           const password = yield* Effect.promise(() => hashPassword(input.password))
           yield* withTransaction(
             Effect.gen(function* () {

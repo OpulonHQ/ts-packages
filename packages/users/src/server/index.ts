@@ -116,7 +116,11 @@ export const users = () =>
                 ),
               )
               .handle('invitation', ({ payload }) => users.invitation(payload.token))
-              .handle('acceptInvitation', ({ payload }) => users.acceptInvitation(payload))
+              .handle('acceptInvitation', ({ payload }) =>
+                Effect.flatMap(requestHeaders, ({ headers }) =>
+                  users.acceptInvitation(headers, payload),
+                ),
+              )
           }),
         ),
         HttpApiBuilder.group(api, 'users', (h) =>
