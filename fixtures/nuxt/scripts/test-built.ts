@@ -44,30 +44,31 @@ const opulon = (args: Array<string>) =>
   })
 
 await admin(`create database ${name}`)
-// Every module of the build, entry first: Nitro's chunks are loaded through dynamic imports
-// Miniflare cannot trace.
-const server = `${nuxt}.output/server/`
-const chunks = readdirSync(server, { recursive: true, encoding: 'utf8' })
-  .filter((file) => file.endsWith('.mjs') && file !== 'index.mjs')
-  .map((file) => ({ type: 'ESModule' as const, path: `${server}${file}` }))
-const mf = new Miniflare({
-  modulesRoot: server,
-  modules: [{ type: 'ESModule', path: `${server}index.mjs` }, ...chunks],
-  compatibilityDate: '2026-07-30',
-  compatibilityFlags: ['nodejs_compat'],
-  assets: {
-    directory: `${nuxt}.output/public`,
-    binding: 'ASSETS',
-    routerConfig: { has_user_worker: true },
-  },
-  hyperdrives: { HYPERDRIVE: databaseUrl },
-  bindings: {
-    OPULON_BUILD_ID: 'test-built',
-    USERS_BASE_URL: origin,
-    USERS_AUTH_SECRET: randomBytes(32).toString('hex'),
-  },
-})
+let mf: Miniflare | undefined
 try {
+  // Every module of the build, entry first: Nitro's chunks are loaded through dynamic imports
+  // Miniflare cannot trace.
+  const server = `${nuxt}.output/server/`
+  const chunks = readdirSync(server, { recursive: true, encoding: 'utf8' })
+    .filter((file) => file.endsWith('.mjs') && file !== 'index.mjs')
+    .map((file) => ({ type: 'ESModule' as const, path: `${server}${file}` }))
+  const worker = (mf = new Miniflare({
+    modulesRoot: server,
+    modules: [{ type: 'ESModule', path: `${server}index.mjs` }, ...chunks],
+    compatibilityDate: '2026-07-30',
+    compatibilityFlags: ['nodejs_compat'],
+    assets: {
+      directory: `${nuxt}.output/public`,
+      binding: 'ASSETS',
+      routerConfig: { has_user_worker: true },
+    },
+    hyperdrives: { HYPERDRIVE: databaseUrl },
+    bindings: {
+      OPULON_BUILD_ID: 'test-built',
+      USERS_BASE_URL: origin,
+      USERS_AUTH_SECRET: randomBytes(32).toString('hex'),
+    },
+  }))
   opulon(['migrate'])
   const email = `owner@example.test`
   const link = /accept-invitation#token=(\S+)/.exec(
@@ -77,7 +78,7 @@ try {
 
   let cookie = ''
   const call = async (method: string, path: string, body?: unknown) => {
-    const response = await mf.dispatchFetch(`${origin}${path}`, {
+    const response = await worker.dispatchFetch(`${origin}${path}`, {
       method,
       headers: {
         origin,
@@ -144,6 +145,10 @@ try {
   console.log(`ok  ${path} (opted in): Cache-Control: ${pagePolicy}, Cache-Tag: ${tags}`)
   console.log('test:built passed')
 } finally {
-  await mf.dispose()
-  await admin(`drop database ${name} with (force)`)
+  // The database goes even when Miniflare never started or fails to stop.
+  try {
+    await mf?.dispose()
+  } finally {
+    await admin(`drop database ${name} with (force)`)
+  }
 }
