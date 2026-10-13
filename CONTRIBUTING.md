@@ -61,7 +61,7 @@ git show '@opulonjs/ui@0.1.0:packages/ui/src/components/EmptyState.vue' >> /path
 <!-- @opulonjs/source @opulonjs/ui@0.1.0 src/components/EmptyState.vue -->
 ```
 
-For TypeScript, use `// @opulonjs/source @opulonjs/admin@0.1.0 src/shell/Dashboard.vue`. The header contains the package name, exact SemVer, and original path relative to the package. The Vite preset warns when an imported copy's version is older than the installed package. Compare the upstream source before updating the header. A warning does not stop the build.
+For TypeScript, use `// @opulonjs/source @opulonjs/admin@0.1.0 src/shell/Dashboard.vue`. A single-line `/* @opulonjs/source ... */` comment also works. The header contains the package name, exact SemVer, and original path relative to the package. The Vite preset warns when an imported copy's version is older than the installed package. Compare the upstream source before updating the header. A warning does not stop the build.
 
 Register a screen's host component by route name:
 
