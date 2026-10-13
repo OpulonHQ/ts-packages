@@ -1,6 +1,14 @@
 import { expect, test } from 'vitest'
 import { useTestDatabase } from '../../../test/postgres/index.ts'
-import { makeHost, randomIp, seedUser, sqlQuery, tokenFrom } from './support/users.ts'
+import {
+  cookieHeader,
+  makeHost,
+  pauseInserts,
+  randomIp,
+  seedUser,
+  sqlQuery,
+  tokenFrom,
+} from './support/users.ts'
 
 const db = useTestDatabase()
 const host = makeHost(() => db.url)
@@ -71,4 +79,21 @@ test('reset requests are rate limited per client address', async () => {
   const ip = randomIp()
   for (let i = 0; i < 3; i++) expect((await requestReset('x@example.test', ip)).status).toBe(204)
   expect((await requestReset('x@example.test', ip)).status).toBe(429)
+})
+
+test('a sign-in with the old password racing a reset never yields a working session', async () => {
+  const user = await seedUser(db.url)
+  const sent = host.mailer.sent.length
+  await requestReset(user.email)
+  const token = tokenFrom(host.mailer.sent[sent]!.html)
+  // The sign-in verified the old password and waits just before its session insert.
+  await using barrier = await pauseInserts(db.url, 'users.session', `new.user_id = '${user.id}'`)
+  const signingIn = host.request('POST', '/users/auth/sign-in', {
+    body: { email: user.email, password: user.password },
+  })
+  await barrier.reached()
+  expect((await reset(token, 'brand new password')).status).toBe(204)
+  await barrier.release()
+  const cookie = cookieHeader((await signingIn).headers)
+  expect((await host.request('GET', '/me', { cookie })).status).toBe(401)
 })

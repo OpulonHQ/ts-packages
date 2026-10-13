@@ -240,3 +240,53 @@ export const tokenFrom = (html: string) => {
   if (!match) throw new Error('no token link in the email')
   return decodeURIComponent(match[1]!)
 }
+
+/**
+ * Holds every `before insert` on `table` whose row matches `when` (a plpgsql condition on `new`)
+ * at a barrier, so a test can run another request while that insert is in flight. `release`
+ * lets them through; disposing drops the trigger. Its name sorts ahead of the real triggers.
+ */
+export async function pauseInserts(databaseUrl: string, table: string, when = 'true') {
+  const key = randomBytes(4).readUInt32BE() >>> 1
+  const name = `a_pause_${randomBytes(4).toString('hex')}`
+  const holder = new pg.Client({ connectionString: databaseUrl })
+  await holder.connect()
+  await holder.query('select pg_advisory_lock($1)', [key])
+  await sqlQuery(
+    databaseUrl,
+    `create function public.${name}() returns trigger language plpgsql as $$
+      begin if ${when} then perform pg_advisory_xact_lock(${key}); end if; return new; end $$`,
+  )
+  await sqlQuery(
+    databaseUrl,
+    `create trigger ${name} before insert on ${table} for each row execute function public.${name}()`,
+  )
+  let held = true
+  const release = async () => {
+    if (held) await holder.query('select pg_advisory_unlock($1)', [key])
+    held = false
+  }
+  return {
+    /** Resolves once `count` inserts wait at the barrier. */
+    async reached(count = 1) {
+      for (let i = 0; i < 250; i++) {
+        const [row] = await sqlQuery<{ n: number }>(
+          databaseUrl,
+          `select count(*)::int as n from pg_locks
+            where locktype = 'advisory' and not granted and objid = $1::bigint::oid`,
+          [key],
+        )
+        if (row!.n >= count) return
+        await new Promise((r) => setTimeout(r, 20))
+      }
+      throw new Error(`${count} insert(s) on ${table} never reached the barrier`)
+    },
+    release,
+    async [Symbol.asyncDispose]() {
+      await release()
+      await holder.end()
+      await sqlQuery(databaseUrl, `drop trigger ${name} on ${table}`)
+      await sqlQuery(databaseUrl, `drop function public.${name}()`)
+    },
+  }
+}

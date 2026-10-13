@@ -3,7 +3,7 @@ import { betterAuth } from 'better-auth'
 import { Config, Context, Effect, Layer, Option, Redacted } from 'effect'
 import { PostgresDialect } from 'kysely'
 import pg from 'pg'
-import { hashPassword, verifyPassword } from './password.ts'
+import { hashPassword, sha256Hex, verifyPassword } from './password.ts'
 import { rateLimitTable, tables } from './schema.ts'
 
 /** The host's public origin, e.g. `https://example.com`: cookies, CSRF checks, emailed links. */
@@ -87,6 +87,8 @@ export class BetterAuth extends Context.Service<
         const config = yield* Effect.orDie(usersConfig)
         const pool = yield* getPool
         const origin = new URL(config.baseUrl).origin
+        // The stored hash this call's sign-in verified; its session carries it as a stamp.
+        let verifiedHash: string | undefined
         return betterAuth({
           database: {
             dialect: new PostgresDialect({ pool }),
@@ -102,7 +104,14 @@ export class BetterAuth extends Context.Service<
           emailAndPassword: {
             enabled: true,
             disableSignUp: true,
-            password: { hash: hashPassword, verify: verifyPassword },
+            password: {
+              hash: hashPassword,
+              verify: async (input) => {
+                const ok = await verifyPassword(input)
+                if (ok) verifiedHash = input.hash
+                return ok
+              },
+            },
             resetPasswordTokenExpiresIn: 60 * 60,
             revokeSessionsOnPasswordReset: true,
             sendResetPassword: async ({ user, token }) => {
@@ -113,7 +122,19 @@ export class BetterAuth extends Context.Service<
             },
           },
           // Off (TSPACK-10): every request reads the session, so revocation is immediate.
-          session: { ...tables.session, cookieCache: { enabled: false } },
+          session: {
+            ...tables.session,
+            cookieCache: { enabled: false },
+            additionalFields: {
+              passwordStamp: {
+                type: 'string',
+                fieldName: 'password_stamp',
+                required: false,
+                input: false,
+                returned: false,
+              },
+            },
+          },
           verification: { ...tables.verification, storeIdentifier: 'hashed' },
           // Database storage: shared by every isolate, unlike the default memory store.
           rateLimit: {
@@ -130,17 +151,15 @@ export class BetterAuth extends Context.Service<
             ipAddress: { ipAddressHeaders: ['cf-connecting-ip'] },
             useSecureCookies: origin.startsWith('https:'),
           },
-          // Deactivated users never get a session, even with the right password.
+          // Migration 0002's insert trigger creates the session only for an active user whose
+          // password is still the verified one, atomically with deactivation and reset.
           databaseHooks: {
             session: {
               create: {
-                before: async (session) => {
-                  const { rows } = await pool.query<{ active: boolean }>(
-                    'select deactivated_at is null as active from users."user" where id = $1',
-                    [session.userId],
-                  )
-                  return rows[0]?.active === true
-                },
+                before: async (session) =>
+                  verifiedHash === undefined
+                    ? false
+                    : { data: { ...session, passwordStamp: await sha256Hex(verifiedHash) } },
               },
             },
           },

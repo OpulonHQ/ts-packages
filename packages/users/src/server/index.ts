@@ -16,6 +16,7 @@ import {
 import { BetterAuth } from './auth.ts'
 import { createInvitation } from './invitations.ts'
 import createUsers from './migrations/0001_create_users.ts'
+import guardSessionInsert from './migrations/0002_guard_session_insert.ts'
 import { UserManagement } from './manage.ts'
 import { Users } from './service.ts'
 import { invitationEmail, passwordResetEmail } from './templates.ts'
@@ -146,7 +147,10 @@ export const users = () =>
       Layer.provideMerge(Layer.merge(Users.layer, UserManagement.layer)),
       Layer.provide(BetterAuth.layer),
     ),
-    migrations: { '0001_create_users': createUsers },
+    migrations: {
+      '0001_create_users': createUsers,
+      '0002_guard_session_insert': guardSessionInsert,
+    },
     permissions: usersPermissions,
     auditActions: usersAuditActions,
     contributes: [invitationEmail, passwordResetEmail],

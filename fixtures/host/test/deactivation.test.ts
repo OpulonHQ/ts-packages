@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import { useTestDatabase } from '../../../test/postgres/index.ts'
-import { makeHost, seedUser, sqlQuery } from './support/users.ts'
+import { cookieHeader, makeHost, pauseInserts, seedUser, sqlQuery } from './support/users.ts'
 
 const db = useTestDatabase()
 const host = makeHost(() => db.url)
@@ -121,4 +121,20 @@ test('users pick their own admin locale; managers set it for others', async () =
     [manager.id],
   )
   expect(event?.changes).toEqual([{ field: 'locale', from: 'sk', to: null }])
+})
+
+test('a sign-in racing a deactivation never yields a session, even after reactivation', async () => {
+  const manager = await signedIn({ superAdmin: true })
+  const member = await seedUser(db.url, { permissions: ['demo.notes.view'] })
+  // The sign-in passed every check and waits just before its session insert.
+  await using barrier = await pauseInserts(db.url, 'users.session', `new.user_id = '${member.id}'`)
+  const signingIn = host.request('POST', '/users/auth/sign-in', {
+    body: { email: member.email, password: member.password },
+  })
+  await barrier.reached()
+  expect((await act(manager.cookie, member.id, 'deactivate')).status).toBe(204)
+  await barrier.release()
+  const cookie = cookieHeader((await signingIn).headers)
+  expect((await act(manager.cookie, member.id, 'reactivate')).status).toBe(204)
+  expect((await host.request('GET', '/me', { cookie })).status).toBe(401)
 })
