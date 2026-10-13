@@ -64,7 +64,7 @@ test('an API answer without its own Cache-Control is private, no-store (Workers 
   })
   expect((await request('/api/demo/notes')).cacheControl).toBe('private, no-store')
   // An answer that sets its own policy keeps it.
-  expect((await request('/api/cms/site')).cacheControl).toBe('public, max-age=0, s-maxage=86400')
+  expect((await request('/api/cms/site')).cacheControl).toBe('public, max-age=0, s-maxage=3600')
 })
 
 test('the cron runs the demo task as the system actor, and its afterCommit work lands', async () => {

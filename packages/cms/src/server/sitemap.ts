@@ -29,7 +29,7 @@ export const SitemapSources = defineExtensionPoint<SitemapSource>('cms', 'sitema
 /**
  * Declares a child sitemap. List the result in the module's `contributes` (the module must
  * depend on cms). Its answers carry the `cms:routes` Cache-Tag; a module whose URLs change
- * purges it with `CachePurge`, or waits for the cached sitemap to expire (one day).
+ * purges it with `CachePurge`, or waits for the cached sitemap to expire (one hour).
  */
 export const sitemapSource = (source: SitemapSource): Contribution<SitemapSource> =>
   SitemapSources.contribute(source)

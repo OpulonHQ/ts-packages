@@ -1,6 +1,6 @@
 import { Background } from '@opulonjs/core'
 import type { WorkerContext } from '@opulonjs/core/workers'
-import { Context, Effect, Layer } from 'effect'
+import { Context, Data, Effect, Layer, Schedule } from 'effect'
 
 /**
  * Cache-Tags of the Read API (TSPACK-11 §12). Every answer carries `cms`, plus:
@@ -43,13 +43,18 @@ export type WorkersCache = NonNullable<WorkerContext['cache']>
 /** Tags per purge call (Cloudflare's per-request limit). */
 const batch = 100
 
+/** Workers Cache refused a purge (`success: false`), typically its rate limit. */
+class PurgeRefused extends Data.TaggedError('PurgeRefused')<{ readonly codes: string }> {}
+
 /**
  * Purges by Cache-Tag from the Worker's own cache (Workers Cache) through the invocation's
  * `ctx.cache`, so the Worker needs `"cache": { "enabled": true }` in its Wrangler config and no
  * token. A purge clears what this Worker cached: the Read API answers and, when the public site
  * runs in the same Worker and calls it in-process with its own `ctx`, the site's HTML. Without
- * `ctx.cache` it does nothing. A refused (rate-limited) or failed purge is logged and not retried:
- * cached answers then expire with their `s-maxage` (one day).
+ * `ctx.cache` it does nothing. Workers Cache purges get the Free tier's rate limit (5 a minute,
+ * bursts of 25): a refused purge is retried twice, 12 seconds apart (one token's refill), which
+ * stays inside the 30 seconds `waitUntil` keeps a Worker alive. A purge still refused, or failed,
+ * is logged: the answers then expire with their `s-maxage` (one hour).
  */
 export const workersCachePurge = (ctx: { readonly cache?: WorkersCache } | undefined) =>
   Layer.succeed(CachePurge, {
@@ -68,9 +73,15 @@ export const workersCachePurge = (ctx: { readonly cache?: WorkersCache } | undef
             ).pipe(Effect.timeout('10 seconds'))
             if (!result.success) {
               const codes = result.errors.map((e) => e.code).join(',')
-              return yield* Effect.fail(new Error(`Workers Cache purge refused (${codes})`))
+              return yield* new PurgeRefused({ codes })
             }
-          }),
+          }).pipe(
+            Effect.retry({
+              while: (error) => error instanceof PurgeRefused,
+              times: 2,
+              schedule: Schedule.spaced('12 seconds'),
+            }),
+          ),
         { discard: true },
       ).pipe(
         Effect.catchCause((cause) =>

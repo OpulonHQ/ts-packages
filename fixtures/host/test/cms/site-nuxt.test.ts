@@ -11,9 +11,17 @@ import { page, section, useCmsHost } from './helpers.ts'
 const host = useCmsHost()
 const hooks = cmsNitroHooks(host.worker)
 
+/** The headers H3's response holds (case-insensitive, like Node's). */
+const h3Response = (sent: Headers) => ({
+  getHeader: (name: string) => sent.get(name) ?? undefined,
+  setHeader: (name: string, value: string) => sent.set(name, value),
+  removeHeader: (name: string) => sent.delete(name),
+})
+
 const request = (url: string, cookie?: string) => {
   const pending: Array<Promise<unknown>> = []
   const { pathname, search } = new URL(url)
+  const sent = new Headers()
   const event: CmsEvent = {
     path: pathname + search,
     headers: new Headers(cookie ? { cookie } : {}),
@@ -24,9 +32,25 @@ const request = (url: string, cookie?: string) => {
         context: { waitUntil: (p: Promise<unknown>) => void pending.push(p) },
       },
     },
+    node: { res: h3Response(sent) },
   }
   hooks.request(event)
-  return { event, settled: () => Promise.all(pending) }
+  return { event, sent, settled: () => Promise.all(pending) }
+}
+
+/**
+ * The headers that go out: what H3's response holds, then the `render:response` payload's (Nitro
+ * sets those last). Error answers skip `render:response`: pass `rendered: false`.
+ */
+const sentHeaders = (
+  { event, sent }: { event: CmsEvent; sent: Headers },
+  response: { statusCode?: number; headers?: Record<string, string> } = {},
+  { rendered = true } = {},
+) => {
+  if (rendered) hooks.renderResponse(response, { event })
+  const out = new Headers(sent)
+  for (const [name, value] of Object.entries(response.headers ?? {})) out.set(name, value)
+  return Object.fromEntries(out)
 }
 
 /** The client a Vue component gets during SSR of `event`, as a page's setup sees it. */
@@ -69,7 +93,7 @@ test('SSR reads in-process and the HTML gets the union of the Read API cache tag
   )
 })
 
-test('a host cache policy is kept; error pages and pages without cms reads are left alone', async () => {
+test('a host cache policy is kept; an error page gets no tags', async () => {
   const kept = request('https://example.com/missing')
   await (await ssrClient(kept.event)).resolve('/missing')
   expect(respond(kept.event, { headers: { 'cache-control': 'private' } })).toEqual({
@@ -86,8 +110,45 @@ test('a host cache policy is kept; error pages and pages without cms reads are l
   const failed = request('https://example.com/missing')
   await (await ssrClient(failed.event)).resolve('/missing')
   expect(respond(failed.event, { statusCode: 500 })).toEqual({})
+})
 
-  expect(respond(request('https://example.com/plain').event, { statusCode: 200 })).toEqual({})
+test('on Workers an answer is not cacheable unless a public cms page or the host says so', async () => {
+  const privateNoStore = expect.stringMatching(/^private, no-store\b/)
+  // A page without cms reads, and one personalized from the visitor's cookie.
+  const plain = request('https://example.com/plain')
+  expect(sentHeaders(plain, { statusCode: 200 })['cache-control']).toEqual(privateNoStore)
+  const personal = request('https://example.com/account', 'session=abc')
+  await ssrClient(personal.event)
+  expect(sentHeaders(personal, { statusCode: 200 })['cache-control']).toEqual(privateNoStore)
+
+  // Answers that skip render:response (Nitro's error answers, its other routes) keep the default
+  // unless their handler sets a policy (Nitro's error handler sets `no-cache`).
+  for (const status of [404, 500]) {
+    const failed = request('https://example.com/nowhere')
+    await (await ssrClient(failed.event)).site()
+    expect(sentHeaders(failed, { statusCode: status }, { rendered: false })).toEqual({
+      'cache-control': privateNoStore,
+    })
+  }
+
+  // An explicit host policy stays, on H3's response or in the render payload.
+  const hostPublic = request('https://example.com/promo')
+  hostPublic.sent.set('cache-control', 'public, max-age=60')
+  expect(sentHeaders(hostPublic, { statusCode: 200 })).toEqual({
+    'cache-control': 'public, max-age=60',
+  })
+  const hostPrivate = request('https://example.com/missing', 'session=abc')
+  hostPrivate.sent.set('cache-control', 'private, no-store')
+  await (await ssrClient(hostPrivate.event)).resolve('/missing')
+  expect(sentHeaders(hostPrivate, { statusCode: 200 })['cache-control']).toBe('private, no-store')
+
+  // A page that read only public cms answers gets the Read API's policy and its tags.
+  const cmsPage = request('https://example.com/missing')
+  await (await ssrClient(cmsPage.event)).resolve('/missing')
+  expect(sentHeaders(cmsPage, { statusCode: 200 })).toEqual({
+    'cache-control': readCacheControl,
+    'cache-tag': 'cms,cms:routes',
+  })
 })
 
 test('?preview forwards the editor session to the cms and makes the HTML private, untagged', async () => {
@@ -223,15 +284,9 @@ test('on Workers no page is streamed, so tags read late still go on its headers'
 })
 
 test('a streamed page is not edge-cached: reads after the headers went out are not in its tags', async () => {
-  const { event } = request('https://example.com/streamed')
+  const { event: withRes, sent } = request('https://example.com/streamed')
   // A tag the host set on H3's response already, in any case.
-  const sent = new Headers({ 'Cache-Tag': 'cms,cms:site' })
-  const withRes: CmsEvent = {
-    ...event,
-    node: {
-      res: { getHeader: (n) => sent.get(n) ?? undefined, removeHeader: (n) => sent.delete(n) },
-    },
-  }
+  sent.set('Cache-Tag', 'cms,cms:site')
   await (await ssrClient(withRes)).site()
   const response = {
     statusCode: 200,

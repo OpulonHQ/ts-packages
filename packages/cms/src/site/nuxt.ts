@@ -43,7 +43,11 @@ export interface CmsEvent {
     [key: string]: unknown
   }
   readonly node?: {
-    readonly res?: { getHeader(name: string): unknown; removeHeader(name: string): void }
+    readonly res?: {
+      getHeader(name: string): unknown
+      setHeader(name: string, value: string): unknown
+      removeHeader(name: string): void
+    }
   }
 }
 
@@ -63,10 +67,20 @@ export interface CmsRenderRoute {
 const cachingHeader = /^(cache-control|cache-tag)$/i
 
 /**
+ * Every answer's Cache-Control on Workers until a public cms page or the host sets one: Workers
+ * Cache keys by URL alone and keeps a 200 without Cache-Control for two hours, so a page
+ * personalized from a cookie would be served to every visitor. (Nitro's error handler replaces it
+ * with `no-cache`, which Workers Cache revalidates with the Worker every time.) Spelled apart
+ * from a host's own `private, no-store` so that one is never taken for the default and opened.
+ */
+const notCached = 'private, no-store, max-age=0'
+
+/**
  * Nitro runtime hooks for a public site on Workers. `request` gives every request an in-process
- * cms fetch (no subrequest; the request's own env and ctx); `renderResponse` copies the Cache-Tags
- * the page read onto its HTML with the Read API's `s-maxage` (a Cache-Control the host already set
- * is kept), or, for `?preview`, when a cms answer was not publicly cacheable or when the page was
+ * cms fetch (no subrequest; the request's own env and ctx) and starts its answer as
+ * `private, no-store, max-age=0` for Workers Cache; `renderResponse` copies the
+ * Cache-Tags the page read onto its HTML with the Read API's `s-maxage` (a Cache-Control the host
+ * set is kept), or, for `?preview`, when a cms answer was not publicly cacheable or when the page was
  * streamed, answers `private, no-store` without tags. A streamed page sends its headers before its
  * reads finish, and which pages read the cms is known only once they render, so `renderRoute`
  * (Nuxt's `render:route`) turns streaming off for every page on Workers, cms reads or not. Only
@@ -120,6 +134,9 @@ export const cmsNitroHooks = <Env>(worker: CmsWorker<Env>) => ({
     }
     const context: CmsRequestContext = { fetch, tags, preview, uncacheable: false }
     event.context.cms = context
+    // Set first, so the host's policies (route rules, its handlers) and the cms's replace it, and
+    // so it holds for Nitro's error answers, which skip render:response.
+    event.node?.res?.setHeader('cache-control', notCached)
   },
   renderResponse: (response: CmsRenderResponse, { event }: { event: CmsEvent }) => {
     const cms = event.context.cms
@@ -140,8 +157,11 @@ export const cmsNitroHooks = <Env>(worker: CmsWorker<Env>) => ({
     if (cms.tags.size === 0 || (response.statusCode ?? 200) >= 500) return
     const headers = (response.headers ??= {})
     headers['cache-tag'] = tag
-    const hostPolicy = Object.keys(headers).some((name) => /^cache-control$/i.test(name))
-    if (!hostPolicy && !event.node?.res?.getHeader('cache-control')) {
+    const sent = event.node?.res?.getHeader('cache-control')
+    const hostPolicy =
+      Object.keys(headers).some((name) => /^cache-control$/i.test(name)) ||
+      (sent !== undefined && sent !== notCached)
+    if (!hostPolicy) {
       headers['cache-control'] = readCacheControl
     }
   },

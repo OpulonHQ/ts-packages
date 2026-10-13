@@ -36,15 +36,10 @@ test('does nothing where the invocation has no Workers Cache', async () => {
   await expect(purge({}, ['cms'])).resolves.toBeUndefined()
 })
 
-test('a refused or failed purge is logged, never failing the caller', async () => {
-  const refused = fakeCache(async () => ({
-    success: false,
-    errors: [{ code: 1, message: 'rate limited' }],
-  }))
-  await expect(purge({ cache: refused.cache }, ['cms'])).resolves.toBeUndefined()
+test('a failed purge is logged, never failing the caller, and not retried', async () => {
   const down = fakeCache(() => Promise.reject(new Error('cache down')))
   await expect(purge({ cache: down.cache }, ['cms'])).resolves.toBeUndefined()
-  expect(refused.purged).toHaveLength(1)
+  expect(down.purged).toHaveLength(1)
 })
 
 test('a stalled purge ends at its deadline', async () => {
@@ -66,4 +61,32 @@ test('a stalled purge ends at its deadline', async () => {
     ),
   )
   expect(stalled.purged).toHaveLength(1)
+})
+
+const refusedReply = async () => ({
+  success: false,
+  errors: [{ code: 1, message: 'rate limited' }],
+})
+
+/** Purges `cms` under the test clock, advancing it `steps` times by 12 seconds. */
+const purgeOverTime = (cache: WorkersCache, steps: number) =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const purger = yield* CachePurge
+      const fiber = yield* Effect.forkChild(purger.purge(['cms']))
+      for (let i = 0; i < steps; i++) yield* TestClock.adjust('12 seconds')
+      yield* Fiber.join(fiber)
+    }).pipe(Effect.provide(workersCachePurge({ cache })), Effect.provide(TestClock.layer())),
+  )
+
+test('a refused (rate-limited) purge is retried as a token refills (12 s), at most twice', async () => {
+  let calls = 0
+  const flaky = fakeCache(() => (calls++ === 0 ? refusedReply() : ok()))
+  await purgeOverTime(flaky.cache, 2)
+  expect(flaky.purged).toEqual([['cms'], ['cms']])
+
+  // Still refused after both retries: logged, the caller does not fail.
+  const refused = fakeCache(refusedReply)
+  await expect(purgeOverTime(refused.cache, 4)).resolves.toBeUndefined()
+  expect(refused.purged).toHaveLength(3)
 })

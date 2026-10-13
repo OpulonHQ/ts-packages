@@ -8,8 +8,9 @@
 export const publicPath = (locales: ReadonlyArray<string>, locale: string, path: string) =>
   locale === locales[0] ? path : path === '/' ? `/${locale}` : `/${locale}${path}`
 
-/** Cache-Control of every successful Read API answer; publishing purges by Cache-Tag. */
-export const readCacheControl = 'public, max-age=0, s-maxage=86400'
+/** Cache-Control of every successful Read API answer: publishing purges by Cache-Tag, and an hour
+ * bounds how long a lost purge leaves an answer stale. */
+export const readCacheControl = 'public, max-age=0, s-maxage=3600'
 
 /** Bytes of a Cache-Tag header: well under Cloudflare's 16 KiB limit for the whole header. */
 const maxCacheTagBytes = 8 * 1024

@@ -9,6 +9,9 @@ const { data } = await useAsyncData(`cms:${props.path}:${props.preview}`, async 
   const page = props.preview ? await cms.previewPage(props.preview) : await cms.resolve(props.path)
   return { site, page }
 })
+// Nuxt's error page answers (through Nitro's error handler, past render:response).
+const page = data.value?.page
+if (page && 'kind' in page && page.kind === 'not_found') throw createError({ statusCode: 404 })
 </script>
 
 <template>
