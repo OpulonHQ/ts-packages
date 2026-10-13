@@ -68,7 +68,10 @@ export class Authorization extends HttpApiMiddleware.Service<
 /** Endpoint annotation: the one policy guarding it, a permission key or `signedIn`. */
 export class Policy extends Context.Service<Policy, string>()('@opulonjs/core/Policy') {}
 
-/** Group annotation: the group is public on purpose and carries no auth. */
+/**
+ * Group annotation: the group is public on purpose and carries no auth; composition refuses
+ * the Authorization middleware or a Policy on its endpoints.
+ */
 export class Public extends Context.Service<Public, true>()('@opulonjs/core/Public') {}
 
 /**

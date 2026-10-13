@@ -119,6 +119,28 @@ describe('composeServer fails at startup on', () => {
       /demo.ping: policy "demo.view" is not a composed permission/,
     ))
 
+  test('a public group with the Authorization middleware', () =>
+    fails(
+      [
+        module('demo', {
+          group: HttpApiGroup.make('demo').add(ping).middleware(Authorization).annotate(Public, true),
+        }),
+      ],
+      /demo.ping: public endpoint with the Authorization middleware/,
+    ))
+
+  test('a public group with a Policy', () =>
+    fails(
+      [
+        module('demo', {
+          group: HttpApiGroup.make('demo')
+            .add(ping.annotate(Policy, 'signedIn'))
+            .annotate(Public, true),
+        }),
+      ],
+      /demo.ping: public endpoint with a Policy/,
+    ))
+
   test.each([
     [[], /contentLocales must list at least one locale/],
     [['en', 'English'], /content locale "English" must be a language tag/],

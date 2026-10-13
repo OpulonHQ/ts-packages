@@ -177,9 +177,17 @@ export const composeServer = <const Ms extends ReadonlyArray<Module>>(options: {
 
   const catalog = new Set(modules.flatMap((m) => m.permissions))
   for (const group of Object.values(api.groups)) {
-    if (Option.isSome(Context.getOption(group.annotations, Public))) continue
+    const isPublic = Option.isSome(Context.getOption(group.annotations, Public))
     for (const endpoint of Object.values(group.endpoints)) {
       const where = `${group.identifier}.${endpoint.identifier}`
+      // Public means no access control at all: a public endpoint never half-authorizes.
+      if (isPublic) {
+        if (endpoint.middlewares.has(Authorization))
+          errors.push(`${where}: public endpoint with the Authorization middleware`)
+        if (Option.isSome(Context.getOption(endpoint.annotations, Policy)))
+          errors.push(`${where}: public endpoint with a Policy`)
+        continue
+      }
       if (!endpoint.middlewares.has(Authorization))
         errors.push(`${where}: non-public endpoint without the Authorization middleware`)
       const policy = Context.getOption(endpoint.annotations, Policy)
