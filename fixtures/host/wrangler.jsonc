@@ -9,6 +9,9 @@
 // with no-store, immutable hashed assets), serveMedia answers /media/** from the R2 bucket
 // (immutable originals), everything else goes to the composed API. Resized media URLs
 // (/cdn-cgi/image/...) need Image Transformations enabled on the zone.
+// Create the Hyperdrive config with query caching off (`wrangler hyperdrive create <name>
+// --connection-string=... --caching-disabled`): the cms Read API is purged by Cache-Tag on
+// publish, and a cached database read would rebuild it from stale rows (docs/adr/0006).
 {
   "name": "tspack-fixture-host",
   "main": "worker.ts",

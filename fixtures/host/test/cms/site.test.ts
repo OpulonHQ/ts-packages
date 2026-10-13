@@ -110,7 +110,7 @@ test('menus are declared by the host; items link to pages, items, system pages a
   const preview = await host.call<MenuPreview>('GET', '/menus/main/preview?locale=it')
   expect(preview.headers.get('cache-control')).toBe('private, no-store')
   const [first, docs] = preview.body.items
-  expect(first).toMatchObject({ label: 'Chi siamo', href: '/chi-siamo' })
+  expect(first).toMatchObject({ label: 'Chi siamo', href: '/it/chi-siamo' })
   expect(first?.children[0]).toMatchObject({ label: 'First post', href: null })
   expect(first?.children[0]?.children[0]).toMatchObject({ href: null })
   expect(docs).toMatchObject({ href: 'https://example.test/docs' })

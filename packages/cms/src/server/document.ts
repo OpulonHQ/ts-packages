@@ -39,6 +39,12 @@ export const cleanLocales = (
       if (!withPaths && own && own.path.trim() !== '')
         return yield* invalid(`These items have no own path, so the ${locale} path must be empty.`)
       out[locale] = yield* cleanLocale(locale, own, withPaths)
+      // Other locales' public paths start with their prefix, which would shadow this path.
+      const first = out[locale]!.path.split('/')[1]
+      if (locale === locales[0] && first !== undefined && locales.includes(first))
+        return yield* invalid(
+          `The ${locale} path "${out[locale]!.path}" starts with "/${first}", the prefix of ${first} pages.`,
+        )
     }
     return out
   })

@@ -1,5 +1,6 @@
 import {
   Audit,
+  Background,
   ContentLocales,
   diffFields,
   requirePermission,
@@ -18,6 +19,7 @@ import {
   redirectImportLimits,
   RedirectStatus,
 } from '../api.ts'
+import { CachePurge, cacheTags, purgeAfterCommit } from './cache.ts'
 import { parseCsv } from './csv.ts'
 import { uuid } from './document.ts'
 
@@ -170,6 +172,11 @@ export class Redirects extends Context.Service<
       const sql = yield* SqlClient
       const locales = yield* ContentLocales
       const defaultLocale = locales[0]!
+      // Cached redirect and not-found answers carry `cms:routes`.
+      const purge = purgeAfterCommit([cacheTags.routes]).pipe(
+        Effect.provideService(Background, yield* Background),
+        Effect.provideService(CachePurge, yield* CachePurge),
+      )
 
       /** Loads the redirects and published paths of `of` under a lock that serializes
        *  redirect writers, so the flat-set checks see every concurrent write. */
@@ -200,6 +207,7 @@ export class Redirects extends Context.Service<
       const write = (p: Plan) =>
         Effect.gen(function* () {
           const { drop, insert } = p.changes()
+          if (drop.length + insert.length > 0) yield* purge
           if (drop.length > 0) yield* sql`delete from cms.redirect where id in ${sql.in(drop)}`
           for (let i = 0; i < insert.length; i += 1000)
             yield* sql`insert into cms.redirect ${sql.insert(

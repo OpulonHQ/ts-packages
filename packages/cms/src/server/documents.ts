@@ -1,18 +1,10 @@
 import { Audit, Background, CurrentActor, requirePermission, withTransaction } from '@opulonjs/core'
-import { Context, Effect, Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 import { SqlClient } from 'effect/sql/SqlClient'
 import { CmsConflict, type CmsInvalid, CmsNotFound, type PageLocale } from '../api.ts'
+import { CachePurge, cacheTags } from './cache.ts'
 import { uuid } from './document.ts'
 import { Redirects } from './redirects.ts'
-
-/**
- * Purges edge-cached public responses by Cache-Tag after a publish family write commits. The
- * default does nothing; the Read API slice adds the Cloudflare purger, and a host (or a test)
- * may provide its own in `infra`: `Layer.succeed(CachePurge, { purge })`.
- */
-export const CachePurge = Context.Reference<{
-  readonly purge: (tags: ReadonlyArray<string>) => Effect.Effect<void>
-}>('@opulonjs/cms/CachePurge', { defaultValue: () => ({ purge: () => Effect.void }) })
 
 /** What `cms.document.kind` holds; `key` names the system page, collection or menu. */
 export type DocumentKind = 'page' | 'item' | 'settings' | 'menu'
@@ -141,10 +133,12 @@ export const makeDocuments = Effect.gen(function* () {
       return { previous, next }
     })
 
-  const purge = (tags: ReadonlyArray<string>) =>
-    Background.afterCommit(cache.purge(tags)).pipe(Effect.provideService(Background, background))
-
   return <D>(spec: DocumentSpec<D>) => {
+    /** A routed document's published paths may change on every publish family write. */
+    const purge = (tags: ReadonlyArray<string>) =>
+      Background.afterCommit(cache.purge(spec.routes ? [...tags, cacheTags.routes] : tags)).pipe(
+        Effect.provideService(Background, background),
+      )
     const decodeDocument = Schema.decodeUnknownEffect(spec.schema)
     const toRow = (raw: typeof Row.Type) =>
       Effect.gen(function* () {

@@ -106,7 +106,11 @@ export const createWorker = <R, Env extends object, I, E>(
   }
 }
 
-/** SqlClient over a Hyperdrive binding: pool max 5, min 0, prepared statements on (TSPACK-18). */
+/**
+ * SqlClient over a Hyperdrive binding: pool max 5, min 0, prepared statements on (TSPACK-18).
+ * Create the Hyperdrive config with `--caching-disabled`: cached reads are never invalidated
+ * on write, which would defeat the cms Read API's purge on publish (docs/adr/0006).
+ */
 export const PgFromHyperdrive = (binding: { readonly connectionString: string }) =>
   PgClient.layer({
     url: Redacted.make(binding.connectionString),

@@ -15,7 +15,7 @@ test('publishing copies the draft, records a revision and an audit event, then p
   expect(status).toBe(200)
   expect(body).toMatchObject({ status: 'published', published: body.draft })
   expect(body.publishedRevisionId).toEqual(expect.any(String))
-  expect(host.purged.slice(purges)).toEqual([[`cms:page:${created.id}`]])
+  expect(host.purged.slice(purges)).toEqual([[`cms:page:${created.id}`, 'cms:routes']])
 
   const [revision] = await host.query(
     `select reason, created_by_name, document from cms.revision where id = '${body.publishedRevisionId}'`,
@@ -82,7 +82,7 @@ test('unpublishing withdraws the page and is audited', async () => {
 
   const { body } = await host.call<Page>('POST', `/pages/${created.id}/unpublish`)
   expect(body).toMatchObject({ status: 'draft', published: null, publishedRevisionId: null })
-  expect(host.purged.slice(purges)).toEqual([[`cms:page:${created.id}`]])
+  expect(host.purged.slice(purges)).toEqual([[`cms:page:${created.id}`, 'cms:routes']])
   expect(await host.query(`select * from cms.path where document_id = '${created.id}'`)).toEqual([])
   const actions = await host.query<{ action: string }>(
     `select action from core.audit_event where subject_id = '${created.id}' order by id`,

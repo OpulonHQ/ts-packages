@@ -8,6 +8,7 @@ import {
   CmsInvalid,
   CmsNotFound,
   labelText,
+  publicPath,
   type Link,
   type Menu,
   MenuDocument,
@@ -19,6 +20,7 @@ import {
   type SettingsPreview,
   type SiteSettings,
 } from '../api.ts'
+import { cacheTags } from './cache.ts'
 import { checkFields, cleanData, linkProblem, localizeData, uuid } from './document.ts'
 import { type DocumentRow, documentState, makeDocuments } from './documents.ts'
 
@@ -35,13 +37,16 @@ const maxMenuItems = 200
 const maxLabel = 100
 
 /**
- * Resolves links to hrefs in one content locale: a page or item to its published path there,
- * a system page by key to its page's published path, a URL as is. Null when the target is not
- * published (or not available) in the locale. Paths are locale-relative, like `cms.path`.
+ * Resolves links to hrefs in one content locale: a page or item to its published public path
+ * there (locale-prefixed, see `publicPath`), a system page by key to its page's, a URL as is.
+ * Null when the target is not published (or not available) in the locale. `tags` are the
+ * Cache-Tags whose purge changes an href: the targets', or `cms:routes` for a system page that
+ * does not exist yet.
  */
 export const resolveLinks = (links: ReadonlyArray<Link>, locale: string) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient
+    const locales = yield* ContentLocales
     const ids = [
       ...new Set(links.flatMap((l) => (l.type === 'page' || l.type === 'item' ? [l.id] : []))),
     ].filter((id) => uuid.test(id))
@@ -51,26 +56,56 @@ export const resolveLinks = (links: ReadonlyArray<Link>, locale: string) =>
         ? []
         : (yield* sql<{ document_id: string; path: string }>`select document_id, path
               from cms.path where locale = ${locale} and document_id in ${sql.in(ids)}`).map(
-            (r) => [r.document_id, r.path],
+            (r) => [r.document_id, publicPath(locales, locale, r.path)],
           ),
     )
-    const byKey = new Map(
+    const systemPages =
       keys.length === 0
         ? []
-        : (yield* sql<{ key: string; path: string }>`select d.key, p.path from cms.document d
-              join cms.path p on p.document_id = d.id and p.locale = ${locale}
-              where d.kind = 'page' and d.key in ${sql.in(keys)}`).map((r) => [r.key, r.path]),
+        : yield* sql<{ key: string; id: string; path: string | null }>`
+            select d.key, d.id, p.path from cms.document d
+            left join cms.path p on p.document_id = d.id and p.locale = ${locale}
+            where d.kind = 'page' and d.key in ${sql.in(keys)}`
+    const byKey = new Map(
+      systemPages.map((r) => [r.key, r.path === null ? null : publicPath(locales, locale, r.path)]),
     )
-    return (link: Link): string | null =>
-      link.type === 'url'
-        ? link.url
-        : link.type === 'system'
-          ? (byKey.get(link.key) ?? null)
-          : (byId.get(link.id) ?? null)
+    const tags = new Set<string>()
+    for (const link of links)
+      if (link.type === 'page') tags.add(cacheTags.page(link.id))
+      else if (link.type === 'item') tags.add(cacheTags.item(link.id))
+      else if (link.type === 'system') {
+        const target = systemPages.find((r) => r.key === link.key)
+        tags.add(target ? cacheTags.page(target.id) : cacheTags.routes)
+      }
+    return {
+      href: (link: Link): string | null =>
+        link.type === 'url'
+          ? link.url
+          : link.type === 'system'
+            ? (byKey.get(link.key) ?? null)
+            : (byId.get(link.id) ?? null),
+      tags: [...tags],
+    }
   })
 
-const allLinks = (items: ReadonlyArray<MenuItem>): ReadonlyArray<Link> =>
+/** Every link of a menu, nested ones included. */
+export const allLinks = (items: ReadonlyArray<MenuItem>): ReadonlyArray<Link> =>
   items.flatMap((item) => [item.link, ...allLinks(item.children)])
+
+/** Menu items in one locale: labels resolved (falling back to `fallback`), links to hrefs. */
+export const resolveMenuItems = (
+  items: ReadonlyArray<MenuItem>,
+  locale: string,
+  fallback: string,
+  href: (link: Link) => string | null,
+): ReadonlyArray<ResolvedMenuItem> =>
+  items.map((item) => ({
+    id: item.id,
+    label: item.label[locale] ?? item.label[fallback] ?? '',
+    link: item.link,
+    href: href(item.link),
+    children: resolveMenuItems(item.children, locale, fallback, href),
+  }))
 
 type Failure = Forbidden | CmsNotFound
 
@@ -265,19 +300,6 @@ export class Menus extends Context.Service<
             ? Effect.void
             : Effect.fail(new CmsNotFound({ id: key }))
 
-        const resolve = (
-          items: ReadonlyArray<MenuItem>,
-          locale: string,
-          href: (link: Link) => string | null,
-        ): ReadonlyArray<ResolvedMenuItem> =>
-          items.map((item) => ({
-            id: item.id,
-            label: item.label[locale] ?? item.label[defaultLocale] ?? '',
-            link: item.link,
-            href: href(item.link),
-            children: resolve(item.children, locale, href),
-          }))
-
         return {
           list: () =>
             Effect.forEach(Object.keys(definitions.menus), (key) => documents.get(key)).pipe(
@@ -304,11 +326,15 @@ export class Menus extends Context.Service<
               yield* declared(key)
               const row = yield* documents.get(key)
               const locale = requested && locales.includes(requested) ? requested : defaultLocale
-              const href = yield* resolveLinks(allLinks(row.draft.items), locale).pipe(
+              const { href } = yield* resolveLinks(allLinks(row.draft.items), locale).pipe(
                 Effect.provideService(SqlClient, sql),
                 Effect.orDie,
               )
-              return { key, locale, items: resolve(row.draft.items, locale, href) }
+              return {
+                key,
+                locale,
+                items: resolveMenuItems(row.draft.items, locale, defaultLocale, href),
+              }
             }),
         }
       }),

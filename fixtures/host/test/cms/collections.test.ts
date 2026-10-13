@@ -49,7 +49,7 @@ test('an item is validated against its collection, published with a revision, au
   const { body } = await publish(created.body.id)
   expect(body).toMatchObject({ status: 'published', published: body.draft })
   expect(host.purged.slice(purges)).toEqual([
-    [`cms:item:${created.body.id}`, 'cms:collection:posts'],
+    [`cms:item:${created.body.id}`, 'cms:collection:posts', 'cms:routes'],
   ])
   const [revision] = await host.query(
     `select reason, document from cms.revision where id = '${body.publishedRevisionId}'`,
@@ -133,7 +133,9 @@ test('items are listed per collection, previewed per locale, unpublished and del
   expect(unpublished.body).toMatchObject({ status: 'draft', published: null })
   expect((await host.call('DELETE', `/items/${a.id}`)).status).toBe(204)
   expect((await host.call('GET', `/items/${a.id}`)).status).toBe(404)
-  expect(host.purged.slice(purges)).toEqual([[`cms:item:${a.id}`, 'cms:collection:categories']])
+  expect(host.purged.slice(purges)).toEqual([
+    [`cms:item:${a.id}`, 'cms:collection:categories', 'cms:routes'],
+  ])
   const actions = await host.query<{ action: string }>(
     `select action from core.audit_event where subject_id = '${a.id}' order by id`,
   )

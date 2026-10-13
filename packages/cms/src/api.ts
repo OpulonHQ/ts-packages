@@ -1,10 +1,12 @@
 // Client-safe: the cms HttpApi group, its catalogs, document schemas and the definitions
 // builders (TSPACK-11). Imported by the admin build and the host's definitions file, so no
 // server-only imports here.
-import { Authorization, Policy } from '@opulonjs/core/api'
+import { Authorization, Policy, Public } from '@opulonjs/core/api'
+import { ResolvedMedia } from '@opulonjs/media/api'
 import { Schema } from 'effect'
 import * as HttpApiEndpoint from 'effect/http-api/HttpApiEndpoint'
 import * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
+import * as HttpApiSchema from 'effect/http-api/HttpApiSchema'
 import { Link } from './definitions.ts'
 
 export * from './definitions.ts'
@@ -516,3 +518,201 @@ export const CmsGroup = HttpApiGroup.make('cms')
     }).annotate(Policy, 'cms.redirects.edit'),
   )
   .middleware(Authorization)
+
+// ---------------------------------------------------------------------------------------------
+// The Read API (TSPACK-11 §11, TSPACK-19): public, unauthenticated, published content only.
+// Its schemas are JSON-native, so their encoded and decoded types are the same and a public
+// site uses them without Effect. Paths in it are public paths: the default content locale has
+// no prefix, the others are prefixed with the locale (`/about`, `/it/chi-siamo`, and `/it` for
+// the Italian homepage).
+
+export { ResolvedMedia }
+
+/**
+ * The public path of a locale-relative path: unprefixed in the default locale (the first of
+ * `locales`), else `/<locale><path>` (`/<locale>` for the root).
+ */
+export const publicPath = (locales: ReadonlyArray<string>, locale: string, path: string) =>
+  locale === locales[0] ? path : path === '/' ? `/${locale}` : `/${locale}${path}`
+
+const href = { href: Schema.NullOr(Schema.String) }
+/** A link field's value in the Read API: the stored link plus its public href (null when the
+ *  target is not published in the locale). */
+export const ResolvedLink = Schema.Union([
+  Schema.Struct({ type: Schema.Literal('page'), id: Schema.String, ...href }),
+  Schema.Struct({ type: Schema.Literal('item'), id: Schema.String, ...href }),
+  Schema.Struct({ type: Schema.Literal('system'), key: Schema.String, ...href }),
+  Schema.Struct({ type: Schema.Literal('url'), url: Schema.String, ...href }),
+])
+export type ResolvedLink = typeof ResolvedLink.Type
+
+/** One locale a page or item is published in, for hreflang and the locale switcher. */
+export const Alternate = Schema.Struct({ locale: Schema.String, path: Schema.String })
+export type Alternate = typeof Alternate.Type
+
+/** SEO of a page or item in one locale; `image` resolved (null when unset or gone). */
+export const PublicSeo = Schema.Struct({
+  title: Schema.String,
+  description: Schema.String,
+  image: Schema.NullOr(ResolvedMedia),
+  noindex: Schema.Boolean,
+})
+export type PublicSeo = typeof PublicSeo.Type
+
+/**
+ * A field group's data in one locale: localized fields hold that locale's value (falling back
+ * to the default locale), media fields a `ResolvedMedia` (null when gone), link fields a
+ * `ResolvedLink`; reference fields keep item ids (read them with `collections/:key?ids=`).
+ */
+export const PublicData = Schema.Record(Schema.String, Schema.Unknown)
+export type PublicData = typeof PublicData.Type
+
+const routedFields = {
+  id: Schema.String,
+  locale: Schema.String,
+  /** The document's public path in `locale`: the canonical. */
+  path: Schema.String,
+  /** Every locale it is published in, this one included, in content locale order. */
+  alternates: Schema.Array(Alternate),
+  seo: PublicSeo,
+  publishedAt: Schema.String,
+}
+
+export const ResolvedPage = Schema.Struct({
+  kind: Schema.Literal('page'),
+  ...routedFields,
+  /** The system page key, or null for an editor's page. */
+  systemKey: Schema.NullOr(Schema.String),
+  sections: Schema.Array(
+    Schema.Struct({ id: Schema.String, type: Schema.String, data: PublicData }),
+  ),
+})
+export type ResolvedPage = typeof ResolvedPage.Type
+
+export const ResolvedItem = Schema.Struct({
+  kind: Schema.Literal('item'),
+  ...routedFields,
+  collection: Schema.String,
+  data: PublicData,
+})
+export type ResolvedItem = typeof ResolvedItem.Type
+
+/** The host answers with `status` and a Location of `to` (a public path). */
+export const ResolvedRedirect = Schema.Struct({
+  kind: Schema.Literal('redirect'),
+  locale: Schema.String,
+  to: Schema.String,
+  status: RedirectStatus,
+})
+export type ResolvedRedirect = typeof ResolvedRedirect.Type
+
+export const ResolvedNotFound = Schema.Struct({
+  kind: Schema.Literal('not_found'),
+  locale: Schema.String,
+})
+export type ResolvedNotFound = typeof ResolvedNotFound.Type
+
+/** What `resolve?path=` answers, always with status 200 (TSPACK-19 decision 1). */
+export const ResolveResult = Schema.Union([
+  ResolvedPage,
+  ResolvedItem,
+  ResolvedRedirect,
+  ResolvedNotFound,
+])
+export type ResolveResult = typeof ResolveResult.Type
+
+/** What `site?locale=` answers: the published settings and menus in one locale. */
+export const PublicSite = Schema.Struct({
+  locale: Schema.String,
+  /** The content locales, the default first. */
+  locales: Schema.Array(Schema.String),
+  /** The published site settings (empty until published), shaped like `PublicData`. */
+  settings: PublicData,
+  /** Every declared menu by key, hrefs as public paths; an unpublished menu has no items. */
+  menus: Schema.Record(Schema.String, Schema.Array(ResolvedMenuItem)),
+  /** Every system page's public path in the locale; null when not published there. */
+  systemPages: Schema.Record(Schema.String, Schema.NullOr(Schema.String)),
+})
+export type PublicSite = typeof PublicSite.Type
+
+/** A published item in a collection list. */
+export const PublicItem = Schema.Struct({
+  id: Schema.String,
+  collection: Schema.String,
+  /** Public path in the locale; null in collections that are not routed. */
+  path: Schema.NullOr(Schema.String),
+  data: PublicData,
+  publishedAt: Schema.String,
+})
+export type PublicItem = typeof PublicItem.Type
+
+export const PublicItems = Schema.Struct({
+  rows: Schema.Array(PublicItem),
+  total: Schema.Number,
+  page: Schema.Number,
+  perPage: Schema.Number,
+})
+export type PublicItems = typeof PublicItems.Type
+
+/** Query of `collections/:key`. */
+export const PublicItemsQuery = {
+  locale: Schema.optionalKey(Schema.String),
+  /** 1-based (default 1). */
+  page: Schema.optionalKey(
+    Schema.NumberFromString.check(
+      Schema.isInt(),
+      Schema.isBetween({ minimum: 1, maximum: 10_000 }),
+    ),
+  ),
+  /** 1 to 100 (default 20). */
+  perPage: Schema.optionalKey(
+    Schema.NumberFromString.check(Schema.isInt(), Schema.isBetween({ minimum: 1, maximum: 100 })),
+  ),
+  /** By publish time: `newest` (default) or `oldest` first. */
+  sort: Schema.optionalKey(Schema.Literals(['newest', 'oldest'])),
+  /** Only items whose reference fields hold this item id. */
+  ref: Schema.optionalKey(Schema.String),
+  /** Only these item ids, comma-separated (at most 100). */
+  ids: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(3800))),
+}
+
+const xml = Schema.String.pipe(HttpApiSchema.asText({ contentType: 'application/xml' }))
+
+/** Cache-Control of every successful Read API answer; publishing purges by Cache-Tag. */
+export const readCacheControl = 'public, max-age=0, s-maxage=86400'
+
+/**
+ * The Read API under `/api/cms`, public on purpose (no auth). Every successful answer carries
+ * `readCacheControl` and a comma-separated `Cache-Tag` header.
+ */
+export const CmsReadGroup = HttpApiGroup.make('cms.read')
+  .add(
+    HttpApiEndpoint.get('resolve', '/resolve', {
+      query: { path: Schema.String.check(Schema.isMaxLength(2048)) },
+      success: ResolveResult,
+    }),
+  )
+  .add(
+    HttpApiEndpoint.get('site', '/site', {
+      query: localeQuery,
+      success: PublicSite,
+      error: CmsInvalid,
+    }),
+  )
+  .add(
+    HttpApiEndpoint.get('collection', '/collections/:collection', {
+      params: collection,
+      query: PublicItemsQuery,
+      success: PublicItems,
+      error: [CmsInvalid, CmsNotFound],
+    }),
+  )
+  .add(HttpApiEndpoint.get('sitemapIndex', '/sitemap.xml', { success: xml }))
+  .add(
+    HttpApiEndpoint.get('sitemap', '/sitemaps/:file', {
+      params: { file: Schema.String },
+      success: xml,
+      error: CmsNotFound,
+    }),
+  )
+  .annotate(Public, true)

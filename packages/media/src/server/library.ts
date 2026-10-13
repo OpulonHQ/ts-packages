@@ -12,10 +12,10 @@ import { SqlClient } from 'effect/sql/SqlClient'
 import {
   LocalizedText,
   type MediaItem,
-  type MediaMime,
   MediaNotFound,
   MediaRejected,
   mediaMimeTypes,
+  type ResolvedMedia,
 } from '../api.ts'
 import { ImageUrl, srcset } from './image-url.ts'
 import { dimensions, isAllowedMime, safeFilename, sniff } from './sniff.ts'
@@ -28,20 +28,7 @@ export interface UploadedFile {
   readonly bytes: Uint8Array
 }
 
-/** A media item resolved for rendering in one content locale (cms Read API, public site). */
-export interface ResolvedMedia {
-  readonly id: string
-  /** The original: `/media/<id>/<version>/<filename>`. */
-  readonly url: string
-  /** In the requested locale, else the default content locale, else empty. */
-  readonly alt: string
-  readonly caption: string | null
-  readonly width: number | null
-  readonly height: number | null
-  readonly mime: MediaMime
-  /** Resized candidates from the host's width list; empty for PDFs. */
-  readonly srcset: string
-}
+export type { ResolvedMedia }
 
 export interface ListQuery {
   readonly search?: string

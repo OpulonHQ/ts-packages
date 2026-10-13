@@ -36,6 +36,22 @@ export type MediaMime = (typeof mediaMimeTypes)[number]
 export const LocalizedText = Schema.Record(Schema.String, Schema.String)
 export type LocalizedText = typeof LocalizedText.Type
 
+/** A media item resolved for rendering in one content locale (cms Read API, public site). */
+export const ResolvedMedia = Schema.Struct({
+  id: Schema.String,
+  /** The original: `/media/<id>/<version>/<filename>`. */
+  url: Schema.String,
+  /** In the requested locale, else the default content locale, else empty. */
+  alt: Schema.String,
+  caption: Schema.NullOr(Schema.String),
+  width: Schema.NullOr(Schema.Number),
+  height: Schema.NullOr(Schema.Number),
+  mime: Schema.Literals(mediaMimeTypes),
+  /** Resized candidates from the host's width list; empty for PDFs. */
+  srcset: Schema.String,
+})
+export type ResolvedMedia = typeof ResolvedMedia.Type
+
 export const MediaItem = Schema.Struct({
   /** Stable id (uuid); survives replacing the file. */
   id: Schema.String,

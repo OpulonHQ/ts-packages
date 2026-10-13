@@ -104,6 +104,25 @@ export const useCmsHost = () => {
     save: (id: string, draft: PageDocument) =>
       call<Page>('PUT', `/pages/${id}/draft`, { body: draft }),
     publish: (id: string) => call<Page>('POST', `/pages/${id}/publish`),
+    /** Uploads a media file as the editor, with alt text per locale; resolves with its id. */
+    upload: async (bytes: Uint8Array, name: string, alt: Record<string, string> = {}) => {
+      const data = new FormData()
+      data.append('file', new File([bytes.slice()], name, { type: 'image/png' }))
+      const media = (path: string, init: RequestInit) =>
+        hostFetch(`https://host.test/api/media${path}`, init).then(
+          (r) => r.json() as Promise<{ id: string }>,
+        )
+      const { id } = await media('/items', {
+        method: 'POST',
+        body: await new Response(data).blob(),
+      })
+      await media(`/items/${id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ alt }),
+      })
+      return id
+    },
   }
 }
 

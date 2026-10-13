@@ -1,3 +1,4 @@
+import { sitemapSource } from '@opulonjs/cms/server'
 import { Background, CurrentActor, defineModule, withTransaction } from '@opulonjs/core'
 import { Context, Effect, Layer, Schema } from 'effect'
 import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
@@ -49,6 +50,7 @@ const tick = Effect.gen(function* () {
 /** A throwaway host module proving the module contract end to end. */
 export const demo = defineModule({
   id: 'demo',
+  dependsOn: ['cms'],
   groups: [DemoGroup],
   handlers: (api) =>
     HttpApiBuilder.group(api, 'demo', (h) =>
@@ -61,4 +63,15 @@ export const demo = defineModule({
   migrations: { '0001_create_note': createNote, '0002_create_tick': createTick },
   permissions: demoPermissions,
   tasks: [{ name: 'tick', every: '5m', run: tick }],
+  // A host module's own sitemap child (/sitemaps/demo.notes.xml).
+  contributes: [
+    sitemapSource({
+      key: 'demo.notes',
+      list: Effect.gen(function* () {
+        const sql = yield* SqlClient
+        const notes = yield* sql<{ id: number }>`select id from demo.note order by id`
+        return notes.map((n) => ({ path: `/notes/${n.id}` }))
+      }),
+    }),
+  ],
 })
