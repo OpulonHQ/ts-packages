@@ -8,6 +8,7 @@ import {
   diffFields,
   systemActor,
 } from '@opulonjs/core'
+import { auditDefaultPerPage, auditMaxOffset } from '@opulonjs/core/api'
 import { createWorker, PgFromHyperdrive } from '@opulonjs/core/workers'
 import { Mailer } from '@opulonjs/emails/server'
 import { Effect, Layer, Redacted } from 'effect'
@@ -81,6 +82,35 @@ test('audit rejects requests beyond the maximum paging offset', async () => {
     expect((await host.request('GET', `/audit?${query}`, { cookie })).status, query).toBe(400)
   }
   expect((await host.request('GET', '/audit?page=101&perPage=100', { cookie })).status).toBe(200)
+})
+
+test('audit uses the exported default page size for reads and the paging boundary', async () => {
+  expect(auditDefaultPerPage).toBe(25)
+  const user = await seedUser(db.url, { permissions: ['core.audit.view'] })
+  const cookie = await host.signIn(user.email, user.password)
+  await sqlQuery(
+    db.url,
+    `insert into core.audit_event (actor_kind, action, subject_id)
+    select 'system', 'default.page', 'default-page-' || n from generate_series(1, $1::int) n`,
+    [auditDefaultPerPage + 1],
+  )
+  const first = await host.request('GET', '/audit?action=default.page', { cookie })
+  expect(first.status).toBe(200)
+  expect(first.body).toMatchObject({
+    total: auditDefaultPerPage + 1,
+    rows: Array.from({ length: auditDefaultPerPage }, (_, index) => ({
+      subject: { id: `default-page-${auditDefaultPerPage + 1 - index}` },
+    })),
+  })
+  const second = await host.request('GET', '/audit?action=default.page&page=2', { cookie })
+  expect(second.status).toBe(200)
+  expect(second.body).toMatchObject({
+    total: auditDefaultPerPage + 1,
+    rows: [{ subject: { id: 'default-page-1' } }],
+  })
+  const lastPage = Math.floor(auditMaxOffset / auditDefaultPerPage) + 1
+  expect((await host.request('GET', `/audit?page=${lastPage}`, { cookie })).status).toBe(200)
+  expect((await host.request('GET', `/audit?page=${lastPage + 1}`, { cookie })).status).toBe(400)
 })
 
 test('audit reads added and removed fields serialized by the existing writer', async () => {
