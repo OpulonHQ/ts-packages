@@ -700,6 +700,9 @@ export const CmsReadGroup = HttpApiGroup.make('cms.read')
       error: [CmsInvalid, CmsNotFound],
     }),
   )
+  // The index links its children at `<apiPrefix>/cms/sitemaps/<file>`, as served here. A host
+  // that wants `/sitemap.xml` at its root proxies that path to this endpoint (or lists the
+  // index in `robots.txt`); sitemaps sit under the API path, so submit them through robots.txt.
   .add(HttpApiEndpoint.get('sitemapIndex', '/sitemap.xml', { success: xml }))
   .add(
     HttpApiEndpoint.get('sitemap', '/sitemaps/:file', {

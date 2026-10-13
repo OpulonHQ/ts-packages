@@ -15,7 +15,7 @@ export interface SitemapEntry {
   readonly alternates?: ReadonlyArray<Alternate>
 }
 
-/** A child sitemap: its key names the file (`/sitemaps/<key>.xml`). */
+/** A child sitemap: its key names the file (`<apiPrefix>/cms/sitemaps/<key>.xml`). */
 export interface SitemapSource {
   /** Inside the contributing module's prefix, e.g. `shop.products`. */
   readonly key: string
@@ -36,7 +36,7 @@ export const sitemapSource = (source: SitemapSource): Contribution<SitemapSource
 
 /**
  * cms's own sources: published pages (`cms.pages`) and the items of one routed collection
- * (`cms.<collection>`), one URL per published locale whose SEO is not `noindex`.
+ * (`cms.items.<collection>`), one URL per published locale whose SEO is not `noindex`.
  */
 export const documentsSource = (key: string, kind: 'page' | 'item', collection?: string) =>
   sitemapSource({
@@ -109,7 +109,8 @@ export const makeSitemaps = Effect.gen(function* () {
     value === undefined ? '' : `<lastmod>${escape(value)}</lastmod>`
 
   return {
-    index: (origin: string) =>
+    /** `children` is the path the child files are served under (ends with `/`). */
+    index: (origin: string, children: string) =>
       Effect.gen(function* () {
         const all = (yield* Effect.forEach(sources, files)).flat()
         const body =
@@ -118,7 +119,7 @@ export const makeSitemaps = Effect.gen(function* () {
           all
             .map(
               (f) =>
-                `<sitemap><loc>${url(origin, `/sitemaps/${f.name}`)}</loc>${lastmod(latest(f.entries))}</sitemap>`,
+                `<sitemap><loc>${url(origin, `${children}${f.name}`)}</loc>${lastmod(latest(f.entries))}</sitemap>`,
             )
             .join('') +
           '</sitemapindex>\n'

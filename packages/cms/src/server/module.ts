@@ -79,7 +79,13 @@ export const cms = (options: CmsOptions) =>
               .handle('collection', ({ params, query }) =>
                 cached(reader.collection(params.collection, query)),
               )
-              .handle('sitemapIndex', ({ request }) => cached(sitemaps.index(originOf(request))))
+              .handle('sitemapIndex', ({ request }) => {
+                // The children are served next to the index, under whatever API prefix the
+                // host mounted cms at: `<prefix>/cms/sitemaps/<file>`.
+                const url = new URL(request.originalUrl, 'http://localhost')
+                const children = url.pathname.replace(/sitemap\.xml$/, 'sitemaps/')
+                return cached(sitemaps.index(url.origin, children))
+              })
               .handle('sitemap', ({ params, request }) =>
                 cached(sitemaps.file(originOf(request), params.file)),
               )
@@ -97,7 +103,8 @@ export const cms = (options: CmsOptions) =>
       documentsSource('cms.pages', 'page'),
       ...Object.entries(options.definitions.collections)
         .filter(([, c]) => c.routed)
-        .map(([key]) => documentsSource(`cms.${key}`, 'item', key)),
+        // Their own namespace: a collection may be named like a cms source (`pages`).
+        .map(([key]) => documentsSource(`cms.items.${key}`, 'item', key)),
     ],
     migrations: {
       '0001_create_document': createDocument,

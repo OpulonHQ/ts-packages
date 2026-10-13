@@ -28,12 +28,13 @@ const editor = [
 
 /**
  * The fixture host's composed server behind a test Worker that records cache purges. The
- * editor holds every cms permission; `as` narrows them, null sends no credentials.
+ * editor holds every cms permission; `as` narrows them, null sends no credentials. `composed`
+ * replaces the fixture host's server (its `call` helper assumes the default `/api` prefix).
  */
-export const useCmsHost = () => {
+export const useCmsHost = (composed = server) => {
   const db = useTestDatabase()
   const purged: Array<ReadonlyArray<string>> = []
-  const worker = createWorker(server, {
+  const worker = createWorker(composed, {
     infra: (env: typeof usersEnv & { url: string }) =>
       Layer.mergeAll(
         PgFromHyperdrive({ connectionString: env.url }),
