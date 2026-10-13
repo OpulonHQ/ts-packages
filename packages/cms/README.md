@@ -40,16 +40,19 @@ were active. No production CPU or memory guarantee follows from this run.
 
 | Dataset / response            | Wall ms, median (range) | Process CPU ms, median (range) | Response bytes |
 | ----------------------------- | ----------------------- | ------------------------------ | -------------- |
-| Short paths / index           | 170 (162–172)           | 195 (166–200)                  | 530            |
-| Short paths / largest child   | 232 (222–245)           | 275 (248–331)                  | 13,166,834     |
-| Escaped paths / index         | 468 (458–474)           | 486 (481–500)                  | 530            |
-| Escaped paths / largest child | 830 (821–842)           | 963 (944–1,001)                | 49,999,058     |
+| Short paths / index           | 168 (166–170)           | 209 (179–211)                  | 530            |
+| Short paths / largest child   | 230 (227–263)           | 264 (256–342)                  | 13,166,834     |
+| Escaped paths / index         | 465 (462–502)           | 488 (478–522)                  | 530            |
+| Escaped paths / largest child | 873 (862–886)           | 1,011 (1,003–1,020)            | 49,999,058     |
 
 The escaped paths append `é&` forty times. Percent encoding, entity escaping and
 the alternate links expand each entry; the byte cap splits before the URL cap.
-The regression checks every served child's bytes and count and verifies the
-complete expected URL set. Additional public-response tests cover one byte
-below, exactly at, and one byte above the decimal cap.
+The end-to-end regression checks every served child's bytes and count and
+verifies the complete expected URL set. Database-free tests call the exact
+`sitemapXml` serializer/splitter used by the Worker route. They cover a byte split
+with fewer than 50,000 escaped entries, the count boundaries, and one byte below,
+exactly at, and one byte above the decimal cap. The escaped end-to-end dataset
+runs only when the measurement flag below is enabled.
 
 To repeat the correctness checks and process measurement from the repo root:
 
