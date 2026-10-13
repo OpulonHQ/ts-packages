@@ -1,13 +1,11 @@
 import { readFileSync, statSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { isAbsolute, join, relative, resolve } from 'node:path'
+import { gt, valid } from 'semver'
 import { normalizePath, type Plugin, type ResolvedConfig } from 'vite'
 
 const componentPrefix = '@opulonjs/ui/components/'
 const sourceId = (id: string) => normalizePath(id.replace(/[?#].*$/, ''))
-const versionPattern =
-  '(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-([\\da-zA-Z-]+(?:\\.[\\da-zA-Z-]+)*))?(?:\\+[\\da-zA-Z-]+(?:\\.[\\da-zA-Z-]+)*)?'
-const semver = new RegExp(`^${versionPattern}$`)
 const sourceComment = /^(?:<!-- (.*?) -->|\/\* (.*?) \*\/|\/\/ (.*))$/
 const sourceHeader = /^@opulonjs\/source (@opulonjs\/[a-z0-9-]+)@(\S+) ([^\s]+)$/
 
@@ -28,42 +26,12 @@ const provenance = (source: string): SourceProvenance | undefined => {
     !packageName ||
     !version ||
     !path ||
-    !semver.test(version) ||
+    valid(version) !== version ||
     path.startsWith('/') ||
     path.split('/').includes('..')
   )
     return undefined
   return { packageName, version, path }
-}
-
-const newer = (installed: string, copied: string): boolean => {
-  const left = semver.exec(installed)
-  const right = semver.exec(copied)
-  if (!left || !right) return false
-  for (const index of [1, 2, 3]) {
-    const a = left[index]
-    const b = right[index]
-    if (a === undefined || b === undefined) return false
-    if (a !== b) return BigInt(a) > BigInt(b)
-  }
-  if (left[4] === right[4]) return false
-  if (!left[4]) return true
-  if (!right[4]) return false
-  const a = left[4].split('.')
-  const b = right[4].split('.')
-  for (let i = 0; i < Math.max(a.length, b.length); i++) {
-    const x = a[i]
-    const y = b[i]
-    if (x === y) continue
-    if (x === undefined) return false
-    if (y === undefined) return true
-    const xNumeric = /^\d+$/.test(x)
-    const yNumeric = /^\d+$/.test(y)
-    if (xNumeric && yNumeric) return BigInt(x) > BigInt(y)
-    if (xNumeric !== yNumeric) return yNumeric
-    return x > y
-  }
-  return false
 }
 
 export const adminOverrides = (
@@ -192,7 +160,7 @@ export const adminOverrides = (
           `@opulonjs/source: could not check installed version of ${header.packageName} for ${file}; add the package as a host dependency.`,
         )
       }
-      if (installed && newer(installed, header.version)) {
+      if (installed && gt(installed, header.version)) {
         warned.add(file)
         this.warn(
           `@opulonjs/source: ${file} was copied from ${header.packageName}@${header.version} ${header.path}; installed version ${installed} is newer. Review the upstream changes.`,

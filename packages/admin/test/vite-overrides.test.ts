@@ -232,6 +232,34 @@ test('warns once per registered component or conventional screen copy without a 
   }
 })
 
+test.each(['1.0.0-01', '1.0', 'v1.0.0'])(
+  'treats a header with invalid version %s as missing',
+  async (version) => {
+    const fixture = host()
+    fixture.write(
+      'overrides/Screen.vue',
+      `<!-- @opulonjs/source @opulonjs/ui@${version} src/components/EmptyState.vue -->\n<template>bad header</template>`,
+    )
+    fixture.write('entry.js', "import Screen from './overrides/Screen.vue'; console.log(Screen)")
+    const warnings: string[] = []
+    const logger = createLogger('silent')
+    logger.warn = (message) => {
+      warnings.push(message)
+    }
+    await fixture.bundle(
+      { overrides: { components: { EmptyState: 'HostEmpty.vue' } } },
+      { customLogger: logger },
+    )
+    expect(
+      warnings.filter(
+        (message) =>
+          message.includes('overrides/Screen.vue') &&
+          message.includes('missing @opulonjs/source header'),
+      ),
+    ).toHaveLength(1)
+  },
+)
+
 test('a checkout under an overrides directory does not make every host or workspace file a copy', async () => {
   const parent = mkdtempSync(join(tmpdir(), 'header-scope-'))
   onTestFinished(() => rmSync(parent, { recursive: true, force: true }))

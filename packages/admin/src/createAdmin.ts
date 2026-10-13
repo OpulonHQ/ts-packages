@@ -69,13 +69,12 @@ const isRouteComponent = (component: RouteComponent | RouteLoader): component is
   '__vccOpts' in component
 
 const lazy = (component: RouteLoader) => () =>
-  Promise.resolve(component()).then((loaded): RouteComponent =>
-    isVNode(loaded)
-      ? (component as FunctionalComponent)
-      : 'default' in loaded
-        ? loaded.default
-        : loaded,
-  )
+  Promise.resolve(component()).then((loaded: unknown): RouteComponent => {
+    if (typeof loaded === 'function') return loaded as RouteComponent
+    if (loaded && typeof loaded === 'object' && !isVNode(loaded) && !Array.isArray(loaded))
+      return 'default' in loaded ? (loaded.default as RouteComponent) : (loaded as RouteComponent)
+    return component as FunctionalComponent
+  })
 
 const injected = (name: string) =>
   document.querySelector<HTMLMetaElement>(`meta[name="${name}"]`)?.content

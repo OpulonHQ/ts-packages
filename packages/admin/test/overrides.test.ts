@@ -44,8 +44,12 @@ test.each([false, true])(
   },
 )
 
-test('renders a plain functional route override', async () => {
-  mount('/', { overrides: { dashboard: () => h('p', 'functional host screen') } })
+test.each([
+  ['a VNode', () => h('p', 'functional host screen')],
+  ['VNodes', () => [h('p', 'functional host screen')]],
+  ['text', () => 'functional host screen'],
+])('renders a plain functional route override returning %s', async (_, dashboard) => {
+  mount('/', { overrides: { dashboard } })
   await expect.poll(() => document.body.textContent).toContain('functional host screen')
 })
 
