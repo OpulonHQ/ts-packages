@@ -4,7 +4,7 @@ export default async (ctx) => {
   const { page, base, shot, check } = ctx
   await signedIn(ctx)
   const status = async () => {
-    const response = await page.request.get(`${base}/api/cms/cache-purges`)
+    const response = await page.request.get(`${base}/api/cache-purges`)
     check(response.status() === 200, 'editor can read purge status')
     return response.json()
   }
