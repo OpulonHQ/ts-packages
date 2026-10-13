@@ -1,4 +1,5 @@
-import { expect, test } from 'vitest'
+import { format } from 'node:util'
+import { expect, test, vi } from 'vitest'
 import { useTestDatabase } from '../../../test/postgres/index.ts'
 import { makeHost, randomIp, seedUser, sqlQuery } from './support/users.ts'
 
@@ -149,4 +150,102 @@ test('an active session is extended, and the browser gets the refreshed cookie',
     [user.id],
   )
   expect(Number(session!.days)).toBeGreaterThan(6.9)
+})
+
+/** Everything written to the console while `fn` runs. */
+async function consoleOf(fn: () => Promise<unknown>) {
+  const logged: Array<string> = []
+  // As the console prints them: an error's message and stack included.
+  const capture = (...args: Array<unknown>) => void logged.push(format(...args))
+  const spies = (['log', 'error', 'warn', 'info', 'debug'] as const).map((m) =>
+    vi.spyOn(console, m).mockImplementation(capture),
+  )
+  try {
+    await fn()
+  } finally {
+    for (const spy of spies) spy.mockRestore()
+  }
+  return logged.join('\n')
+}
+
+// Database errors whose messages quote the user, as Postgres errors quote rejected values: one
+// where the session is written, one where sign-in reads the credential (a join).
+const failures = {
+  'writing the session': {
+    code: 'P0042',
+    setup: `create function users.fail_session() returns trigger language plpgsql as $$
+        begin raise exception 'no session for %', new.user_id using errcode = 'P0042'; end $$;
+      create trigger fail_session before insert on users.session
+        for each row execute function users.fail_session()`,
+    teardown: `drop trigger fail_session on users.session; drop function users.fail_session()`,
+  },
+  'reading the credential': {
+    code: '22P02', // invalid_text_representation, quoting the user id
+    setup: `alter table users.account rename to account_real;
+      create view users.account as select * from users.account_real where user_id::int > 0`,
+    teardown: `drop view users.account; alter table users.account_real rename to account`,
+  },
+}
+
+test.each(Object.entries(failures))(
+  'a sign-in failing in %s answers 500 and logs the cause, without user data',
+  async (_, failure) => {
+    const user = await seedUser(db.url)
+    await sqlQuery(db.url, failure.setup)
+    let status = 0
+    const log = await consoleOf(async () => {
+      status = (await signIn(user.email, user.password)).status
+    }).finally(() => sqlQuery(db.url, failure.teardown))
+    expect(status).toBe(500)
+    expect(log).toContain('request failed')
+    expect(log).toContain(failure.code)
+    expect(log).not.toContain(user.id)
+    expect(log).not.toContain(user.email)
+  },
+)
+
+test("Better Auth's log lines reach our log without their messages", async () => {
+  const user = await seedUser(db.url)
+  const log = await consoleOf(() => signIn(user.email, 'wrong password'))
+  expect(log).toContain('better-auth')
+  // Its messages can quote request data (an origin, a URL); this one is fixed text.
+  expect(log).not.toContain('Invalid password')
+})
+
+test('a sign-in from another origin is refused (login CSRF)', async () => {
+  const user = await seedUser(db.url)
+  const response = await host.request('POST', '/users/auth/sign-in', {
+    body: { email: user.email, password: user.password },
+    headers: { origin: 'https://evil.test' },
+  })
+  expect(response.status).toBe(401)
+  expect(response.headers.getSetCookie()).toEqual([])
+})
+
+test('a session gone while it is being refreshed signs out, not a 500', async () => {
+  const user = await seedUser(db.url)
+  const cookie = await host.signIn(user.email, user.password)
+  // Due for refresh (as in the test above), but the refresh finds no row: as when the session
+  // is revoked between Better Auth's read and its update.
+  await sqlQuery(
+    db.url,
+    `update users.session set expires_at = now() + interval '1 hour' where user_id = $1`,
+    [user.id],
+  )
+  await sqlQuery(
+    db.url,
+    `create function users.skip_session_update() returns trigger language plpgsql as
+       $$ begin return null; end $$;
+     create trigger skip_session_update before update on users.session
+       for each row execute function users.skip_session_update()`,
+  )
+  try {
+    expect((await host.request('GET', '/me', { cookie })).status).toBe(401)
+  } finally {
+    await sqlQuery(
+      db.url,
+      `drop trigger skip_session_update on users.session;
+       drop function users.skip_session_update()`,
+    )
+  }
 })

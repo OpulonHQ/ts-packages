@@ -1,5 +1,7 @@
 import * as PgClient from '@effect/sql-pg/PgClient'
+import { describeError } from '@opulonjs/core'
 import { betterAuth } from 'better-auth'
+import { isAPIError } from 'better-auth/api'
 import { Config, Context, Effect, Layer, Option, Redacted } from 'effect'
 import { PostgresDialect } from 'kysely'
 import pg from 'pg'
@@ -94,6 +96,7 @@ export class BetterAuth extends Context.Service<
       }) {
         const config = yield* Effect.orDie(usersConfig)
         const pool = yield* getPool
+        const context = yield* Effect.context<never>()
         const origin = new URL(config.baseUrl).origin
         // The stored hash this call's sign-in verified; its session carries it as a stamp.
         let verifiedHash: string | undefined
@@ -109,6 +112,24 @@ export class BetterAuth extends Context.Service<
           secret: Redacted.value(config.secret),
           trustedOrigins: [origin],
           telemetry: { enabled: false },
+          // Its messages quote request data (an origin, a Postgres error naming a user), so they
+          // are dropped: our log gets the level and the names and codes of what it passed.
+          logger: {
+            log: (level, _message, ...args) =>
+              void Effect.runForkWith(context)(
+                (level === 'error'
+                  ? Effect.logError
+                  : level === 'warn'
+                    ? Effect.logWarning
+                    : Effect.logDebug)(
+                  'better-auth',
+                  args.map((arg) => describeError(arg)),
+                ),
+              ),
+          },
+          // An unexpected error rejects the handler instead of answering 500 here (which also
+          // printed it whole): the request dies, and the Worker logs its cause redacted.
+          onAPIError: { throw: true },
           emailAndPassword: {
             enabled: true,
             disableSignUp: true,
@@ -156,6 +177,9 @@ export class BetterAuth extends Context.Service<
             },
           },
           advanced: {
+            // One query per read, and no fallback join: that path prints a failed query's error
+            // whole with console.error, past the logger above.
+            database: { joins: true },
             ipAddress: { ipAddressHeaders: ['cf-connecting-ip'] },
             useSecureCookies: origin.startsWith('https:'),
           },
@@ -206,9 +230,15 @@ export class BetterAuth extends Context.Service<
         session: Effect.fn('BetterAuth.session')(function* (headers) {
           const auth = yield* make({})
           const result = yield* Effect.promise(() =>
-            auth.api.getSession({ headers, returnHeaders: true }),
+            auth.api
+              .getSession({ headers, returnHeaders: true })
+              // A session revoked between its read and its refresh: signed out, not a failure.
+              .catch((error: unknown) => {
+                if (isAPIError(error) && error.status === 'UNAUTHORIZED') return undefined
+                throw error
+              }),
           )
-          if (!result.response) return undefined
+          if (!result?.response) return undefined
           return {
             userId: result.response.user.id,
             setCookies: result.headers.getSetCookie(),

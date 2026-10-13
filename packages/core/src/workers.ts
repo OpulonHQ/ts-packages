@@ -5,32 +5,18 @@ import * as HttpServer from 'effect/http/HttpServer'
 import * as HttpServerError from 'effect/http/HttpServerError'
 import { Background } from './background.ts'
 import { BuildId, type ComposedServer } from './compose.ts'
+import { describeError } from './redact.ts'
 import { runDueTasks } from './tasks.ts'
 
 export { serveAdmin } from './admin-assets.ts'
 export type { AssetsBinding } from './admin-assets.ts'
 
-/**
- * A failure's names and codes (`_tag` or `name`, then `code`, e.g. a SQLSTATE), nested causes
- * included. Never messages or stacks: they can carry user data (a Postgres error quotes the
- * value it rejected; a schema error's stack names the input path).
- */
-const describe = (error: unknown, depth = 0): Record<string, unknown> => {
-  if (typeof error !== 'object' || error === null) return { error: typeof error }
-  const e = error as { _tag?: unknown; name?: unknown; code?: unknown; cause?: unknown }
-  return {
-    error: String(e._tag ?? e.name ?? 'unknown'),
-    ...(typeof e.code === 'string' ? { code: e.code } : {}),
-    ...(e.cause !== undefined && depth < 3 ? { cause: describe(e.cause, depth + 1) } : {}),
-  }
-}
-
 const redact = (cause: Cause.Cause<unknown>) =>
   cause.reasons.flatMap((reason) =>
     Cause.isDieReason(reason)
-      ? [describe(reason.defect)]
+      ? [describeError(reason.defect)]
       : Cause.isFailReason(reason)
-        ? [describe(reason.error)]
+        ? [describeError(reason.error)]
         : [],
   )
 
