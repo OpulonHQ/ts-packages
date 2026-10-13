@@ -234,8 +234,10 @@ export default async (ctx) => {
   )
   await page.reload()
   await picker.getByRole('button', { name: 'Remove Paging 045', exact: true }).waitFor()
+  await picker.evaluate((element) => element.scrollIntoView({ block: 'start' }))
   await shot('reference-persisted')
   await page.setViewportSize({ width: 390, height: 844 })
+  await picker.evaluate((element) => element.scrollIntoView({ block: 'start' }))
   await shot('reference-phone')
   await page.setViewportSize({ width: 1280, height: 800 })
   await api('PUT', '/cms/settings/draft', {
