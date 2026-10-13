@@ -118,6 +118,10 @@ async function checkPublicSite(scratch: string) {
 // imports .vue files): every admin module must have a server module of the same id;
 // server-only modules are fine.
 const adminCheck = `
+import { spawn } from 'node:child_process'
+import { readdirSync, readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { resolve } from 'node:path'
 import { build, createServer } from 'vite'
 import { opulonAdmin } from '@opulonjs/admin/vite'
 const { brand } = await import('./host/admin/brand.ts')
@@ -130,10 +134,13 @@ const checkOverrides = {
     if (modules.some((id) => id.split('?')[0].endsWith('/ui/dist/components/EmptyState.mjs'))) {
       throw new Error('kit internal import bypassed the host EmptyState override')
     }
-    const dashboard = chunks.find((chunk) => chunk.moduleIds.some((id) => id.endsWith('/admin/overrides/Dashboard.vue')))
-    if (!dashboard || dashboard.isEntry || !dashboard.isDynamicEntry) throw new Error('host Dashboard override is not a separate lazy chunk')
-    const originalDashboard = chunks.find((chunk) => chunk.moduleIds.some((id) => id.includes('/admin/dist/') && id.split('/').pop().startsWith('Dashboard-')))
-    if (!originalDashboard || originalDashboard.isEntry || !originalDashboard.isDynamicEntry) throw new Error('original Dashboard is not in an unused lazy chunk')
+    const lazyChunk = (match, message) => {
+      const chunk = chunks.find((chunk) => chunk.moduleIds.some(match))
+      if (!chunk || chunk.isEntry || !chunk.isDynamicEntry) throw new Error(message)
+      return chunk
+    }
+    const dashboard = lazyChunk((id) => id.endsWith('/admin/overrides/Dashboard.vue'), 'host Dashboard override is not a separate lazy chunk')
+    const originalDashboard = lazyChunk((id) => id.includes('/admin/dist/') && id.split('/').pop().startsWith('Dashboard-'), 'original Dashboard is not in an unused lazy chunk')
     console.log('ok dashboard chunks: host', dashboard.fileName, 'original', originalDashboard.fileName)
   },
 }
@@ -142,7 +149,6 @@ await build({ ...config, build: { outDir: '../../admin-dist', emptyOutDir: true 
 console.log('ok admin build from the packed tarballs')
 // Every icon a screen names is in the offline bundle (as an icon or an alias): package screens
 // are found without sources.
-const { readdirSync, readFileSync } = await import('node:fs')
 const js = readdirSync('admin-dist/assets').filter((f) => f.endsWith('.js'))
   .map((f) => readFileSync('admin-dist/assets/' + f, 'utf8')).join('\\n')
 if (!js.includes('Fixture dashboard override')) throw new Error('packed admin screen override missing')
@@ -153,16 +159,9 @@ const bundled = new Set([...js.matchAll(/[{,](?:"([a-z0-9-]+)"|([a-z0-9]+)):\\{(
 const missingIcons = [...used].filter((name) => !bundled.has(name))
 if (missingIcons.length > 0) throw new Error('icons missing from the admin bundle: ' + missingIcons.join(', '))
 console.log('ok admin bundles all', used.size, 'icons its screens use')
-const { createServer: createNetServer } = await import('node:net')
-const port = await new Promise((done) => {
-  const probe = createNetServer().listen(0, '127.0.0.1', () => {
-    const { port } = probe.address()
-    probe.close(() => done(port))
-  })
-})
 const vite = await createServer({
   ...config,
-  server: { port, strictPort: true, host: '127.0.0.1' },
+  server: { port: 0, host: '127.0.0.1' },
   // Every @opulonjs package: module admin entries import the shell and kit (virtual modules).
   ssr: { noExternal: [/^@opulonjs\\//, '@nuxt/ui'] },
 })
@@ -171,8 +170,6 @@ let adminModules
 try {
   const transformed = await vite.transformRequest('/modules.ts')
   if (!transformed || transformed.code.split('\\n').some((line) => line.includes('.vite/deps/') && line.includes('opulonjs'))) throw new Error('published admin module was prebundled in dev')
-  const { createRequire } = await import('node:module')
-  const { resolve } = await import('node:path')
   const require = createRequire(resolve('package.json'))
   const table = await vite.transformRequest('/@fs/' + require.resolve('@opulonjs/ui/components/DataTable'))
   if (!table?.code.includes('/overrides/EmptyState.vue')) throw new Error('published DataTable bypassed the host override in dev')
@@ -205,8 +202,7 @@ try {
   const twice = [...raw].filter((name) => bundled.has(name))
   if (twice.length > 0) throw new Error('admin dev loads packages both prebundled and raw: ' + twice.join(', '))
   console.log('ok admin dev loads', raw.size, 'packages raw and', bundled.size, 'prebundled, none in both')
-  const { spawn } = await import('node:child_process')
-  const screen = spawn(process.execPath, ['--import', './dev-modules.mjs', 'dev-screen.mjs', 'http://127.0.0.1:' + port + vite.config.base, vite.config.base + '@fs' + require.resolve('@opulonjs/admin')], { stdio: 'inherit' })
+  const screen = spawn(process.execPath, ['--import', './dev-modules.mjs', 'dev-screen.mjs', 'http://127.0.0.1:' + vite.httpServer.address().port + vite.config.base, vite.config.base + '@fs' + require.resolve('@opulonjs/admin')], { stdio: 'inherit' })
   if ((await new Promise((done) => screen.on('exit', done))) !== 0) throw new Error('the cms Collections screen failed to load its items in dev')
   console.log('ok admin dev renders the cms Collections screen with its decoded API response')
 } finally { await vite.close() }
@@ -257,6 +253,9 @@ process.exit(0)
 
 const root = resolve(import.meta.dirname, '..')
 
+const rootPackage = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as {
+  devDependencies: Record<string, string>
+}
 const hostDependencies = () => {
   const pkg = JSON.parse(readFileSync(join(root, 'fixtures/host/package.json'), 'utf8')) as {
     dependencies: Record<string, string>
@@ -267,14 +266,6 @@ const hostDependencies = () => {
       ([, spec]) => !spec.startsWith('workspace:'),
     ),
   )
-}
-const rootDevDependency = (name: string) => {
-  const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as {
-    devDependencies: Record<string, string>
-  }
-  const spec = pkg.devDependencies[name]
-  if (!spec) throw new Error(`${name} is not a root devDependency`)
-  return spec
 }
 // The repo's install-script decisions, so the scratch install does not stop on them.
 const allowBuilds =
@@ -318,7 +309,7 @@ try {
       dependencies: {
         ...hostDependencies(),
         ...tarballs,
-        'happy-dom': rootDevDependency('happy-dom'),
+        'happy-dom': rootPackage.devDependencies['happy-dom'],
       },
     }),
   )

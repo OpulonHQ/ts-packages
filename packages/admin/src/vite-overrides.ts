@@ -77,6 +77,13 @@ export const adminOverrides = (
   const warned = new Set<string>()
   const unchecked = new Set<string>()
   const missingHeaders = new Set<string>()
+  const warnMissingHeader = (context: { warn: (message: string) => void }, file: string) => {
+    if (missingHeaders.has(file)) return
+    missingHeaders.add(file)
+    context.warn(
+      `opulonAdmin: ${file} is missing @opulonjs/source header; record the copied package version.`,
+    )
+  }
 
   return {
     name: '@opulonjs/admin-overrides',
@@ -123,12 +130,7 @@ export const adminOverrides = (
       missingHeaders.clear()
       versions.clear()
       for (const [canonical, target] of canonicalToHost) {
-        if (!provenance(readFileSync(target, 'utf8'))) {
-          missingHeaders.add(target)
-          this.warn(
-            `opulonAdmin: ${target} is missing @opulonjs/source header; record the copied package version.`,
-          )
-        }
+        if (!provenance(readFileSync(target, 'utf8'))) warnMissingHeader(this, target)
         const original = await this.resolve(canonical, join(config.root, 'index.html'), {
           skipSelf: true,
         })
@@ -162,35 +164,26 @@ export const adminOverrides = (
         !isAbsolute(hostPath) &&
         !hostPath.startsWith('../') &&
         hostPath.split('/').slice(0, -1).includes('overrides')
-      if (!header && screenCopy && !missingHeaders.has(file)) {
-        missingHeaders.add(file)
-        this.warn(
-          `opulonAdmin: ${file} is missing @opulonjs/source header; record the copied package version.`,
-        )
-      }
+      if (!header && screenCopy) warnMissingHeader(this, file)
       if (!header || warned.has(file)) return
       if (!versions.has(header.packageName)) {
-        let manifest: string | undefined
-        for (const require of [
+        const resolvers = [
           createRequire(join(config.root, 'package.json')),
           createRequire(import.meta.url),
-        ]) {
-          try {
-            manifest = require.resolve(`${header.packageName}/package.json`)
-            break
-          } catch {
-            continue
-          }
-        }
-        const parsed: unknown = manifest ? JSON.parse(readFileSync(manifest, 'utf8')) : undefined
-        const version =
-          parsed &&
-          typeof parsed === 'object' &&
-          'version' in parsed &&
-          typeof parsed.version === 'string'
-            ? parsed.version
-            : undefined
-        versions.set(header.packageName, version)
+        ]
+        const manifest = resolvers
+          .map((require) => {
+            try {
+              return require.resolve(`${header.packageName}/package.json`)
+            } catch {
+              return undefined
+            }
+          })
+          .find((path) => path !== undefined)
+        const { version } = manifest
+          ? (JSON.parse(readFileSync(manifest, 'utf8')) as { version?: unknown })
+          : {}
+        versions.set(header.packageName, typeof version === 'string' ? version : undefined)
       }
       const installed = versions.get(header.packageName)
       if (!installed && !unchecked.has(header.packageName)) {

@@ -6,10 +6,10 @@ import {
   computed,
   createApp,
   defineAsyncComponent,
-  defineComponent,
   isVNode,
   shallowRef,
   type App,
+  type FunctionalComponent,
 } from 'vue'
 import { createI18n } from 'vue-i18n'
 import {
@@ -31,17 +31,14 @@ import {
   type Status,
 } from './state.ts'
 
+type RouteLoader = () => Promise<RouteComponent | { readonly default: RouteComponent }>
+
 export interface AdminOptions {
   /** The same brand object the host passes to `opulonAdmin({ brand })` in its Vite config. */
   readonly brand: Brand
   readonly modules: ReadonlyArray<AdminModule>
   /** Host components by route name; the route's path, access and navigation stay intact. */
-  readonly overrides?: Readonly<
-    Record<
-      string,
-      RouteComponent | (() => Promise<RouteComponent | { readonly default: RouteComponent }>)
-    >
-  >
+  readonly overrides?: Readonly<Record<string, RouteComponent | RouteLoader>>
   /** Host messages by admin locale, merged over the shell's; a new locale key adds a locale. */
   readonly messages?: Readonly<Record<string, Messages>>
   /** Host nav groups (`admin.groups.<id>` labels) by order; built-ins are 100, 200, 300. */
@@ -65,31 +62,20 @@ declare module 'vue-router' {
 
 const builtInGroups: Readonly<Record<string, number>> = { content: 100, users: 200, settings: 300 }
 
-const isRouteComponent = (
-  component:
-    RouteComponent | (() => Promise<RouteComponent | { readonly default: RouteComponent }>),
-): component is RouteComponent =>
+const isRouteComponent = (component: RouteComponent | RouteLoader): component is RouteComponent =>
   typeof component !== 'function' ||
   'displayName' in component ||
   'props' in component ||
   '__vccOpts' in component
 
-const lazy =
-  (component: () => Promise<RouteComponent | { readonly default: RouteComponent }>) => () =>
-    Promise.resolve(component()).then((loaded) => {
-      if (isVNode(loaded))
-        return defineComponent({
-          render: () => {
-            const rendered = component()
-            if (!isVNode(rendered))
-              throw new Error(
-                'createAdmin: functional route override must return a VNode; use defineComponent or displayName',
-              )
-            return rendered
-          },
-        })
-      return 'default' in loaded ? loaded.default : loaded
-    })
+const lazy = (component: RouteLoader) => () =>
+  Promise.resolve(component()).then((loaded): RouteComponent =>
+    isVNode(loaded)
+      ? (component as FunctionalComponent)
+      : 'default' in loaded
+        ? loaded.default
+        : loaded,
+  )
 
 const injected = (name: string) =>
   document.querySelector<HTMLMetaElement>(`meta[name="${name}"]`)?.content

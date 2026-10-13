@@ -45,16 +45,12 @@ const hostPackages = (root: string) => {
   const hostDir = packageDir(root)
   if (!hostDir) return undefined
   const manifest = join(hostDir, 'package.json')
-  const host: unknown = JSON.parse(readFileSync(manifest, 'utf8'))
-  if (!host || typeof host !== 'object')
-    throw new Error(`opulonAdmin: invalid package.json at ${manifest}`)
-  const names = [
-    'dependencies' in host ? host.dependencies : undefined,
-    'devDependencies' in host ? host.devDependencies : undefined,
-  ].flatMap((dependencies) =>
-    dependencies && typeof dependencies === 'object' ? Object.keys(dependencies) : [],
-  )
-  return { manifest, names: [...new Set(names.filter((name) => name.startsWith('@opulonjs/')))] }
+  const host = JSON.parse(readFileSync(manifest, 'utf8')) as {
+    dependencies?: Record<string, string>
+    devDependencies?: Record<string, string>
+  }
+  const names = Object.keys({ ...host.dependencies, ...host.devDependencies })
+  return { manifest, names: names.filter((name) => name.startsWith('@opulonjs/')) }
 }
 
 const moduleSources = (root: string): Array<string> => {
