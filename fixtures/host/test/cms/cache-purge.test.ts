@@ -1,5 +1,6 @@
 import { CachePurge, cloudflareCachePurge } from '@opulonjs/cms/server'
-import { ConfigProvider, Effect, Layer } from 'effect'
+import { ConfigProvider, Effect, Fiber, Layer } from 'effect'
+import * as TestClock from 'effect/testing/TestClock'
 import { expect, test } from 'vitest'
 
 /** A fake Cloudflare API: records requests and answers with `reply`. Never a real zone. */
@@ -60,4 +61,30 @@ test('a refused or failed purge is logged, never failing the caller', async () =
   const down: typeof globalThis.fetch = () => Promise.reject(new Error('network down'))
   await expect(purge(env, down, ['cms'])).resolves.toBeUndefined()
   expect(refused.requests).toHaveLength(1)
+})
+
+test('one deadline covers the answer body too: a stalled body is cancelled and the purge ends', async () => {
+  const called = Promise.withResolvers<void>()
+  let cancelled = false
+  const stalled: typeof globalThis.fetch = async () => {
+    called.resolve()
+    return new Response(new ReadableStream({ cancel: () => void (cancelled = true) }))
+  }
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const cache = yield* CachePurge
+      const fiber = yield* Effect.forkChild(cache.purge(['cms']))
+      yield* Effect.promise(() => called.promise)
+      yield* TestClock.adjust('11 seconds')
+      yield* Fiber.join(fiber)
+    }).pipe(
+      Effect.provide(
+        cloudflareCachePurge({ fetch: stalled }).pipe(
+          Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord(env))),
+        ),
+      ),
+      Effect.provide(TestClock.layer()),
+    ),
+  )
+  expect(cancelled).toBe(true)
 })

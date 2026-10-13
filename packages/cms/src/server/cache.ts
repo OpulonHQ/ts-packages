@@ -56,8 +56,11 @@ export const cloudflareCachePurge = (options: { readonly fetch?: typeof fetch } 
       const url = `https://api.cloudflare.com/client/v4/zones/${encodeURIComponent(zone.value)}/purge_cache`
       const purgeBatch = (tags: ReadonlyArray<string>) =>
         Effect.gen(function* () {
-          const response = yield* Effect.tryPromise((signal) =>
-            doFetch(url, {
+          // One deadline for the request and its body: Workers keep `waitUntil` work alive only
+          // briefly, so a stalled answer must not hold the purge. Expiry aborts the signal,
+          // which cancels the body read.
+          const { response, body } = yield* Effect.tryPromise(async (signal) => {
+            const response = await doFetch(url, {
               method: 'POST',
               signal,
               headers: {
@@ -65,9 +68,15 @@ export const cloudflareCachePurge = (options: { readonly fetch?: typeof fetch } 
                 'content-type': 'application/json',
               },
               body: JSON.stringify({ tags }),
-            }),
-          ).pipe(Effect.timeout('10 seconds'))
-          const body = yield* Effect.promise(() => response.json().catch((): unknown => undefined))
+            })
+            // Piped with the signal: an abort cancels the body stream.
+            const body = await new Response(
+              response.body?.pipeThrough(new TransformStream(), { signal }),
+            )
+              .json()
+              .catch((): unknown => undefined)
+            return { response, body }
+          }).pipe(Effect.timeout('10 seconds'))
           const ok = Schema.decodeUnknownOption(PurgeResponse)(body).pipe(
             Option.exists((r) => r.success),
           )
