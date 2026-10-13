@@ -8,7 +8,7 @@
 // */5 cron tick to sweep. Every step prints its evidence; the first failure exits non-zero.
 // Nothing here is account-specific; ids and URLs come from the environment.
 import { execFileSync } from 'node:child_process'
-import { randomBytes } from 'node:crypto'
+import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import pg from 'pg'
 
@@ -82,15 +82,31 @@ async function sql<Row>(text: string, values: ReadonlyArray<unknown> = []): Prom
 
 let token = ''
 await step('bootstrap invite (opulon users invite-super-admin)', async () => {
-  const stdout = execFileSync(
-    process.execPath,
-    [cli, 'users', 'invite-super-admin', '--server', 'server/opulon.ts', '--email', email],
-    {
-      cwd: host,
-      encoding: 'utf8',
-      env: { ...process.env, DATABASE_URL_DIRECT: databaseUrl, USERS_BASE_URL: base },
-    },
-  )
+  let stdout: string
+  try {
+    stdout = execFileSync(
+      process.execPath,
+      [cli, 'users', 'invite-super-admin', '--server', 'server/opulon.ts', '--email', email],
+      {
+        cwd: host,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, DATABASE_URL_DIRECT: databaseUrl, USERS_BASE_URL: base },
+      },
+    )
+  } catch (error) {
+    // A host smoked before (the permanent test host) already has its Super admin, and the CLI
+    // only bootstraps the first one: invite this run's owner the way the CLI would.
+    if (!String((error as { stderr?: unknown }).stderr).includes('a Super admin already exists'))
+      throw error
+    token = randomBytes(32).toString('base64url')
+    await sql(
+      `insert into users.invitation (id, email, role_ids, token_hash, expires_at)
+       values ($1, $2, '{super_admin}', $3, now() + interval '1 hour')`,
+      [randomUUID(), email, createHash('sha256').update(token).digest('hex')],
+    )
+    return 'already bootstrapped: Super admin invitation inserted directly'
+  }
   const link = /\/admin\/accept-invitation#token=(\S+)/.exec(stdout)
   check(link, `no invitation link in CLI output: ${stdout}`)
   token = decodeURIComponent(link[1]!)
