@@ -1,7 +1,7 @@
 import signedIn from './signed-in.mjs'
 
 export default async (ctx) => {
-  const { page, base, shot, check } = ctx
+  const { page, base, shot, check, args } = ctx
   await signedIn(ctx)
   const status = async () => {
     const response = await page.request.get(`${base}/api/cache-purges`)
@@ -10,7 +10,7 @@ export default async (ctx) => {
   }
   const before = await status()
   check(before.summary.total > 0, 'refused purges survived the workerd restart')
-  await page.goto(`${base}/admin/cms/pages`)
+  await page.goto(`${base}/admin${args.route ?? '/cms/pages'}`)
   await page.getByText('Live site may show the previous version', { exact: false }).waitFor()
   await shot('pending-before-sweep')
   const scheduled = await page.request.get(`${base}/__scheduled?cron=*/5+*+*+*+*`)

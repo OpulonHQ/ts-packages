@@ -7,6 +7,7 @@ const png = Buffer.from(
 
 export default async (ctx) => {
   const { page, base, shot, args, check } = ctx
+  if (args.mediaOnly === 'yes') await page.context().clearCookies()
   await signedIn(ctx)
   const run = Date.now().toString(36)
   const name = `purge-${run}.png`
@@ -54,6 +55,49 @@ export default async (ctx) => {
   const before = await page.request.get(`${base}/api/cms/resolve?path=${path}`)
   const tags = (before.headers()['cache-tag'] ?? '').split(',')
   check(tags.includes(`media:${media.id}`), 'resolved answer carries the media Cache-Tag')
+  if (args.mediaOnly === 'yes') {
+    const me = await (await page.request.get(`${base}/api/me`)).json()
+    const permissions = ['media.view', 'media.upload', 'media.archive']
+    const createdRole = await page.request.post(`${base}/api/users/roles`, {
+      headers: { origin: base },
+      data: { name: `Media purge proof ${run}`, permissions },
+    })
+    check(createdRole.status() === 200, 'create media editor role through admin API')
+    const role = await createdRole.json()
+    const manager = await page.context().browser().newContext()
+    const signed = await manager.request.post(`${base}/api/users/auth/sign-in`, {
+      headers: { origin: base },
+      data: { email: args.managerEmail, password: args.managerPassword },
+    })
+    check(signed.status() === 200, 'sign in the other fixture admin to assign editor roles')
+    const assigned = await manager.request.put(`${base}/api/users/users/${me.user.id}/roles`, {
+      headers: { origin: base },
+      data: { roleIds: [role.id] },
+    })
+    check(
+      assigned.status() === 204,
+      `assign media-only role through admin API (${assigned.status()}, ${await assigned.text()})`,
+    )
+    await manager.close()
+    const narrowed = await (await page.request.get(`${base}/api/me`)).json()
+    check(
+      narrowed.permissions.length === 3 &&
+        narrowed.permissions.every((key) => permissions.includes(key)),
+      'current editor has only media permissions',
+    )
+    check(
+      (await page.request.get(`${base}/api/cms/pages`)).status() === 403,
+      'media editor cannot read CMS admin pages',
+    )
+    check(
+      (await page.request.get(`${base}/api/cache-purges`)).status() === 200,
+      'media editor can read authorized core purge status',
+    )
+    await page.reload()
+    await page.getByRole('table', { name: 'Media library' }).waitFor()
+    await page.getByRole('row').filter({ hasText: name }).click()
+    await details.waitFor()
+  }
   await details.getByRole('textbox', { name: 'Alt text' }).fill(`Purge proof ${run}`)
   await details.getByRole('textbox', { name: 'Caption', exact: true }).fill(`Caption ${run}`)
   await shot('metadata-before-save')
@@ -70,7 +114,7 @@ export default async (ctx) => {
     body.sections[0].data.image.alt === `Purge proof ${run}`,
     'fresh Read API resolves edited alt text',
   )
-  await page.goto(`${base}/admin${args.route ?? '/cms/pages'}`)
+  if (args.mediaOnly !== 'yes') await page.goto(`${base}/admin${args.route ?? '/cms/pages'}`)
   if (args.failure === 'yes') {
     const notice = page
       .getByRole('status')
@@ -109,4 +153,13 @@ export default async (ctx) => {
   await shot(args.failure === 'yes' ? 'purge-failure-visible' : 'purge-success')
   await page.setViewportSize({ width: 390, height: 844 })
   await shot('purge-mobile')
+  if (args.mediaOnly === 'yes') {
+    await page.keyboard.press('Escape')
+    await page.getByRole('table', { name: 'Media library' }).waitFor()
+    await page
+      .getByRole('status')
+      .filter({ hasText: 'Live site may show the previous version' })
+      .waitFor()
+    await shot('media-library-purge-warning')
+  }
 }
