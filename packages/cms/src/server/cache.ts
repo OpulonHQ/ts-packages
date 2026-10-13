@@ -1,5 +1,6 @@
 import { Background } from '@opulonjs/core'
-import { Config, Context, Effect, Layer, Option, Redacted, Schema } from 'effect'
+import type { WorkerContext } from '@opulonjs/core/workers'
+import { Context, Effect, Layer } from 'effect'
 
 /**
  * Cache-Tags of the Read API (TSPACK-11 §12). Every answer carries `cms`, plus:
@@ -23,7 +24,7 @@ export const cacheTags = {
 
 /**
  * Purges edge-cached public responses by Cache-Tag after a publish family write commits. The
- * default does nothing; a host puts `cloudflareCachePurge()` (or its own purger) in `infra`.
+ * default does nothing; a host puts `workersCachePurge(ctx)` (or its own purger) in `infra`.
  */
 export const CachePurge = Context.Reference<{
   readonly purge: (tags: ReadonlyArray<string>) => Effect.Effect<void>
@@ -36,67 +37,45 @@ export const purgeAfterCommit = (tags: ReadonlyArray<string>) =>
     yield* Background.afterCommit(cache.purge(tags))
   })
 
-const PurgeResponse = Schema.Struct({ success: Schema.Boolean })
-/** Tags per purge request (Cloudflare's per-call limit). */
+/** The Worker's own cache, as an invocation's `ctx.cache` holds it. */
+export type WorkersCache = NonNullable<WorkerContext['cache']>
+
+/** Tags per purge call (Cloudflare's per-request limit). */
 const batch = 100
 
 /**
- * Purges by Cache-Tag through the Cloudflare API (`POST /zones/<zone>/purge_cache`), with the
- * zone id from `CMS_CLOUDFLARE_ZONE_ID` and a token holding the zone's Cache Purge permission
- * from the `CMS_CLOUDFLARE_API_TOKEN` secret. Without both it does nothing. A failed purge is
- * logged and not retried: cached answers then expire with their `s-maxage` (one day).
+ * Purges by Cache-Tag from the Worker's own cache (Workers Cache) through the invocation's
+ * `ctx.cache`, so the Worker needs `"cache": { "enabled": true }` in its Wrangler config and no
+ * token. A purge clears what this Worker cached: the Read API answers and, when the public site
+ * runs in the same Worker and calls it in-process with its own `ctx`, the site's HTML. Without
+ * `ctx.cache` it does nothing. A refused (rate-limited) or failed purge is logged and not retried:
+ * cached answers then expire with their `s-maxage` (one day).
  */
-export const cloudflareCachePurge = (options: { readonly fetch?: typeof fetch } = {}) =>
-  Layer.effect(
-    CachePurge,
-    Effect.gen(function* () {
-      const zone = yield* Config.option(Config.String('CMS_CLOUDFLARE_ZONE_ID'))
-      const token = yield* Config.option(Config.Redacted('CMS_CLOUDFLARE_API_TOKEN'))
-      const doFetch = options.fetch ?? fetch
-      if (Option.isNone(zone) || Option.isNone(token)) return { purge: () => Effect.void }
-      const url = `https://api.cloudflare.com/client/v4/zones/${encodeURIComponent(zone.value)}/purge_cache`
-      const purgeBatch = (tags: ReadonlyArray<string>) =>
-        Effect.gen(function* () {
-          // One deadline for the request and its body: Workers keep `waitUntil` work alive only
-          // briefly, so a stalled answer must not hold the purge. Expiry aborts the signal,
-          // which cancels the body read.
-          const { response, body } = yield* Effect.tryPromise(async (signal) => {
-            const response = await doFetch(url, {
-              method: 'POST',
-              signal,
-              headers: {
-                authorization: `Bearer ${Redacted.value(token.value)}`,
-                'content-type': 'application/json',
-              },
-              body: JSON.stringify({ tags }),
-            })
-            // Piped with the signal: an abort cancels the body stream.
-            const body = await new Response(
-              response.body?.pipeThrough(new TransformStream(), { signal }),
-            )
-              .json()
-              .catch((): unknown => undefined)
-            return { response, body }
-          }).pipe(Effect.timeout('10 seconds'))
-          const ok = Schema.decodeUnknownOption(PurgeResponse)(body).pipe(
-            Option.exists((r) => r.success),
-          )
-          if (!response.ok || !ok)
-            return yield* Effect.fail(new Error(`Cloudflare purge failed (${response.status})`))
-        })
-      return {
-        purge: (tags: ReadonlyArray<string>) =>
-          Effect.forEach(
-            Array.from({ length: Math.ceil(tags.length / batch) }, (_, i) =>
-              tags.slice(i * batch, (i + 1) * batch),
-            ),
-            purgeBatch,
-            { discard: true },
-          ).pipe(
-            Effect.catchCause((cause) =>
-              Effect.logError('cms: cache purge failed', { tags: tags.join(',') }, cause),
-            ),
-          ),
-      }
-    }),
-  )
+export const workersCachePurge = (ctx: { readonly cache?: WorkersCache } | undefined) =>
+  Layer.succeed(CachePurge, {
+    purge: (tags: ReadonlyArray<string>) => {
+      const cache = ctx?.cache
+      if (!cache) return Effect.void
+      return Effect.forEach(
+        Array.from({ length: Math.ceil(tags.length / batch) }, (_, i) =>
+          tags.slice(i * batch, (i + 1) * batch),
+        ),
+        (batchTags) =>
+          Effect.gen(function* () {
+            // Workers keep `waitUntil` work alive only briefly: a stalled purge must not hold it.
+            const result = yield* Effect.tryPromise(() =>
+              cache.purge({ tags: [...batchTags] }),
+            ).pipe(Effect.timeout('10 seconds'))
+            if (!result.success) {
+              const codes = result.errors.map((e) => e.code).join(',')
+              return yield* Effect.fail(new Error(`Workers Cache purge refused (${codes})`))
+            }
+          }),
+        { discard: true },
+      ).pipe(
+        Effect.catchCause((cause) =>
+          Effect.logError('cms: cache purge failed', { tags: tags.join(',') }, cause),
+        ),
+      )
+    },
+  })

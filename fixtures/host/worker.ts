@@ -5,7 +5,7 @@ import {
   serveAdmin,
   type WorkerContext,
 } from '@opulonjs/core/workers'
-import { cloudflareCachePurge } from '@opulonjs/cms/server'
+import { workersCachePurge } from '@opulonjs/cms/server'
 import { Mailer } from '@opulonjs/emails/server'
 import {
   type R2BucketLike,
@@ -33,14 +33,14 @@ export interface Env {
 /** The fixture Worker with a given Mailer; tests pass `captureMailer().layer`. */
 export const hostWorker = (mailer: Layer.Layer<Mailer> = Mailer.log) => {
   const opulon = createWorker(server, {
-    infra: (env: Env) =>
+    infra: (env: Env, ctx) =>
       Layer.mergeAll(
         PgFromHyperdrive(env.HYPERDRIVE),
         R2MediaStorage(env.MEDIA_BUCKET),
         mailer,
-        // Purges Read API Cache-Tags on publish once CMS_CLOUDFLARE_ZONE_ID and the
-        // CMS_CLOUDFLARE_API_TOKEN secret are set; does nothing without them.
-        cloudflareCachePurge(),
+        // Purges Read API (and in-process SSR) Cache-Tags on publish from this Worker's own
+        // Workers Cache (`cache.enabled` in wrangler.jsonc).
+        workersCachePurge(ctx),
       ),
     buildId: (env) => env.OPULON_BUILD_ID,
   })
