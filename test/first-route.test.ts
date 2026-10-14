@@ -22,9 +22,14 @@ const link = document.createElement('link')
 link.rel = 'modulepreload'
 link.href = '/admin/assets/editor.js'
 document.head.append(link)
+const relative = document.createElement('link')
+relative.rel = 'modulepreload'
+relative.href = 'assets/table.js'
+document.head.append(relative)
 document.querySelector('#app').innerHTML = '<section aria-label="Dashboard"></section>'`,
     'assets/shared.js': 'export {}',
     'assets/editor.js': 'export {}',
+    'assets/table.js': 'export {}',
     'assets/unused.js': 'export {}',
   })
   expect(await firstRoute(root, {})).toEqual([
@@ -32,5 +37,6 @@ document.querySelector('#app').innerHTML = '<section aria-label="Dashboard"></se
     'assets/editor.js',
     'assets/main.js',
     'assets/shared.js',
+    'assets/table.js',
   ])
 }, 30_000)

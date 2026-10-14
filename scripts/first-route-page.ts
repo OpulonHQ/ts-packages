@@ -33,6 +33,8 @@ if (!dashboard()) {
 await new Promise((done) => setTimeout(done, 2_000))
 const preloads = [...window.document.querySelectorAll('link[rel="modulepreload"]')]
 console.log(
-  JSON.stringify(preloads.map((link) => new URL(link.getAttribute('href')!, origin).pathname)),
+  JSON.stringify(
+    preloads.map((link) => new URL(link.getAttribute('href')!, window.location.href).pathname),
+  ),
 )
 process.exit(0)
