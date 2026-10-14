@@ -1,32 +1,20 @@
-import { createAdmin } from '@opulonjs/admin'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import { useTestDatabase } from '../../../test/postgres/index.ts'
-import { brand } from '../admin/brand.ts'
 import { adminModules } from '../admin/modules.ts'
+import { useAdminLifetime } from './admin-lifetime.ts'
 import { makeHost, seedUser, tokenFrom } from './support/users.ts'
 
 // Runs in the `admin` vitest project: the users screens in happy-dom, against the real Worker.
+const lifetime = useAdminLifetime()
 const db = useTestDatabase()
-const host = makeHost(() => db.url, { buildId: 'b1' })
+const host = lifetime.track(makeHost(() => db.url, { buildId: 'b1' }))
 
-let mounted: { unmount: () => void } | undefined
+let unmountPrevious = () => {}
 function mountAdmin(path: string, jar = { cookie: '' }) {
-  mounted?.unmount()
-  history.replaceState(null, '', path)
-  document.body.innerHTML = '<div id="app"></div>'
-  const app = createAdmin({
-    brand,
-    modules: adminModules,
-    buildId: 'b1',
-    fetch: host.browserFetch(jar),
-  })
-  app.mount('#app')
-  mounted = app
-  onTestFinished(() => {
-    if (mounted === app) app.unmount()
-    mounted = undefined
-  })
-  return { jar, text: () => document.body.textContent ?? '' }
+  unmountPrevious()
+  const text = lifetime.mount(path, { buildId: 'b1', fetch: host.browserFetch(jar) })
+  unmountPrevious = text.unmount
+  return { jar, text }
 }
 
 const inputs = () => [...document.querySelectorAll('input')]
@@ -207,20 +195,13 @@ test.each([
     let reads = 0
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
     onTestFinished(() => error.mockRestore())
-    mounted?.unmount()
-    history.replaceState(null, '', path(user.id))
-    document.body.innerHTML = '<div id="app"></div>'
-    const app = createAdmin({
-      brand,
-      modules: adminModules,
+    lifetime.mount(path(user.id), {
       buildId: 'b1',
       fetch: async (input, init) =>
         String(input instanceof Request ? input.url : input).endsWith('/api/me') && ++reads > 1
           ? new Response('down', { status: 503 })
           : send(input, init),
     })
-    app.mount('#app')
-    onTestFinished(() => app.unmount())
     await expect.poll(() => button('Slovenčina')).toBeDefined()
     button('Slovenčina')!.click()
     await expect.poll(() => document.documentElement.lang).toBe('sk')
@@ -236,19 +217,13 @@ test.each([
   async (_, permissions, path) => {
     const user = await seedUser(db.url, { permissions, locale: 'en' })
     const jar = { cookie: await host.signIn(user.email, user.password) }
-    mounted?.unmount()
-    history.replaceState(null, '', path(user.id))
-    document.body.innerHTML = '<div id="app"></div>'
-    const app = createAdmin({
-      brand,
+    lifetime.mount(path(user.id), {
       modules: adminModules.map((m) =>
         m.auth ? { ...m, auth: { ...m.auth, setLocale: undefined } } : m,
       ),
       buildId: 'b1',
       fetch: host.browserFetch(jar),
     })
-    app.mount('#app')
-    onTestFinished(() => app.unmount())
     await expect.poll(() => button('Slovenčina')).toBeDefined()
     button('Slovenčina')!.click()
     await expect.poll(() => document.documentElement.lang).toBe('sk')

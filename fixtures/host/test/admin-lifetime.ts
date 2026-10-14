@@ -160,8 +160,14 @@ export const useAdminLifetime = () => {
         },
       })
       app.mount('#app')
-      apps.push(app)
-      return () => document.body.textContent ?? ''
+      let mounted = true
+      const unmount = () => {
+        if (!mounted) return
+        mounted = false
+        app.unmount()
+      }
+      apps.push({ unmount })
+      return Object.assign(() => document.body.textContent ?? '', { app, unmount })
     },
   }
 }
