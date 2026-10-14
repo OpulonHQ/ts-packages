@@ -184,38 +184,41 @@ test('dev transforms a published module screen through the host kit override', a
   expect(screen?.code).not.toContain('ui/dist/components/EmptyState')
 })
 
-test('dev serves published @opulonjs packages unbundled without overrides', async () => {
-  const fixture = host()
-  fixture.write(
-    'package.json',
-    JSON.stringify({ type: 'module', dependencies: { '@opulonjs/screen': '1.0.0' } }),
-  )
-  fixture.write(
-    'node_modules/@opulonjs/screen/package.json',
-    JSON.stringify({
-      name: '@opulonjs/screen',
-      version: '1.0.0',
-      type: 'module',
-      exports: './index.mjs',
-    }),
-  )
-  fixture.write('node_modules/@opulonjs/screen/index.mjs', 'export default "screen"')
-  fixture.write(
-    'entry.js',
-    "import Screen from '@opulonjs/screen'; import Empty from '@opulonjs/ui/components/EmptyState'; console.log(Screen, Empty)",
-  )
-  const server = await createServer(
-    fixture.config(
-      {},
-      { server: { middlewareMode: true }, optimizeDeps: { entries: ['entry.js'] } },
-    ),
-  )
-  onTestFinished(() => server.close())
-  const entry = await server.transformRequest('/entry.js')
-  expect(entry?.code).toContain('/node_modules/@opulonjs/screen/index.mjs')
-  expect(entry?.code).toContain('/node_modules/@opulonjs/ui/dist/components/EmptyState.mjs')
-  expect(entry?.code).not.toContain('/.vite/deps/')
-})
+test.each(['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'])(
+  'dev serves published @opulonjs packages unbundled without overrides: %s',
+  async (field) => {
+    const fixture = host()
+    fixture.write(
+      'package.json',
+      JSON.stringify({ type: 'module', [field]: { '@opulonjs/screen': '1.0.0' } }),
+    )
+    fixture.write(
+      'node_modules/@opulonjs/screen/package.json',
+      JSON.stringify({
+        name: '@opulonjs/screen',
+        version: '1.0.0',
+        type: 'module',
+        exports: './index.mjs',
+      }),
+    )
+    fixture.write('node_modules/@opulonjs/screen/index.mjs', 'export default "screen"')
+    fixture.write(
+      'entry.js',
+      "import Screen from '@opulonjs/screen'; import Empty from '@opulonjs/ui/components/EmptyState'; console.log(Screen, Empty)",
+    )
+    const server = await createServer(
+      fixture.config(
+        {},
+        { server: { middlewareMode: true }, optimizeDeps: { entries: ['entry.js'] } },
+      ),
+    )
+    onTestFinished(() => server.close())
+    const entry = await server.transformRequest('/entry.js')
+    expect(entry?.code).toContain('/node_modules/@opulonjs/screen/index.mjs')
+    expect(entry?.code).toContain('/node_modules/@opulonjs/ui/dist/components/EmptyState.mjs')
+    expect(entry?.code).not.toContain('/.vite/deps/')
+  },
+)
 
 test('checks indirectly installed UI versions through the preset package', async () => {
   const fixture = host()

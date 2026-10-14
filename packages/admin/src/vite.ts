@@ -50,11 +50,18 @@ const hostPackages = (root: string) => {
   const hostDir = packageDir(root)
   if (!hostDir) return undefined
   const manifest = join(hostDir, 'package.json')
-  const host = JSON.parse(readFileSync(manifest, 'utf8')) as {
-    dependencies?: Record<string, string>
-    devDependencies?: Record<string, string>
-  }
-  const names = Object.keys({ ...host.dependencies, ...host.devDependencies })
+  const host = JSON.parse(readFileSync(manifest, 'utf8')) as Partial<
+    Record<
+      'dependencies' | 'devDependencies' | 'optionalDependencies' | 'peerDependencies',
+      Record<string, string>
+    >
+  >
+  const names = Object.keys({
+    ...host.dependencies,
+    ...host.devDependencies,
+    ...host.optionalDependencies,
+    ...host.peerDependencies,
+  })
   return { manifest, names: names.filter((name) => name.startsWith('@opulonjs/')) }
 }
 
