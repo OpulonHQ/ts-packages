@@ -1451,6 +1451,20 @@ test('a deploy check with no read in flight reads /me once', async () => {
   expect(reads).toBe(before + 1)
 })
 
+test('a deploy check that finds another user shows that user in their language', async () => {
+  const user = await seedUser(db.url, { name: 'First In Tab', locale: 'en' })
+  const other = await seedUser(db.url, { name: 'Second In Tab', locale: 'sk' })
+  let session = await hosts.b1.signIn(user.email, user.password)
+  const dashboard = capturedState()
+  mountDisposable(adminModules, () => session, { overrides: dashboard.overrides })
+  await expect.poll(() => document.body.textContent).toContain('state captured')
+  const { me } = dashboard.state()
+  session = await hosts.b1.signIn(other.email, other.password)
+  navigate('/admin/nowhere')
+  await expect.poll(() => me.value?.user.id).toBe(other.id)
+  await expect.poll(() => document.documentElement.lang).toBe('sk')
+})
+
 test('a sign-out sticks when the read after it fails', async () => {
   const user = await seedUser(db.url, { name: 'Sign-out Then Failed Read', locale: 'en' })
   const own = await hosts.b1.signIn(user.email, user.password)

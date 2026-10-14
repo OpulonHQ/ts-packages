@@ -448,13 +448,14 @@ export const createAdmin = (options: AdminOptions): App => {
     getMe().then(
       (next) => {
         if (unmounted || turn !== epoch || check !== latestCheck) return
-        // A read in flight may hold an older answer, and a signed-in check carries no locale or fallback.
-        if (reading && next !== 'signedOut')
-          return void read().catch((error: unknown) => console.warn(error))
-        if (next === 'signedOut' || next.user.id !== known.user.id) epoch++
         if (next === 'signedOut') {
+          epoch++
           showSignedOut()
           return toSignIn().catch((error: unknown) => console.warn(error))
+        }
+        // A signed-in check carries no locale or fallback, and a read in flight may hold an older answer.
+        if (reading || next.user.id !== known.user.id) {
+          return void read().catch((error: unknown) => console.warn(error))
         }
         lastWrite = undefined
         me.value = { ...next, modules: known.modules }
