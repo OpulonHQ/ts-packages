@@ -198,29 +198,32 @@ test('users pick their admin language on their account screen', async () => {
 test.each([
   ['account screen', [], () => '/admin/account'],
   ['own user screen', ['users.manage'], (id: string) => `/admin/users/${id}`],
-])('a language saved on the %s shows even if reading /me again fails', async (_, permissions, path) => {
-  const user = await seedUser(db.url, { permissions })
-  const jar = { cookie: await host.signIn(user.email, user.password) }
-  const send = host.browserFetch(jar)
-  let reads = 0
-  const error = vi.spyOn(console, 'error').mockImplementation(() => {})
-  onTestFinished(() => error.mockRestore())
-  mounted?.unmount()
-  history.replaceState(null, '', path(user.id))
-  document.body.innerHTML = '<div id="app"></div>'
-  const app = createAdmin({
-    brand,
-    modules: adminModules,
-    buildId: 'b1',
-    fetch: async (input, init) =>
-      String(input instanceof Request ? input.url : input).endsWith('/api/me') && ++reads > 1
-        ? new Response('down', { status: 503 })
-        : send(input, init),
-  })
-  app.mount('#app')
-  onTestFinished(() => app.unmount())
-  await expect.poll(() => button('Slovenčina')).toBeDefined()
-  button('Slovenčina')!.click()
-  await expect.poll(() => document.documentElement.lang).toBe('sk')
-  expect(document.body.textContent).toContain('Jazyk administrácie')
-})
+])(
+  'a language saved on the %s shows even if reading /me again fails',
+  async (_, permissions, path) => {
+    const user = await seedUser(db.url, { permissions })
+    const jar = { cookie: await host.signIn(user.email, user.password) }
+    const send = host.browserFetch(jar)
+    let reads = 0
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    onTestFinished(() => error.mockRestore())
+    mounted?.unmount()
+    history.replaceState(null, '', path(user.id))
+    document.body.innerHTML = '<div id="app"></div>'
+    const app = createAdmin({
+      brand,
+      modules: adminModules,
+      buildId: 'b1',
+      fetch: async (input, init) =>
+        String(input instanceof Request ? input.url : input).endsWith('/api/me') && ++reads > 1
+          ? new Response('down', { status: 503 })
+          : send(input, init),
+    })
+    app.mount('#app')
+    onTestFinished(() => app.unmount())
+    await expect.poll(() => button('Slovenčina')).toBeDefined()
+    button('Slovenčina')!.click()
+    await expect.poll(() => document.documentElement.lang).toBe('sk')
+    expect(document.body.textContent).toContain('Jazyk administrácie')
+  },
+)

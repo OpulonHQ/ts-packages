@@ -1403,4 +1403,3 @@ test('a confirmed sign-out applies even if the sign-in messages fail to load', a
   expect(me.value).toBeUndefined()
   await expect.poll(() => location.pathname).toBe('/admin/sign-in')
 })
-
