@@ -100,7 +100,8 @@ const toI18n = (catalog: Messages, namespace?: string): Messages => {
   return { ...labels, ...(namespace ? { [namespace]: rest } : rest) }
 }
 
-const unmountedSaves = new Set<Promise<void>>()
+type SavedLocale = { readonly userId: string; readonly locale: string | null }
+const unmountedSaves = new Set<Promise<SavedLocale | undefined>>()
 
 /**
  * The admin SPA, served at `/admin`: Nuxt UI dashboard layout, nav groups and dashboard
@@ -223,6 +224,10 @@ export const createAdmin = (options: AdminOptions): App => {
     i18n.global.locale.value = locale
     document.documentElement.lang = locale
   }
+  const showLocale = (locale: string | null) => async (live: () => boolean) => {
+    await applyLocale(locale, enabled.value, live)
+    if (me.value && live()) me.value = { ...me.value, locale }
+  }
 
   // The auth provider's messages are needed before sign-in, too.
   let reading: Promise<void> | undefined
@@ -290,7 +295,12 @@ export const createAdmin = (options: AdminOptions): App => {
   }
   if (unmountedSaves.size > 0) {
     void Promise.all(unmountedSaves)
-      .then(() => (unmounted ? undefined : read()))
+      .then((saves) => {
+        if (unmounted) return
+        const saved = saves.findLast((save) => save !== undefined)
+        if (saved) lastWrite = { userId: saved.userId, apply: showLocale(saved.locale) }
+        return read()
+      })
       .catch((error: unknown) => console.warn(error))
   }
   // A write's own answer may belong to an ended session or be older than another write, so the
@@ -366,23 +376,30 @@ export const createAdmin = (options: AdminOptions): App => {
   const providerSignOut = auth.auth?.signOut
   const providerSetLocale = auth.auth?.setLocale
   const accountRoute = auth.auth?.accountRoute
-  let lastLocaleSave: Promise<void> = Promise.resolve()
+  let lastLocaleSave: Promise<SavedLocale | undefined> = Promise.resolve(undefined)
   const saveLocale = async (locale: string | null, save: (userId: string) => Promise<void>) => {
     const userId = me.value?.user.id
     if (!userId) return
     waitingPicks.push(userId)
-    const write = lastLocaleSave
+    const previous = lastLocaleSave
+    const write = previous
       .then(() => (unmounted ? undefined : Promise.all(unmountedSaves)))
       .then(() => {
         if (unmounted) throw new Error('the admin unmounted before this language was saved')
         return save(userId)
       })
     const picked = () => void waitingPicks.splice(waitingPicks.indexOf(userId), 1)
-    lastLocaleSave = write.then(picked, picked)
-    await afterWrite(write, async (live) => {
-      await applyLocale(locale, enabled.value, live)
-      if (me.value && live()) me.value = { ...me.value, locale }
-    })
+    lastLocaleSave = write.then(
+      () => {
+        picked()
+        return { userId, locale }
+      },
+      () => {
+        picked()
+        return previous
+      },
+    )
+    await afterWrite(write, showLocale(locale))
   }
   const state: AdminState = {
     brand: options.brand,
