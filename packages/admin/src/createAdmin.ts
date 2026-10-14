@@ -100,8 +100,7 @@ const toI18n = (catalog: Messages, namespace?: string): Messages => {
   return { ...labels, ...(namespace ? { [namespace]: rest } : rest) }
 }
 
-let pageLocaleSaves: Promise<void> = Promise.resolve()
-let pageSavesWaiting = 0
+const unmountedSaves = new Set<Promise<void>>()
 
 /**
  * The admin SPA, served at `/admin`: Nuxt UI dashboard layout, nav groups and dashboard
@@ -289,8 +288,8 @@ export const createAdmin = (options: AdminOptions): App => {
     await ready
     await toSignIn()
   }
-  if (pageSavesWaiting > 0) {
-    void pageLocaleSaves
+  if (unmountedSaves.size > 0) {
+    void Promise.all(unmountedSaves)
       .then(() => (unmounted ? undefined : read()))
       .catch((error: unknown) => console.warn(error))
   }
@@ -367,20 +366,19 @@ export const createAdmin = (options: AdminOptions): App => {
   const providerSignOut = auth.auth?.signOut
   const providerSetLocale = auth.auth?.setLocale
   const accountRoute = auth.auth?.accountRoute
+  let lastLocaleSave: Promise<void> = Promise.resolve()
   const saveLocale = async (locale: string | null, save: (userId: string) => Promise<void>) => {
     const userId = me.value?.user.id
     if (!userId) return
     waitingPicks.push(userId)
-    pageSavesWaiting++
-    const write = pageLocaleSaves.then(() => {
-      if (unmounted) throw new Error('the admin unmounted before this language was saved')
-      return save(userId)
-    })
-    const picked = () => {
-      waitingPicks.splice(waitingPicks.indexOf(userId), 1)
-      pageSavesWaiting--
-    }
-    pageLocaleSaves = write.then(picked, picked)
+    const write = lastLocaleSave
+      .then(() => (unmounted ? undefined : Promise.all(unmountedSaves)))
+      .then(() => {
+        if (unmounted) throw new Error('the admin unmounted before this language was saved')
+        return save(userId)
+      })
+    const picked = () => void waitingPicks.splice(waitingPicks.indexOf(userId), 1)
+    lastLocaleSave = write.then(picked, picked)
     await afterWrite(write, async (live) => {
       await applyLocale(locale, enabled.value, live)
       if (me.value && live()) me.value = { ...me.value, locale }
@@ -516,6 +514,11 @@ export const createAdmin = (options: AdminOptions): App => {
     .provide(failedScreenKey, failedScreen)
   app.onUnmount(() => {
     unmounted = true
+    if (waitingPicks.length > 0) {
+      const saves = lastLocaleSave
+      unmountedSaves.add(saves)
+      void saves.then(() => unmountedSaves.delete(saves))
+    }
     const history = router.options.history
     history.destroy()
     history.push = history.replace = () => {}
