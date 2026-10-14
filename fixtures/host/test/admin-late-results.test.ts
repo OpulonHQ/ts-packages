@@ -206,6 +206,137 @@ test('a language pick made while the read after an earlier save loads shows only
   expect(shown).not.toContain('en')
 })
 
+test('a navigation while a language pick waits shows only the last pick', async () => {
+  const user = await seedUser(db.url, { name: 'Navigate While Queued', locale: 'sk' })
+  const jar = { cookie: await host.signIn(user.email, user.password) }
+  const first = held(isLocaleSave, 'answer')
+  let saved = 0
+  const counting: typeof globalThis.fetch = async (input, init) => {
+    const response = await host.browserFetch(jar)(input, init)
+    if (isLocaleSave(new Request(input, init))) saved++
+    return response
+  }
+  const admin = mount('/admin/', first.wrap(counting))
+  await expect.poll(admin.text).toContain('Prehľad')
+  const shown = languagesShown()
+
+  await pickLanguage('Používateľské menu', 'Jazyk', 'English')
+  await expect.poll(async () => (await host.me(jar.cookie)).locale).toBe('en')
+  await pickLanguage('Používateľské menu', 'Jazyk', 'Slovenčina')
+  document.querySelector<HTMLAnchorElement>('nav a[href="/admin/"]')!.click()
+  await tick(100)
+  first.release()
+  await expect.poll(() => saved).toBe(2)
+  await tick(100)
+
+  expect(await host.me(jar.cookie)).toMatchObject({ locale: 'sk' })
+  expect(document.documentElement.lang).toBe('sk')
+  expect(shown).not.toContain('en')
+})
+
+test('a deploy seen while a language pick waits shows its notice and keeps the language', async () => {
+  const user = await seedUser(db.url, { name: 'Deploy While Queued', locale: 'sk' })
+  const jar = { cookie: await host.signIn(user.email, user.password) }
+  const next = lifetime.track(makeHost(() => db.url, { buildId: 'b2' }))
+  let deployed = false
+  const first = held(isLocaleSave, 'answer')
+  const server: typeof globalThis.fetch = (input, init) =>
+    (deployed ? next : host).browserFetch(jar)(input, init)
+  const admin = mount('/admin/', first.wrap(server))
+  await expect.poll(admin.text).toContain('Prehľad')
+  const shown = languagesShown()
+
+  await pickLanguage('Používateľské menu', 'Jazyk', 'English')
+  await expect.poll(async () => (await host.me(jar.cookie)).locale).toBe('en')
+  await pickLanguage('Používateľské menu', 'Jazyk', 'Slovenčina')
+  deployed = true
+  document.querySelector<HTMLAnchorElement>('nav a[href="/admin/"]')!.click()
+  await expect.poll(admin.text).toContain('Je dostupná nová verzia administrácie.')
+  expect(document.documentElement.lang).toBe('sk')
+
+  first.release()
+  await expect.poll(async () => (await host.me(jar.cookie)).locale).toBe('sk')
+  await tick(100)
+  expect(document.documentElement.lang).toBe('sk')
+  expect(shown).not.toContain('en')
+})
+
+test('a language pick that fails keeps a sign-out a deploy check found while it waited', async () => {
+  const user = await seedUser(db.url, { name: 'Signed Out While Queued', locale: 'sk' })
+  const jar = { cookie: await host.signIn(user.email, user.password) }
+  let watching = false
+  let failingReads = false
+  const check = held(
+    (request) =>
+      watching && request.method === 'GET' && new URL(request.url).pathname === '/api/me',
+    'answer',
+  )
+  const save = held(isLocaleSave)
+  const server: typeof globalThis.fetch = async (input, init) => {
+    const request = new Request(input, init)
+    if (isLocaleSave(request)) return new Response('down', { status: 503 })
+    if (failingReads && request.method === 'GET' && new URL(request.url).pathname === '/api/me')
+      return new Response('down', { status: 503 })
+    return host.browserFetch(jar)(input, init)
+  }
+  const admin = mount('/admin/', check.wrap(save.wrap(server)))
+  await expect.poll(admin.text).toContain('Prehľad')
+  expect((await host.request('POST', '/users/auth/sign-out', { cookie: jar.cookie })).status).toBe(
+    204,
+  )
+
+  watching = true
+  document.querySelector<HTMLAnchorElement>('nav a[href="/admin/"]')!.click()
+  await expect.poll(check.reached).toBe(true)
+  await pickLanguage('Používateľské menu', 'Jazyk', 'English')
+  await expect.poll(save.reached).toBe(true)
+  failingReads = true
+  check.release()
+  await expect.poll(check.done).toBe(true)
+  save.release()
+  await expect.poll(save.done).toBe(true)
+  await tick(100)
+
+  expect(location.pathname).toBe('/admin/sign-in')
+})
+
+test('a language pick that fails keeps a deploy a deploy check found while it waited', async () => {
+  const user = await seedUser(db.url, { name: 'Build While Queued', locale: 'sk' })
+  const jar = { cookie: await host.signIn(user.email, user.password) }
+  const next = lifetime.track(makeHost(() => db.url, { buildId: 'b2' }))
+  let deployed = false
+  let failingReads = false
+  const check = held(
+    (request) =>
+      deployed && request.method === 'GET' && new URL(request.url).pathname === '/api/me',
+    'answer',
+  )
+  const save = held(isLocaleSave)
+  const server: typeof globalThis.fetch = async (input, init) => {
+    const request = new Request(input, init)
+    if (isLocaleSave(request)) return new Response('down', { status: 503 })
+    if (failingReads && request.method === 'GET' && new URL(request.url).pathname === '/api/me')
+      return new Response('down', { status: 503 })
+    return (deployed ? next : host).browserFetch(jar)(input, init)
+  }
+  const admin = mount('/admin/', check.wrap(save.wrap(server)))
+  await expect.poll(admin.text).toContain('Prehľad')
+
+  deployed = true
+  document.querySelector<HTMLAnchorElement>('nav a[href="/admin/"]')!.click()
+  await expect.poll(check.reached).toBe(true)
+  await pickLanguage('Používateľské menu', 'Jazyk', 'English')
+  await expect.poll(save.reached).toBe(true)
+  failingReads = true
+  check.release()
+  await expect.poll(check.done).toBe(true)
+  save.release()
+  await expect.poll(save.done).toBe(true)
+  await tick(100)
+
+  expect(admin.text()).toContain('Je dostupná nová verzia administrácie.')
+})
+
 test('an earlier saved language shows when a newer save and the reads after it fail', async () => {
   const user = await seedUser(db.url, { name: 'Failure Fallback', locale: 'sk' })
   const jar = { cookie: await host.signIn(user.email, user.password) }
