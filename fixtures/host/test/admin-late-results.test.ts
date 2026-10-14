@@ -196,7 +196,8 @@ test('a language save that answers after a sign-out does not keep the user signe
   let signedOut = false
   const save = held(isLocaleSave, 'answer')
   const read = held(
-    (request) => signedOut && request.method === 'GET' && new URL(request.url).pathname === '/api/me',
+    (request) =>
+      signedOut && request.method === 'GET' && new URL(request.url).pathname === '/api/me',
   )
   const server: typeof globalThis.fetch = async (input, init) => {
     const path = new URL(new Request(input, init).url).pathname
