@@ -761,6 +761,40 @@ test.each([
   },
 )
 
+test.each([
+  ...editors.map((editor) => ({ ...editor, action: 'Uložiť koncept' })),
+  { ...editors[0]!, action: 'Zverejniť' },
+])('a $kind editor cannot type while "$action" is in flight', async (c) => {
+  const path = await c.open()
+  const value = `/locked-${crypto.randomUUID()}`
+  const held = admin.gate()
+  let holding = false
+  const fetch: typeof host.fetch = async (input, init) => {
+    const request = new Request(input, init)
+    const response = await host.fetch(request)
+    if (request.method === 'PUT' && new URL(request.url).pathname.endsWith('/draft') && !holding) {
+      holding = true
+      await held.promise
+    }
+    return response
+  }
+  const editable = () => {
+    const field = input(c.field)
+    return field !== null && !field.disabled && field.closest('fieldset[disabled]') === null
+  }
+  const text = mountAdmin(`/admin/cms${path}`, fetch)
+  await expect.poll(editable).toBe(true)
+  type(c.field, value)
+  button(c.action)!.click()
+  await expect.poll(() => holding).toBe(true)
+  expect(editable()).toBe(false)
+
+  held.resolve()
+  await expect.poll(text).toContain(c.action === 'Zverejniť' ? 'Zverejnené.' : 'Koncept uložený.')
+  expect(editable()).toBe(true)
+  expect(input(c.field)?.value).toBe(c.stored((await host.call<Document>('GET', path)).body))
+})
+
 test('editors build a menu from entries with labels per locale and links', async () => {
   const text = mountAdmin('/admin/cms/menus/main')
   await expect.poll(() => button('Pridať položku')).toBeTruthy()
