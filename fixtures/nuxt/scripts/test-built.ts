@@ -122,8 +122,8 @@ try {
     sections: [{ id: crypto.randomUUID(), type: 'hero', data: { title: { en: 'Built page' } } }],
   })
   check(created.response.status === 200, `create ${created.response.status} ${created.text}`)
-  const id = (JSON.parse(created.text) as { id: string }).id
-  const published = await call('POST', `/api/cms/pages/${id}/publish`)
+  const { id, version } = JSON.parse(created.text) as { id: string; version: number }
+  const published = await call('POST', `/api/cms/pages/${id}/publish?version=${version}`)
   check(published.response.status === 200, `publish ${published.response.status}`)
 
   // The personalized `send` route: no Cache-Control of its own, so the plugin's default.

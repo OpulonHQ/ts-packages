@@ -27,6 +27,7 @@ import { page, section, useCmsHost } from './helpers.ts'
 const admin = useAdminLifetime()
 const host = admin.track(useCmsHost())
 const testScreen = (setup: () => () => VNode) => defineComponent({ setup })
+type Document = Page | Item | SiteSettings
 
 test.each(['item', 'page'])(
   'every %s revision JSON block preserves stored values after form rendering',
@@ -39,7 +40,7 @@ test.each(['item', 'page'])(
                 body: { locales: {}, data: { title: { en: 'Stored JSON item' } } },
               })
             ).body
-            const published = (await host.call<Item>('POST', `/items/${created.id}/publish`)).body
+            const published = (await host.publishDraft<Item>(`/items/${created.id}`)).body
             return {
               kind: 'item',
               revision: (
@@ -141,11 +142,12 @@ test('read-only revision forms preserve the stored snapshot on rerender and rest
       body: { locales: {}, data: { title: { en: 'Stored revision title' } } },
     })
   ).body
-  const first = (await host.call<Item>('POST', `/items/${created.id}/publish`)).body
-  await host.call('PUT', `/items/${created.id}/draft`, {
-    body: { locales: {}, data: { title: { en: 'New draft title' } } },
+  const first = (await host.publishDraft<Item>(`/items/${created.id}`)).body
+  await host.saveDraft(`/items/${created.id}`, {
+    locales: {},
+    data: { title: { en: 'New draft title' } },
   })
-  await host.call('POST', `/items/${created.id}/publish`)
+  await host.publishDraft(`/items/${created.id}`)
   let rerender: (() => void) | undefined
   const modules = adminModules.map((module) =>
     module.id !== 'cms'
@@ -323,10 +325,10 @@ test.each([
 ])('$kind screen exposes history, view and restore with the normal editor', async (c) => {
   const id = c.create ? (await host.call<Item>('POST', c.create, { body: c.first })).body.id : ''
   const path = c.path(id)
-  if (!c.create) await host.call('PUT', `${path}/draft`, { body: c.first })
-  const first = (await host.call<Item | Menu | SiteSettings>('POST', `${path}/publish`)).body
-  await host.call('PUT', `${path}/draft`, { body: c.second })
-  const second = (await host.call<Item | Menu | SiteSettings>('POST', `${path}/publish`)).body
+  if (!c.create) await host.saveDraft(path, c.first)
+  const first = (await host.publishDraft<Item | Menu | SiteSettings>(path)).body
+  await host.saveDraft(path, c.second)
+  const second = (await host.publishDraft<Item | Menu | SiteSettings>(path)).body
   const text = mountAdmin(c.route(id))
   await expect
     .poll(
@@ -559,6 +561,53 @@ test('editors edit and publish the site settings', async () => {
     phone: '+421 900 111 222',
     siteName: { en: 'Example' },
   })
+})
+
+test.each([
+  {
+    kind: 'page',
+    open: async () => `/pages/${(await host.create(page({ en: '/admin-conflict' }))).body.id}`,
+    field: 'locales.en.path',
+    theirs: () => page({ en: '/admin-conflict-theirs' }),
+    stored: (d: Document) => (d as Page).draft.locales.en?.path,
+  },
+  {
+    kind: 'item',
+    open: async () =>
+      `/items/${
+        (
+          await host.call<Item>('POST', '/collections/posts/items', {
+            body: { locales: {}, data: { title: { en: 'Mine' } } },
+          })
+        ).body.id
+      }`,
+    field: 'data.title.en',
+    theirs: () => ({ locales: {}, data: { title: { en: 'Theirs' } } }),
+    stored: (d: Document) => ((d as Item).draft.data.title as Record<string, string>).en,
+  },
+  {
+    kind: 'settings',
+    open: async () => '/settings',
+    field: 'data.siteName.en',
+    theirs: () => ({ data: { siteName: { en: 'Theirs' } } }),
+    stored: (d: Document) => ((d as SiteSettings).draft.data.siteName as Record<string, string>).en,
+  },
+])('a $kind editor whose draft changed meanwhile keeps their input and can reload', async (c) => {
+  const path = await c.open()
+  const text = mountAdmin(`/admin/cms${path}`)
+  await expect.poll(() => input(c.field)).toBeTruthy()
+  type(c.field, 'Mine, unsaved')
+  expect((await host.saveDraft(path, c.theirs())).status).toBe(200)
+  const theirs = (await host.call<Document>('GET', path)).body
+
+  button('Zverejniť')!.click()
+  await expect.poll(text).toContain('Tento koncept medzitým zmenil niekto iný.')
+  expect(input(c.field)?.value).toBe('Mine, unsaved')
+  expect((await host.call<Document>('GET', path)).body).toEqual(theirs)
+
+  button('Načítať koncept')!.click()
+  await expect.poll(() => input(c.field)?.value).toBe(c.stored(theirs))
+  expect(text()).not.toContain('Tento koncept medzitým zmenil niekto iný.')
 })
 
 test('editors build a menu from entries with labels per locale and links', async () => {

@@ -17,16 +17,15 @@ export default async (ctx) => {
     check(response.status() === 200, `${method} ${path} ${response.status()}`)
     return response.json()
   }
-  const withVersion = (path, document) => (document.version === undefined ? path : `${path}?version=${document.version}`)
   const evidence = []
   for (const journey of journeys) {
     const created = journey.create ? await call('POST', journey.create, journey.first) : undefined
     const path = journey.path(created?.id)
-    let current = created ?? (await call('GET', path))
-    current = await call('PUT', withVersion(`${path}/draft`, current), journey.first)
-    const first = await call('POST', withVersion(`${path}/publish`, current), undefined)
-    current = await call('PUT', withVersion(`${path}/draft`, first), journey.second)
-    const second = await call('POST', withVersion(`${path}/publish`, current), undefined)
+    const loaded = created ?? (await call('GET', path))
+    const saved = await call('PUT', `${path}/draft?version=${loaded.version}`, journey.first)
+    const first = await call('POST', `${path}/publish?version=${saved.version}`)
+    const edited = await call('PUT', `${path}/draft?version=${first.version}`, journey.second)
+    const second = await call('POST', `${path}/publish?version=${edited.version}`)
 
     await page.goto(`${base}/admin/cms${path}`)
     await page.getByRole('button', { name: 'Publish', exact: true }).waitFor()
@@ -39,9 +38,9 @@ export default async (ctx) => {
     const requests = []
     const listener = (r) => { if (r.url().includes(`/api/cms${path}/`)) requests.push(`${r.request().method()} ${new URL(r.url()).pathname}${new URL(r.url()).search} ${r.status()}`) }
     page.on('response', listener)
-    const saved = page.waitForResponse((r) => r.url().includes(`${path}/draft`) && r.request().method() === 'PUT')
+    const saving = page.waitForResponse((r) => r.url().includes(`${path}/draft`) && r.request().method() === 'PUT')
     await page.getByRole('button', { name: 'Publish', exact: true }).click()
-    const saveStatus = (await saved).status()
+    const saveStatus = (await saving).status()
     await page.waitForTimeout(500)
     page.off('response', listener)
     const after = await call('GET', path)

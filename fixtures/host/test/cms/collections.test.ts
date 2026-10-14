@@ -14,7 +14,7 @@ const item = (data: Record<string, unknown>, paths: { en?: string; it?: string }
   }) satisfies ItemDocument
 const create = (collection: string, draft: ItemDocument) =>
   host.call<Item>('POST', `/collections/${collection}/items`, { body: draft })
-const publish = (id: string) => host.call<Item>('POST', `/items/${id}/publish`)
+const publish = (id: string) => host.publishDraft<Item>(`/items/${id}`)
 
 test('an item is validated against its collection, published with a revision, audited and purged', async () => {
   const category = (await create('categories', item({ name: { en: 'News' } }))).body
@@ -164,9 +164,7 @@ test('collections need the collections permissions', async () => {
 test('a routed item whose published path changes leaves a redirect behind', async () => {
   const post = (await create('posts', item({ title: { en: 'Move' } }, { en: '/blog/move' }))).body
   await publish(post.id)
-  await host.call('PUT', `/items/${post.id}/draft`, {
-    body: item({ title: { en: 'Move' } }, { en: '/blog/moved' }),
-  })
+  await host.saveDraft(`/items/${post.id}`, item({ title: { en: 'Move' } }, { en: '/blog/moved' }))
   await publish(post.id)
   const { body } = await host.call<{ rows: Array<{ from: string; to: string; auto: boolean }> }>(
     'GET',

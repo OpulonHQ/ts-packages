@@ -55,14 +55,13 @@ test.each(cases)(
     const path = c.create
       ? c.path((await host.call<Document>('POST', c.create, { body: c.first })).body)
       : c.path()
-    if (!c.create)
-      expect((await host.call('PUT', `${path}/draft`, { body: c.first })).status).toBe(200)
+    if (!c.create) expect((await host.saveDraft(path, c.first)).status).toBe(200)
     expect(
       (await host.call<{ rows: Summary[]; total: number }>('GET', `${path}/revisions`)).body,
     ).toEqual({ rows: [], total: 0 })
-    const first = (await host.call<Document>('POST', `${path}/publish`)).body
-    await host.call('PUT', `${path}/draft`, { body: c.second })
-    const second = (await host.call<Document>('POST', `${path}/publish`)).body
+    const first = (await host.publishDraft<Document>(path)).body
+    await host.saveDraft(path, c.second)
+    const second = (await host.publishDraft<Document>(path)).body
     const list = await host.call<{ rows: Summary[]; total: number }>('GET', `${path}/revisions`)
     expect(list.status).toBe(200)
     expect(list.headers.get('cache-control')).toBe('private, no-store')
@@ -116,7 +115,7 @@ test.each(cases)(
         })
       ).status,
     ).toBe(200)
-    const published = await host.call<Document>('POST', `${path}/publish`)
+    const published = await host.publishDraft<Document>(path)
     expect(published.body.published).toEqual(first.draft)
   },
 )

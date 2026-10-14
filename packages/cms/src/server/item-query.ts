@@ -45,7 +45,7 @@ export const listItems = Effect.fn('Items.list')(
       select id, key as collection, ${title} as title,
         coalesce(draft -> 'locales' -> ${locale} ->> 'path', '') as path,
         case when published is null then 'draft' when draft = published then 'published' else 'changed' end as status,
-        updated_at, published_at
+        updated_at, published_at, version
       from cms.document where kind = 'item' and key = ${collection}
         ${ids ? sql`and id = any(string_to_array(${ids.join(',')}, ',')::uuid[])` : sql``}
     ), filtered as not materialized (
@@ -56,7 +56,8 @@ export const listItems = Effect.fn('Items.list')(
       coalesce((select jsonb_agg(jsonb_build_object(
         'id', id::text, 'collection', collection, 'title', title, 'path', path, 'status', status,
         'updatedAt', to_char(updated_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
-        'publishedAt', to_char(published_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+        'publishedAt', to_char(published_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+        'version', version
       ) order by ${order}) from paged), '[]'::jsonb) as rows`
     return yield* Schema.decodeUnknownEffect(ItemPage)(result[0])
   },

@@ -111,11 +111,8 @@ test('drafts are not audited and each action needs its permission', async () => 
     403,
   )
   expect(
-    (
-      await host.call('POST', `/pages/${created.id}/publish`, {
-        as: ['cms.pages.view', 'cms.pages.edit'],
-      })
-    ).status,
+    (await host.publishDraft(`/pages/${created.id}`, { as: ['cms.pages.view', 'cms.pages.edit'] }))
+      .status,
   ).toBe(403)
   expect((await host.call('GET', '/pages', { as: null })).status).toBe(401)
 })

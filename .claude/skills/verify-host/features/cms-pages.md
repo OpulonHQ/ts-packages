@@ -22,6 +22,7 @@ Preconditions: a session with cms rights (smoke owner).
 
 - **Create, publish, resolve.** `$V/ui.sh .claude/skills/verify-host/journeys/cms-pages.mjs email=<owner> 'password=smoke password <run>'`. Proves: `POST /api/cms/pages` 200; English tab `Path` `/verify-<run>`, `Available in this language` on, `SEO title`; draft `PUT` 200 + `Draft saved.`; publish 200 + `Published.`; the Read API answers 200 with the tags; the list row shows the SEO title and `Published`.
 - **Purge.** Resolve, edit the SEO title, Publish, resolve again: the new title is served.
+- **Concurrent draft edits.** `$V/ui.sh .claude/skills/verify-host/journeys/cms-draft-conflict.mjs`. For a page, an item, the site settings and a menu: the editor opens the document and types, another editor restores revision 1 through the API, the editor's Publish answers `PUT .../draft?version=` 409 with no publish request, the draft and published snapshot stay as the restore left them, the typed input stays on screen under `Someone else changed this draft after you opened it.`, and `Reload draft` loads the restored draft, which then publishes 200. Results in `conflict-results.json`.
 
 ## Gotchas
 
