@@ -10,9 +10,11 @@ import { beforeAll, expect, onTestFinished, test, vi } from 'vitest'
 import { useTestDatabase } from '../../../test/postgres/index.ts'
 import { brand } from '../admin/brand.ts'
 import { adminModules } from '../admin/modules.ts'
+import { useAdminLifetime } from './admin-lifetime.ts'
 import { makeHost, seedUser } from './support/users.ts'
 
 // Runs in the `admin` vitest project: happy-dom, built by the opulonAdmin() preset.
+const lifetime = useAdminLifetime()
 const db = useTestDatabase()
 
 const screen = (text: string) => async () => ({
@@ -60,8 +62,8 @@ const coreScreens = defineAdminModule({
 
 // The admin's fetch, routed into the fixture host's Worker (no mocked API), as a browser.
 const hosts = {
-  b1: makeHost(() => db.url, { buildId: 'b1' }),
-  'new-build': makeHost(() => db.url, { buildId: 'new-build' }),
+  b1: lifetime.track(makeHost(() => db.url, { buildId: 'b1' })),
+  'new-build': lifetime.track(makeHost(() => db.url, { buildId: 'new-build' })),
 }
 let cookie = ''
 beforeAll(async () => {
@@ -83,17 +85,12 @@ function mountAdmin(
     wrapFetch = (f: typeof fetch) => f,
   } = {},
 ) {
-  history.replaceState(null, '', path)
-  document.body.innerHTML = '<div id="app"></div>'
-  const app = createAdmin({
-    brand,
+  const text = lifetime.mount(path, {
     modules: [...adminModules, coreScreens, ghost],
     buildId: admin,
     fetch: wrapFetch(hosts[server].browserFetch({ cookie: signedIn ? (as ?? cookie) : '' })),
   })
-  app.mount('#app')
-  onTestFinished(() => app.unmount())
-  return { text: () => document.body.textContent ?? '' }
+  return { text }
 }
 
 const navText = () => document.querySelector('nav')?.textContent ?? ''
@@ -298,9 +295,7 @@ const mountDisposable = (
   } = {},
 ) => {
   let requested = false
-  history.replaceState(null, '', '/admin/')
-  const app = createAdmin({
-    brand,
+  const { app, unmount } = lifetime.mount('/admin/', {
     modules,
     buildId: 'b1',
     overrides,
@@ -314,20 +309,11 @@ const mountDisposable = (
       return rewrite(url, response)
     },
   })
-  document.body.innerHTML = '<div id="app"></div>'
-  app.mount('#app')
-  let mounted = true
-  onTestFinished(() => {
-    if (mounted) app.unmount()
-  })
   return {
     app,
     state: () => app.runWithContext(useAdmin),
     requested: () => requested,
-    unmount: () => {
-      mounted = false
-      app.unmount()
-    },
+    unmount,
   }
 }
 
