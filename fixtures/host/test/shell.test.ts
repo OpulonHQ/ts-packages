@@ -1252,7 +1252,13 @@ test('the last language picked stays when the reads after both saves fail', asyn
   const { setLocale, me } = dashboard.state()
   if (!setLocale) throw new Error('the auth provider offers no language change')
   const shown: Array<string | null | undefined> = []
-  onTestFinished(watch(() => me.value?.locale, (locale) => void shown.push(locale), { flush: 'sync' }))
+  onTestFinished(
+    watch(
+      () => me.value?.locale,
+      (locale) => void shown.push(locale),
+      { flush: 'sync' },
+    ),
+  )
   answer.hold()
   const first = setLocale('en')
   await expect.poll(answer.answered).toBe(true)
