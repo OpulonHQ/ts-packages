@@ -97,15 +97,19 @@ export const useAdminLifetime = () => {
     const failures: Array<unknown> = []
     let clean = false
     try {
-      for (const unmount of lifetime.unmounts) {
-        try {
-          unmount()
-        } catch (error) {
-          failures.push(error)
+      let unmounted = 0
+      let settled: boolean
+      do {
+        for (; unmounted < lifetime.unmounts.length; unmounted++) {
+          try {
+            lifetime.unmounts[unmounted]?.()
+          } catch (error) {
+            failures.push(error)
+          }
         }
-      }
-      for (const release of lifetime.gates) release()
-      const settled = await settle(lifetime)
+        for (const release of lifetime.gates) release()
+        settled = await settle(lifetime)
+      } while (settled && unmounted < lifetime.unmounts.length)
       document.body.replaceChildren()
       if (!settled)
         failures.push(new Error(`admin or host calls from ${lifetime.name} still pending after 5s`))
