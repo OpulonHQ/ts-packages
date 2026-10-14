@@ -796,6 +796,52 @@ test.each([
   expect(input(c.field)?.value).toBe(c.stored((await host.call<Document>('GET', path)).body))
 })
 
+test('rich text and reference pickers are locked while an item save is in flight', async () => {
+  const name = `Locked ${crypto.randomUUID()}`
+  await host.call('POST', '/collections/categories/items', {
+    body: { locales: {}, data: { name: { en: name } } },
+  })
+  const post = (
+    await host.call<Item>('POST', '/collections/posts/items', {
+      body: { locales: {}, data: { title: { en: 'Locked widgets' } } },
+    })
+  ).body
+  const held = admin.gate()
+  let holding = false
+  const fetch: typeof host.fetch = async (input, init) => {
+    const request = new Request(input, init)
+    const response = await host.fetch(request)
+    if (request.method === 'PUT' && new URL(request.url).pathname.endsWith('/draft') && !holding) {
+      holding = true
+      await held.promise
+    }
+    return response
+  }
+  const text = mountAdmin(`/admin/cms/items/${post.id}`, fetch)
+  const row = () =>
+    [...document.querySelectorAll<HTMLTableElement>('table')]
+      .find((table) => table.caption?.textContent?.trim() === 'Kategórie')
+      ?.querySelectorAll<HTMLElement>('tbody tr')
+      .values()
+      .find((r) => r.textContent?.includes(name))
+  const richText = () => document.querySelector('.tiptap[contenteditable="true"]')
+  await expect.poll(row).toBeTruthy()
+  await expect.poll(richText).toBeTruthy()
+
+  button('Uložiť koncept')!.click()
+  await expect.poll(() => holding).toBe(true)
+  expect(richText()).toBeNull()
+  row()!.click()
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  expect(document.querySelector(`[aria-label="Odstrániť ${name}"]`)).toBeNull()
+
+  held.resolve()
+  await expect.poll(text).toContain('Koncept uložený.')
+  await expect.poll(richText).toBeTruthy()
+  row()!.click()
+  await expect.poll(() => document.querySelector(`[aria-label="Odstrániť ${name}"]`)).toBeTruthy()
+})
+
 test('editors build a menu from entries with labels per locale and links', async () => {
   const text = mountAdmin('/admin/cms/menus/main')
   await expect.poll(() => button('Pridať položku')).toBeTruthy()
