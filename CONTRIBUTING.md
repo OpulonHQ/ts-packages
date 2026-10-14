@@ -77,9 +77,9 @@ Register this file as `EmptyState: './overrides/EmptyState.mjs'` in the Vite opt
 <!-- @opulonjs/source @opulonjs/ui@0.1.0 src/components/EmptyState.vue -->
 ```
 
-For TypeScript, use `// @opulonjs/source @opulonjs/admin@0.1.0 src/shell/Dashboard.vue`. A single-line `/* @opulonjs/source ... */` comment also works. The header contains the package name, exact SemVer, and original path relative to the package. The Vite preset warns when an imported copy's version is older than the installed package. Compare the upstream source before updating the header. A warning does not stop the build.
+For TypeScript, use `// @opulonjs/source @opulonjs/admin@0.1.0 src/shell/Dashboard.vue`. A single-line `/* @opulonjs/source ... */` comment also works. The header contains the package name, exact SemVer, and original path relative to the package. With the `overrides` option set on `opulonAdmin()`, the Vite preset warns when an imported copy's version is older than the installed package. Compare the upstream source before updating the header. A warning does not stop the build.
 
-Keep copied screens in an `overrides/` directory under the Vite root. With component overrides configured, the build warns once per file when a registered component or an imported file under that directory is missing its source header. A malformed header warns as invalid in any imported file. Headers may start with a UTF-8 BOM and use CRLF. If the host cannot resolve a package version, the preset tries its own dependencies, then warns that it could not check the version.
+Keep copied screens in an `overrides/` directory under the Vite root. With the `overrides` option set, the build warns once per file when a registered component or an imported file under that directory is missing its source header, and a malformed header warns as invalid in any imported file. Without the option the preset checks no headers. Headers may start with a UTF-8 BOM and use CRLF. If the host cannot resolve a package version, the preset tries its own dependencies, then warns that it could not check the version.
 
 Register a screen's host component by route name:
 
@@ -91,7 +91,7 @@ createAdmin({
 }).mount('#app')
 ```
 
-Module routes and the built-in `dashboard`, `core.audit`, and `notFound` routes accept replacements. The original path, navigation, module availability, and access checks remain attached to the route. Unknown names throw before startup. Pass a host component or a lazy loader returning a component or its default-export module. A dynamic import keeps the copied screen in a separate chunk.
+Module routes and the built-in `dashboard`, `core.audit`, and `notFound` routes accept replacements. The original path, navigation, module availability, and access checks remain attached to the route. Unknown names throw before startup. Pass a host component or a lazy loader returning a component or its default-export module. A dynamic import keeps the copied screen in a separate chunk. A host that copies screens but no UI components turns on the header checks with `opulonAdmin({ brand, overrides: {} })`.
 
 For functional components that need Vue props, slots, or composables, use `defineComponent` or set the function's `displayName`, so Vue Router treats it as a component rather than invoking it as a loader.
 
