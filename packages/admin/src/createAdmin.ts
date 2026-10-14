@@ -357,10 +357,13 @@ export const createAdmin = (options: AdminOptions): App => {
         : route
     }),
   })
-  // Only the latest navigation may show or clear a failed screen.
+  // Only the latest navigation may show or clear a failed screen. A navigation whose leave guard
+  // fails never reaches beforeEach, so it is never superseded.
   let latest: RouteLocationNormalized | undefined
+  const guarded = new WeakSet<RouteLocationNormalized>()
   router.beforeEach(async (to) => {
     latest = to
+    guarded.add(to)
     await ready
     const { module, access } = to.meta
     if (access?.public) return true
@@ -387,7 +390,7 @@ export const createAdmin = (options: AdminOptions): App => {
   const failedScreen = shallowRef<string>()
   router.onError((error: unknown, to) => {
     console.error(error)
-    if (to !== latest) return
+    if (guarded.has(to) && to !== latest) return
     failedScreen.value = to.fullPath
     // A screen chunk missing after a deploy surfaces as a failed load.
     recheckBuild()

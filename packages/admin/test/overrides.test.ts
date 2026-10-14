@@ -1,7 +1,7 @@
 import { createAdmin, type AdminOptions } from '../src/createAdmin.ts'
 import { defineAdminModule } from '../src/module.ts'
 import { defineComponent, h } from 'vue'
-import { useRoute } from 'vue-router'
+import { onBeforeRouteLeave, useRoute } from 'vue-router'
 import { expect, onTestFinished, test, vi } from 'vitest'
 
 const screen = (text: string) => defineComponent(() => () => h('p', text))
@@ -304,4 +304,18 @@ test.each(['abort', 'redirect'])('an %s guard is not a screen failure', async (k
   await router.push('/protected')
   await sleep()
   expect(document.querySelector('[role="alert"]')).toBeNull()
+})
+
+test('a failing leave guard shows the screen failure', async () => {
+  const leaving = defineComponent(() => {
+    onBeforeRouteLeave(() => {
+      throw new Error('leave guard failed')
+    })
+    return () => h('p', 'leaving screen')
+  })
+  const app = mount('/', { overrides: { dashboard: leaving } })
+  const router = app.config.globalProperties.$router
+  await expect.poll(() => document.body.textContent).toContain('leaving screen')
+  await expect(router.push('/protected')).rejects.toThrow('leave guard failed')
+  await expect.poll(() => document.querySelector('[role="alert"]')).not.toBeNull()
 })
