@@ -125,6 +125,18 @@ test.each(cases)(
   },
 )
 
+test.each(cases)('$kind: of two simultaneous saves from one version, one wins', async (c) => {
+  const { path, loaded } = await load(c)
+  const results = await Promise.all([
+    save(path, loaded.version, c.second),
+    save(path, loaded.version, c.third),
+  ])
+  expect(results.map((r) => r.status).sort()).toEqual([200, 409])
+  const winner = results.find((r) => r.status === 200)!.body
+  expect(winner.version).toBe(loaded.version + 1)
+  expect((await host.call<Document>('GET', path)).body).toEqual(winner)
+})
+
 test.each(cases)(
   '$kind: a restore from a stale draft version is refused and changes nothing',
   async (c) => {

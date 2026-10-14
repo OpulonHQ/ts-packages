@@ -27,7 +27,13 @@ import { page, section, useCmsHost } from './helpers.ts'
 const admin = useAdminLifetime()
 const host = admin.track(useCmsHost())
 const testScreen = (setup: () => () => VNode) => defineComponent({ setup })
-type Document = Page | Item | SiteSettings
+type Document = Page | Item | SiteSettings | Menu
+const menuLink = (label: string) => ({
+  id: crypto.randomUUID(),
+  label: { en: label },
+  link: { type: 'url' as const, url: '/link' },
+  children: [],
+})
 
 test.each(['item', 'page'])(
   'every %s revision JSON block preserves stored values after form rendering',
@@ -624,6 +630,16 @@ test.each([
     field: 'data.siteName.en',
     theirs: () => ({ data: { siteName: { en: 'Theirs' } } }),
     stored: (d: Document) => ((d as SiteSettings).draft.data.siteName as Record<string, string>).en,
+  },
+  {
+    kind: 'menu',
+    open: async () => {
+      await host.saveDraft('/menus/footer', { items: [menuLink('Mine')] })
+      return '/menus/footer'
+    },
+    field: 'items.0.label.en',
+    theirs: () => ({ items: [menuLink('Theirs')] }),
+    stored: (d: Document) => (d as Menu).draft.items[0]?.label.en,
   },
 ])('a $kind editor whose draft changed meanwhile keeps their input and can reload', async (c) => {
   const path = await c.open()

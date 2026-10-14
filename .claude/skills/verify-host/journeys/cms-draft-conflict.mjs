@@ -10,7 +10,7 @@ export default async (ctx) => {
     { kind: 'page', create: '/pages', path: (id) => `/pages/${id}`, first: { locales: { en: locale('First title') }, sections: [] }, second: { locales: { en: locale('Second title') }, sections: [] }, input: 'locales.en.seo.title', restored: 'First title' },
     { kind: 'item', create: '/collections/posts/items', path: (id) => `/items/${id}`, first: { locales: {}, data: { title: { en: 'First conflict item' } } }, second: { locales: {}, data: { title: { en: 'Second conflict item' } } }, input: 'data.title.en', restored: 'First conflict item' },
     { kind: 'settings', path: () => '/settings', first: { data: { siteName: { en: 'First conflict site' } } }, second: { data: { siteName: { en: 'Second conflict site' } } }, input: 'data.siteName.en', restored: 'First conflict site' },
-    { kind: 'menu', path: () => '/menus/footer', first: { items: [] }, second: { items: [{ id: crypto.randomUUID(), label: { en: 'Second conflict link' }, link: { type: 'url', url: '/second' }, children: [] }] } },
+    { kind: 'menu', path: () => '/menus/footer', first: { items: [] }, second: { items: [{ id: crypto.randomUUID(), label: { en: 'Second conflict link' }, link: { type: 'url', url: '/second' }, children: [] }] }, input: 'items.0.label.en' },
   ]
   const call = async (method, path, data) => {
     const response = await page.request.fetch(`${base}/api/cms${path}`, { method, data, headers: { Origin: base } })
@@ -60,7 +60,7 @@ export default async (ctx) => {
     await shot(`${journey.kind}-conflict-message`)
 
     await page.getByRole('button', { name: 'Reload draft', exact: true }).click()
-    if (journey.input) await page.waitForFunction(({ input, value }) => document.querySelector(`input[name="${input}"]`)?.value === value, { input: journey.input, value: journey.restored })
+    if (journey.restored) await page.waitForFunction(({ input, value }) => document.querySelector(`input[name="${input}"]`)?.value === value, { input: journey.input, value: journey.restored })
     else await page.waitForFunction(() => document.querySelectorAll('form input').length === 0)
     await shot(`${journey.kind}-reloaded`)
     const publishing = page.waitForResponse((r) => r.url().includes(`${path}/publish`) && r.request().method() === 'POST')
