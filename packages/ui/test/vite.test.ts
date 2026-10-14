@@ -1,62 +1,62 @@
 // @vitest-environment node
-import { resolveConfig, type Rolldown } from 'vite'
-import { expect, test } from 'vitest'
-import { opulonUi } from '../src/vite.ts'
-
-const output = async (consumer?: Rolldown.OutputOptions) =>
-  (
-    await resolveConfig(
-      {
-        configFile: false,
-        logLevel: 'silent',
-        plugins: opulonUi(),
-        ...(consumer ? { build: { rolldownOptions: { output: consumer } } } : {}),
-      },
-      'build',
-    )
-  ).build.rolldownOptions.output as Rolldown.OutputOptions
-
-test('without a consumer chunking policy, ProseMirror gets its own chunk', async () => {
-  expect((await output())?.codeSplitting).toEqual({
-    groups: [{ name: 'prosemirror', test: expect.any(RegExp) }],
-  })
-})
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { build, resolveConfig, type Rolldown } from 'vite'
+import { expect, onTestFinished, test } from 'vitest'
+import { editorChunkGroup, opulonUi } from '../src/vite.ts'
 
 test.each([
-  ['codeSplitting: false', { codeSplitting: false }],
-  [
-    'codeSplitting groups',
-    { codeSplitting: { groups: [{ name: 'vendor', test: /node_modules/ }] } },
-  ],
-])('a consumer %s wins over the preset', async (_, consumer: Rolldown.OutputOptions) => {
-  expect((await output(consumer)).codeSplitting).toEqual(consumer.codeSplitting)
+  undefined,
+  { codeSplitting: false },
+  { inlineDynamicImports: true },
+  { manualChunks: () => 'one' },
+])('the preset leaves consumer chunking untouched: %o', async (output?: Rolldown.OutputOptions) => {
+  const resolved = await resolveConfig(
+    {
+      configFile: false,
+      logLevel: 'silent',
+      plugins: opulonUi(),
+      ...(output ? { build: { rolldownOptions: { output } } } : {}),
+    },
+    'build',
+  )
+  expect(resolved.build.rolldownOptions.output).toEqual(output)
 })
 
-test('a consumer manualChunks stays in effect: the preset adds no codeSplitting', async () => {
-  const manualChunks = (id: string) => (id.includes('prosemirror-') ? 'editor' : undefined)
-  const resolved = await output({ manualChunks })
-  expect(resolved.manualChunks).toBe(manualChunks)
-  expect(resolved.codeSplitting).toBeUndefined()
-})
-
-test('a later plugin that sets manualChunks keeps it: the preset adds no codeSplitting', async () => {
-  const manualChunks = (id: string) => (id.includes('prosemirror-') ? 'editor' : undefined)
-  const resolved = (
-    await resolveConfig(
-      {
-        configFile: false,
-        logLevel: 'silent',
-        plugins: [
-          ...opulonUi(),
-          {
-            name: 'host-chunks',
-            config: () => ({ build: { rolldownOptions: { output: { manualChunks } } } }),
-          },
-        ],
+test('editorChunkGroup puts ProseMirror in its own chunk', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'opulon-editor-chunk-'))
+  onTestFinished(() => rmSync(root, { recursive: true, force: true }))
+  const write = (path: string, source: string) => {
+    mkdirSync(dirname(join(root, path)), { recursive: true })
+    writeFileSync(join(root, path), source)
+  }
+  write('tsconfig.json', '{}')
+  write('main.js', "import('./editor.js').then((editor) => console.log(editor))")
+  write('editor.js', "import { schema } from 'prosemirror-model'\nconsole.log(schema, 'tiptap')")
+  write(
+    'node_modules/prosemirror-model/package.json',
+    '{ "name": "prosemirror-model", "type": "module", "main": "index.js" }',
+  )
+  write('node_modules/prosemirror-model/index.js', "export const schema = 'prosemirror schema'")
+  const result = await build({
+    root,
+    configFile: false,
+    logLevel: 'silent',
+    build: {
+      write: false,
+      rolldownOptions: {
+        input: join(root, 'main.js'),
+        output: { codeSplitting: { groups: [editorChunkGroup] } },
       },
-      'build',
-    )
-  ).build.rolldownOptions.output as Rolldown.OutputOptions
-  expect(resolved.manualChunks).toBe(manualChunks)
-  expect(resolved.codeSplitting).toBeUndefined()
+    },
+  })
+  const chunks = (
+    Array.isArray(result) ? result[0]! : (result as Rolldown.RolldownOutput)
+  ).output.filter((output) => output.type === 'chunk')
+  const prosemirror = chunks.find((chunk) => chunk.name === 'prosemirror')
+  expect(prosemirror?.moduleIds.map((id) => id.replace(root, ''))).toEqual([
+    '/node_modules/prosemirror-model/index.js',
+  ])
+  expect(chunks.find((chunk) => chunk.code.includes("'tiptap'"))?.name).not.toBe('prosemirror')
 })

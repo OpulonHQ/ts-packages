@@ -8,6 +8,8 @@ import { fileURLToPath } from 'node:url'
 import type { PluginOption } from 'vite'
 import { adminOverrides } from './vite-overrides.ts'
 
+export { editorChunkGroup } from '@opulonjs/ui/vite'
+
 export interface OpulonAdminOptions {
   /** The host's brand; pass the same object to `createAdmin({ brand })`. */
   readonly brand?: Brand

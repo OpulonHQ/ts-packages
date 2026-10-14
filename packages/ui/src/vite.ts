@@ -136,7 +136,12 @@ const css = (brand: Brand | undefined, sources: ReadonlyArray<string>): string =
  * overrides, the self-hosted Inter font and an offline Lucide icon bundle. Add `@vitejs/plugin-vue`
  * next to it; `@opulonjs/admin/vite` does both.
  */
-const chunkingKeys = ['codeSplitting', 'manualChunks', 'advancedChunks']
+/**
+ * Rolldown chunk group for the rich text editor's ProseMirror code, which otherwise shares one
+ * chunk with tiptap above Vite's 500 kB warning. Opt in from the host's Vite config:
+ * `build: { rolldownOptions: { output: { codeSplitting: { groups: [editorChunkGroup] } } } }`.
+ */
+export const editorChunkGroup = { name: 'prosemirror', test: /[\\/]prosemirror-[a-z-]+[\\/]/ }
 
 export const opulonUi = (options: UiPresetOptions = {}): Array<PluginOption> => {
   // Resolved with the Vite root (configResolved runs before any load).
@@ -170,33 +175,9 @@ export const opulonUi = (options: UiPresetOptions = {}): Array<PluginOption> => 
       return `export default ${JSON.stringify(lucideSubset(names))}`
     },
   }
-  // Nuxt UI's editor puts tiptap and ProseMirror in one chunk above Vite's 500 kB warning.
-  const editorChunks: Plugin = {
-    name: '@opulonjs/ui:editor-chunks',
-    config: {
-      order: 'post',
-      handler: ({ build }) =>
-        [build?.rolldownOptions?.output, build?.rollupOptions?.output]
-          .flat()
-          .some((output) => output && chunkingKeys.some((key) => key in output))
-          ? undefined
-          : {
-              build: {
-                rolldownOptions: {
-                  output: {
-                    codeSplitting: {
-                      groups: [{ name: 'prosemirror', test: /[\\/]prosemirror-[a-z-]+[\\/]/ }],
-                    },
-                  },
-                },
-              },
-            },
-    },
-  }
   return [
     styles,
     icons,
-    editorChunks,
     nuxtUi({
       dts: false,
       router: true,
