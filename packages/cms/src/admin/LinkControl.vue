@@ -4,7 +4,7 @@
 import { useI18n } from '@opulonjs/admin'
 import FieldSelect from '@opulonjs/ui/components/Field/Select'
 import FieldText from '@opulonjs/ui/components/Field/Text'
-import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { computed, ref, shallowRef, watch } from 'vue'
 import { CmsNotFound, fields, labelText, type ItemSummary, type Link } from '../api.ts'
 import { pageTitle, useCmsContext, useContent } from './use-cms.ts'
 import ReferenceControl from './ReferenceControl.vue'
@@ -25,7 +25,6 @@ const routed = computed(() =>
     .map(([key, collection]) => ({ value: key, label: labelText(collection.label, locale.value) })),
 )
 let latest = 0
-onBeforeUnmount(() => latest++)
 
 const isLink = (value: unknown): value is Link =>
   typeof value === 'object' && value !== null && 'type' in value

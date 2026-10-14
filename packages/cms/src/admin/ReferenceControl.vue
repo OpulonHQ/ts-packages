@@ -4,7 +4,7 @@ import { listDefaultPerPage, listMaxOffset, listMaxPerPage } from '@opulonjs/cor
 import { type TableQuery, UButton, UCheckbox } from '@opulonjs/ui'
 import DataTable from '@opulonjs/ui/components/DataTable'
 import { Schema } from 'effect'
-import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { computed, ref, shallowRef, watch } from 'vue'
 import type { Field, ItemSummary } from '../api.ts'
 import { useContent } from './use-cms.ts'
 
@@ -28,7 +28,6 @@ const selected = computed<ReadonlyArray<string>>(() =>
       : [],
 )
 let latest = 0
-onBeforeUnmount(() => latest++)
 watch(
   [selected, () => props.field.collection],
   async ([ids, collection]) => {

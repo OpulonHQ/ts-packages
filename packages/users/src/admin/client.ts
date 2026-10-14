@@ -36,7 +36,8 @@ export const safeRedirect = (value: unknown) =>
   typeof value === 'string' && /^\/(?!\/)/.test(value) && !value.includes('\\') ? value : '/'
 
 /** The staff users endpoints (users, roles, locale). */
-export const useUsersClient = () => useApiClient(UsersGroup)
+export const useUsersClient = (options?: Parameters<typeof useApiClient>[1]) =>
+  useApiClient(UsersGroup, options)
 
 /** The message key for a failed users or roles change: the guard's reason when it refused. */
 export const failureKey = (error: unknown) =>

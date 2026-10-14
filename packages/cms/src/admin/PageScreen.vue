@@ -9,7 +9,7 @@ import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
 import FieldSelect from '@opulonjs/ui/components/Field/Select'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
 import StatusBadge from '@opulonjs/ui/components/StatusBadge'
-import { computed, onBeforeUnmount, ref, shallowRef, watch, useTemplateRef } from 'vue'
+import { computed, ref, shallowRef, watch, useTemplateRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { labelText, type Page, type PageDocument, type PageLocale } from '../api.ts'
 import RevisionHistory from './RevisionHistory.vue'
@@ -77,9 +77,6 @@ const show = (next: Page) => {
 }
 
 let loadTicket = 0
-onBeforeUnmount(() => {
-  loadTicket++
-})
 watch(
   () => String(route.params.id),
   async (id) => {
