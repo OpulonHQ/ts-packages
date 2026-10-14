@@ -6,7 +6,7 @@
   },
   "fixtures/host/test/admin-lifetime-late-mount.test.ts": {
     "tests/no-sleep": {
-      "count": 3
+      "count": 4
     }
   },
   "fixtures/host/test/admin-lifetime.test.ts": {

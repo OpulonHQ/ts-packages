@@ -28,23 +28,38 @@ const ownTransactions = {
 const sleepMessage =
   'Wait for the state itself with expect.poll or vi.waitFor, or on a gate the test opens. A fixed sleep only proves something does not happen: disable this line with that reason.'
 
-// Reports every fixed sleep in a test: a `new Promise` around `setTimeout`, written inline or
-// wrapped in a helper (`const tick = (ms) => new Promise(...)`), where each call is reported.
+// Reports every fixed sleep in a test: a `new Promise` resolved by `setTimeout`, written inline or
+// wrapped in a helper (`const tick = (ms) => new Promise(...)`), where each use is reported. A
+// timer that only rejects (a gate's deadline) is not a sleep.
+const resolvesByTimer = (promise, sourceCode) => {
+  const resolve = promise.arguments[0]?.params?.[0]
+  if (resolve?.type !== 'Identifier') return false
+  const resolveCall = new RegExp(`\\b${resolve.name}\\b`)
+  let found = false
+  const visit = (node) => {
+    if (found || !node || typeof node.type !== 'string') return
+    if (node.type === 'CallExpression' && node.callee.name === 'setTimeout') {
+      const callback = node.arguments[0]
+      found = !!callback && resolveCall.test(sourceCode.getText(callback))
+      return
+    }
+    for (const key of sourceCode.visitorKeys[node.type] ?? []) [node[key]].flat().forEach(visit)
+  }
+  visit(promise.arguments[0].body)
+  return found
+}
+
 const noSleep = {
   meta: { type: 'problem', schema: [] },
   create(context) {
     const report = (node) => context.report({ node, message: sleepMessage })
     return {
-      "NewExpression[callee.name='Promise']:has(CallExpression[callee.name='setTimeout'])"(node) {
+      "NewExpression[callee.name='Promise']"(node) {
+        if (!resolvesByTimer(node, context.sourceCode)) return
         const helper = node.parent.type === 'ArrowFunctionExpression' ? node.parent.parent : null
         if (helper?.type !== 'VariableDeclarator') return report(node)
         for (const variable of context.sourceCode.getDeclaredVariables(helper))
-          for (const { identifier } of variable.references)
-            if (
-              identifier.parent.type === 'CallExpression' &&
-              identifier.parent.callee === identifier
-            )
-              report(identifier.parent)
+          for (const { identifier, init } of variable.references) if (!init) report(identifier)
       },
     }
   },
