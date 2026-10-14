@@ -1,20 +1,18 @@
-import { createAdmin } from '@opulonjs/admin'
 import { expect, onTestFinished, test } from 'vitest'
 import { useTestDatabase } from '../../../test/postgres/index.ts'
-import { brand } from '../admin/brand.ts'
-import { adminModules } from '../admin/modules.ts'
+import { useAdminLifetime } from './admin-lifetime.ts'
 import { makeHost, seedUser } from './support/users.ts'
 
 // Runs in the `admin` vitest project: the shell and users screens in happy-dom, against the real Worker.
+const lifetime = useAdminLifetime()
 const db = useTestDatabase()
-const host = makeHost(() => db.url, { buildId: 'b1' })
+const host = lifetime.track(makeHost(() => db.url, { buildId: 'b1' }))
 
 const tick = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /** Holds the next matching request before the Worker, or its answer after it, until `release`. */
 const held = (matches: (request: Request) => boolean, at: 'request' | 'answer' = 'request') => {
-  const gate = Promise.withResolvers<void>()
-  onTestFinished(() => gate.resolve())
+  const gate = lifetime.gate()
   let state: 'waiting' | 'reached' | 'done' = 'waiting'
   const wrap =
     (fetch: typeof globalThis.fetch): typeof globalThis.fetch =>
@@ -39,21 +37,8 @@ const held = (matches: (request: Request) => boolean, at: 'request' | 'answer' =
 }
 
 const mount = (path: string, fetch: typeof globalThis.fetch) => {
-  history.replaceState(null, '', path)
-  document.body.innerHTML = '<div id="app"></div>'
-  const app = createAdmin({ brand, modules: adminModules, buildId: 'b1', fetch })
-  app.mount('#app')
-  let mounted = true
-  onTestFinished(() => {
-    if (mounted) app.unmount()
-  })
-  return {
-    text: () => document.body.textContent ?? '',
-    unmount: () => {
-      mounted = false
-      app.unmount()
-    },
-  }
+  const text = lifetime.mount(path, { buildId: 'b1', fetch })
+  return { text, unmount: text.unmount }
 }
 
 /** Every document language the admin shows from now on. */
