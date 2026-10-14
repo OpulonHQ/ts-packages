@@ -237,66 +237,9 @@ test('a saved language applies even if reading /me again would fail', async () =
   expect(admin.text()).not.toContain('could not reach the server')
 })
 
-test('an unmounted admin leaves the document language alone when its catalogs arrive late', async () => {
-  const held = Promise.withResolvers<void>()
-  const loads: Array<Promise<unknown>> = []
-  const hold =
-    <T>(load: () => Promise<T>) =>
-    async () => {
-      await held.promise
-      const loaded = load()
-      loads.push(loaded)
-      return loaded
-    }
-  const modules = adminModules.map((m) => ({
-    ...m,
-    messages: { en: hold(m.messages.en), sk: hold(m.messages.sk) },
-  }))
-  let requested = false
-  const app = createAdmin({
-    brand,
-    modules,
-    buildId: 'b1',
-    fetch: async (input, init) => {
-      const response = await hosts.b1.browserFetch({ cookie })(input, init)
-      if (String(input instanceof Request ? input.url : input).endsWith('/api/me')) requested = true
-      return response
-    },
-  })
-  history.replaceState(null, '', '/admin/')
-  document.body.innerHTML = '<div id="app"></div>'
-  document.documentElement.lang = 'xx'
-  app.mount('#app')
-  await expect.poll(() => requested).toBe(true)
-  await new Promise((resolve) => setTimeout(resolve, 0))
-  app.unmount()
-  held.resolve()
-  await new Promise((resolve) => setTimeout(resolve, 0))
-  await Promise.all(loads)
-  await new Promise((resolve) => setTimeout(resolve, 0))
-  expect(loads.length).toBeGreaterThan(0)
-  expect(document.documentElement.lang).toBe('xx')
-})
+const tick = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms))
 
-test('an unmounted admin stops following the browser history', async () => {
-  const app = createAdmin({
-    brand,
-    modules: adminModules,
-    buildId: 'b1',
-    fetch: hosts.b1.browserFetch({ cookie }),
-  })
-  history.replaceState(null, '', '/admin/')
-  document.body.innerHTML = '<div id="app"></div>'
-  app.mount('#app')
-  await expect.poll(() => document.querySelector('nav')).toBeTruthy()
-  app.unmount()
-  history.replaceState(null, '', '/elsewhere')
-  window.dispatchEvent(new PopStateEvent('popstate'))
-  await new Promise((resolve) => setTimeout(resolve, 50))
-  expect(location.pathname).toBe('/elsewhere')
-})
-
-test('an unmounted admin does not redirect when its catalogs arrive late', async () => {
+const heldCatalogs = () => {
   const held = Promise.withResolvers<void>()
   onTestFinished(() => held.resolve())
   const loads: Array<Promise<unknown>> = []
@@ -308,17 +251,29 @@ test('an unmounted admin does not redirect when its catalogs arrive late', async
       loads.push(loaded)
       return loaded
     }
-  const modules = adminModules.map((m) => ({
-    ...m,
-    messages: { en: hold(m.messages.en), sk: hold(m.messages.sk) },
-  }))
+  return {
+    modules: adminModules.map((m) => ({
+      ...m,
+      messages: { en: hold(m.messages.en), sk: hold(m.messages.sk) },
+    })),
+    release: async () => {
+      held.resolve()
+      await tick()
+      await Promise.all(loads)
+      await tick(50)
+      expect(loads.length).toBeGreaterThan(0)
+    },
+  }
+}
+
+const mountDisposable = (modules: typeof adminModules, session: string) => {
   let requested = false
   const app = createAdmin({
     brand,
     modules,
     buildId: 'b1',
     fetch: async (input, init) => {
-      const response = await hosts.b1.browserFetch({ cookie: '' })(input, init)
+      const response = await hosts.b1.browserFetch({ cookie: session })(input, init)
       requested = true
       return response
     },
@@ -326,14 +281,51 @@ test('an unmounted admin does not redirect when its catalogs arrive late', async
   history.replaceState(null, '', '/admin/')
   document.body.innerHTML = '<div id="app"></div>'
   app.mount('#app')
-  await expect.poll(() => requested).toBe(true)
-  await new Promise((resolve) => setTimeout(resolve, 0))
-  app.unmount()
+  let mounted = true
+  onTestFinished(() => {
+    if (mounted) app.unmount()
+  })
+  return {
+    requested: () => requested,
+    unmount: () => {
+      mounted = false
+      app.unmount()
+    },
+  }
+}
+
+test('an unmounted admin leaves the document language alone when its catalogs arrive late', async () => {
+  const lang = document.documentElement.lang
+  onTestFinished(() => {
+    document.documentElement.lang = lang
+  })
+  document.documentElement.lang = 'xx'
+  const catalogs = heldCatalogs()
+  const admin = mountDisposable(catalogs.modules, cookie)
+  await expect.poll(admin.requested).toBe(true)
+  await tick()
+  admin.unmount()
+  await catalogs.release()
+  expect(document.documentElement.lang).toBe('xx')
+})
+
+test('an unmounted admin stops following the browser history', async () => {
+  const admin = mountDisposable(adminModules, cookie)
+  await expect.poll(() => document.querySelector('nav')).toBeTruthy()
+  admin.unmount()
   history.replaceState(null, '', '/elsewhere')
-  held.resolve()
-  await new Promise((resolve) => setTimeout(resolve, 0))
-  await Promise.all(loads)
-  await new Promise((resolve) => setTimeout(resolve, 50))
-  expect(loads.length).toBeGreaterThan(0)
+  window.dispatchEvent(new PopStateEvent('popstate'))
+  await tick()
+  expect(location.pathname).toBe('/elsewhere')
+})
+
+test('an unmounted admin does not redirect when its catalogs arrive late', async () => {
+  const catalogs = heldCatalogs()
+  const admin = mountDisposable(catalogs.modules, '')
+  await expect.poll(admin.requested).toBe(true)
+  await tick()
+  admin.unmount()
+  history.replaceState(null, '', '/elsewhere')
+  await catalogs.release()
   expect(location.pathname).toBe('/elsewhere')
 })

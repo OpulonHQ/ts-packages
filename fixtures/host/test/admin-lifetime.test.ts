@@ -32,6 +32,15 @@ test('the next test starts after that admin unmounted and its requests and clean
   expect(document.body.innerHTML).toBe('')
 })
 
+const failing = admin.track({
+  fail: async () => {
+    throw new Error('detached failure')
+  },
+})
+test.fails('a tracked call that rejects unawaited fails its test', () => {
+  void failing.fail()
+})
+
 let ranAfterTimeout = false
 test.fails('a test that times out', { timeout: 50 }, () => new Promise(() => {}))
 test.fails('a later test is not run while the timed-out body may still run', () => {
