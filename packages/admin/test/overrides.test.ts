@@ -400,3 +400,19 @@ test('a failed replace with an encoded query shows the screen failure', async ()
   )
   await expect.poll(() => document.querySelector('[role="alert"]')).not.toBeNull()
 })
+
+test('back and forward navigations show and clear a screen failure', async () => {
+  const app = mount('/', {
+    overrides: { 'demo.protected': () => Promise.reject(new Error('screen download failed')) },
+  })
+  const router = app.config.globalProperties.$router
+  await expect.poll(() => document.body.textContent).toContain('Nothing to show here yet.')
+  await router.push('/sign-in')
+  history.pushState(history.state, '', '/admin/protected')
+  history.pushState(history.state, '', '/admin/sign-in')
+  history.back()
+  await expect.poll(() => document.querySelector('[role="alert"]')).not.toBeNull()
+  history.forward()
+  await expect.poll(() => router.currentRoute.value.path).toBe('/sign-in')
+  await expect.poll(() => document.querySelector('[role="alert"]')).toBeNull()
+})
