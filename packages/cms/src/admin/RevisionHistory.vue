@@ -48,6 +48,12 @@ watch(identity, () => {
   confirming.value = false
   status.value = undefined
 })
+watch(
+  () => props.version,
+  () => {
+    if (status.value?.kind === 'conflict') status.value = undefined
+  },
+)
 onBeforeUnmount(() => {
   ticket++
   emit('busy', false)
