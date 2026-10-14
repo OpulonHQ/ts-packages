@@ -282,17 +282,18 @@ export const createAdmin = (options: AdminOptions): App => {
   const afterWrite = async (
     write: Promise<void>,
     apply: NonNullable<typeof lastWrite>['apply'],
+    superseded = () => false,
   ) => {
     const userId = me.value?.user.id
     const order = ++writeOrder
     try {
       await write
-      if (userId && order > armedWriteOrder) {
+      if (userId && order > armedWriteOrder && !superseded()) {
         armedWriteOrder = order
         lastWrite = { userId, apply }
       }
     } finally {
-      await read()
+      if (!superseded()) await read()
     }
   }
 
@@ -350,17 +351,23 @@ export const createAdmin = (options: AdminOptions): App => {
   const providerSignOut = auth.auth?.signOut
   const providerSetLocale = auth.auth?.setLocale
   const accountRoute = auth.auth?.accountRoute
-  // One save at a time: the server keeps whichever save reaches it last.
+  // One save at a time, as the server keeps whichever save reaches it last. A save picked after
+  // this one reads and shows the result of both.
   let saving: Promise<unknown> = Promise.resolve()
   const saveLocale = async (locale: string | null, save: (userId: string) => Promise<void>) => {
     const userId = me.value?.user.id
     if (!userId) return
     const write = saving.then(() => save(userId))
-    saving = write.catch(() => {})
-    await afterWrite(write, async (live) => {
-      await applyLocale(locale, enabled.value, live)
-      if (me.value && live()) me.value = { ...me.value, locale }
-    })
+    const queued = write.catch(() => {})
+    saving = queued
+    await afterWrite(
+      write,
+      async (live) => {
+        await applyLocale(locale, enabled.value, live)
+        if (me.value && live()) me.value = { ...me.value, locale }
+      },
+      () => saving !== queued,
+    )
   }
   const state: AdminState = {
     brand: options.brand,

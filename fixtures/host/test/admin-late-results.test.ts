@@ -11,8 +11,8 @@ const host = makeHost(() => db.url, { buildId: 'b1' })
 
 const tick = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms))
 
-/** Holds the next request whose URL matches until `release`; it then reaches the Worker. */
-const held = (matches: (request: Request) => boolean) => {
+/** Holds the next matching request before the Worker, or its answer after it, until `release`. */
+const held = (matches: (request: Request) => boolean, at: 'request' | 'answer' = 'request') => {
   const gate = Promise.withResolvers<void>()
   onTestFinished(() => gate.resolve())
   let state: 'waiting' | 'reached' | 'done' = 'waiting'
@@ -21,9 +21,11 @@ const held = (matches: (request: Request) => boolean) => {
     async (input, init) => {
       if (state !== 'waiting' || !matches(new Request(input, init))) return fetch(input, init)
       state = 'reached'
-      await gate.promise
       try {
-        return await fetch(input, init)
+        if (at === 'request') await gate.promise
+        const response = await fetch(input, init)
+        if (at === 'answer') await gate.promise
+        return response
       } finally {
         state = 'done'
       }
@@ -52,6 +54,15 @@ const mount = (path: string, fetch: typeof globalThis.fetch) => {
       app.unmount()
     },
   }
+}
+
+/** Every document language the admin shows from now on. */
+const languagesShown = () => {
+  const shown: Array<string> = []
+  const observer = new MutationObserver(() => shown.push(document.documentElement.lang))
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ['lang'] })
+  onTestFinished(() => observer.disconnect())
+  return shown
 }
 
 const isLocaleSave = (request: Request) =>
@@ -134,6 +145,7 @@ test('two quick language changes save and show the last one picked', async () =>
   }
   const admin = mount('/admin/', first.wrap(counting))
   await expect.poll(admin.text).toContain('Prehľad')
+  const shown = languagesShown()
 
   await pickLanguage('Používateľské menu', 'Jazyk', 'English')
   await expect.poll(first.reached).toBe(true)
@@ -146,6 +158,7 @@ test('two quick language changes save and show the last one picked', async () =>
   expect(await host.me(jar.cookie)).toMatchObject({ locale: 'sk' })
   await expect.poll(() => document.documentElement.lang).toBe('sk')
   expect(admin.text()).toContain('Prehľad')
+  expect(shown).not.toContain('en')
 })
 
 test('a second language pick waits for a failed first save, then saves and shows', async () => {
@@ -174,4 +187,42 @@ test('a second language pick waits for a failed first save, then saves and shows
   await expect.poll(admin.text).toContain('Dashboard')
   expect(saves).toBe(2)
   expect(await host.me(jar.cookie)).toMatchObject({ locale: 'en' })
+})
+
+test('a language save that answers after a sign-out does not keep the user signed in when reads fail', async () => {
+  const user = await seedUser(db.url, { name: 'Save Then Sign-out', locale: 'sk' })
+  const jar = { cookie: await host.signIn(user.email, user.password) }
+  const session = jar.cookie
+  let signedOut = false
+  const save = held(isLocaleSave, 'answer')
+  const read = held(
+    (request) => signedOut && request.method === 'GET' && new URL(request.url).pathname === '/api/me',
+  )
+  const server: typeof globalThis.fetch = async (input, init) => {
+    const path = new URL(new Request(input, init).url).pathname
+    if (signedOut && path === '/api/me') return new Response('down', { status: 503 })
+    const response = await host.browserFetch(jar)(input, init)
+    if (path.endsWith('/auth/sign-out')) signedOut = true
+    return response
+  }
+  const admin = mount('/admin/', save.wrap(read.wrap(server)))
+  await expect.poll(admin.text).toContain('Prehľad')
+
+  await pickLanguage('Používateľské menu', 'Jazyk', 'English')
+  await expect.poll(async () => (await host.me(session)).locale).toBe('en')
+  document
+    .querySelector<HTMLElement>('[aria-label="Používateľské menu"]')!
+    .dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  await expect.poll(() => menuItem('Odhlásiť sa')).toBeDefined()
+  menuItem('Odhlásiť sa')!.click()
+  await expect.poll(read.reached).toBe(true)
+
+  save.release()
+  await expect.poll(save.done).toBe(true)
+  await expect.poll(() => location.pathname).toBe('/admin/sign-in')
+  read.release()
+  await expect.poll(read.done).toBe(true)
+  await tick(100)
+  expect(location.pathname).toBe('/admin/sign-in')
+  expect((await host.request('GET', '/me', { cookie: session })).status).toBe(401)
 })
