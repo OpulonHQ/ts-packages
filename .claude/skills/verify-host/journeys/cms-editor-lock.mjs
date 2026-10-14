@@ -135,5 +135,92 @@ export default async (ctx) => {
   evidence.push({ kind: 'reload focus', ...afterReload })
   check(afterReload.inForm, `after Reload draft, keyboard focus is in the editor form (${afterReload.tag})`)
 
+  const usableFocus = async (label) => {
+    const landed = await page.evaluate(() => ({ tag: document.activeElement?.tagName, inForm: Boolean(document.activeElement?.closest('form')) }))
+    await page.keyboard.press('Tab')
+    const next = await page.evaluate(() => {
+      const element = document.activeElement
+      return {
+        tag: element?.tagName,
+        name: element?.getAttribute('name') ?? element?.textContent?.trim().slice(0, 40),
+        usable: Boolean(element?.closest('form')) && Boolean(element?.checkVisibility()) && !element?.closest('[aria-hidden="true"]'),
+      }
+    })
+    evidence.push({ kind: label, landed, next })
+    check(landed.inForm && next.usable, `${label}: focus lands in the editor form (${landed.tag}) and Tab reaches a visible control (${next.tag} ${next.name})`)
+  }
+  const holdGet = async (path) => {
+    let arrived
+    let release
+    const seen = new Promise((resolve) => (arrived = resolve))
+    const gate = new Promise((resolve) => (release = resolve))
+    await page.route(`${base}/api/cms${path}`, async (route) => {
+      const response = await route.fetch()
+      arrived(response.status())
+      await gate
+      await route.fulfill({ response })
+    }, { times: 1 })
+    return { seen, release }
+  }
+  const conflictThenReload = async (path, held) => {
+    const current = await call('GET', path)
+    await call('PUT', `${path}/draft?version=${current.version}`, held ?? current.draft)
+    const stale = page.waitForResponse((r) => r.url().includes(`/api/cms${path}/draft?`) && r.request().method() === 'PUT')
+    await page.getByRole('button', { name: 'Save draft', exact: true }).click()
+    check((await stale).status() === 409, `${path} stale save answers 409`)
+    const reloadDraft = page.getByRole('button', { name: 'Reload draft', exact: true })
+    await reloadDraft.focus()
+    const { seen, release } = await holdGet(path)
+    await page.keyboard.press('Enter')
+    await seen
+    release()
+  }
+
+  for (const editor of editors) {
+    await page.goto(`${base}/admin/cms${editor.path}`)
+    await page.getByRole('button', { name: 'Save draft', exact: true }).waitFor()
+    for (const tab of await page.locator('form').getByRole('tab', { name: 'Italian', exact: true }).all()) await tab.click()
+    await page.locator('form input:not([type="hidden"]):not(:disabled):visible').first().fill(`/italian-${run}`)
+    await conflictThenReload(editor.path)
+    await page.getByRole('button', { name: 'Reload draft', exact: true }).waitFor({ state: 'detached' })
+    await page.waitForTimeout(300)
+    await shot(`${editor.kind}-italian-reload-focus`)
+    await usableFocus(`${editor.kind} Reload draft with the Italian tab open`)
+  }
+
+  await page.goto(`${base}/admin/cms/menus/footer`)
+  await page.locator('input[name="items.0.label.en"]').waitFor()
+  await page.locator('input[name="items.0.label.en"]').fill('Stale label')
+  const replaced = `Replaced ${run}`
+  await conflictThenReload('/menus/footer', { items: [{ id: crypto.randomUUID(), label: { en: replaced }, link: { type: 'url', url: '/replaced' }, children: [] }] })
+  await page.waitForFunction((label) => document.querySelector('input[name="items.0.label.en"]')?.value === label, replaced)
+  await page.waitForTimeout(300)
+  await usableFocus('menu Reload draft replacing the entry rows')
+
+  await call('PUT', `/menus/footer/draft?version=${(await call('GET', '/menus/footer')).version}`, { items: [] })
+  await page.goto(`${base}/admin/cms/menus/footer`)
+  await page.getByRole('button', { name: 'Add entry', exact: true }).waitFor()
+  await conflictThenReload('/menus/footer')
+  await page.waitForTimeout(500)
+  await shot('empty-menu-reload-focus')
+  await usableFocus('empty menu Reload draft')
+
+  for (const editor of editors) {
+    const current = await call('GET', editor.path)
+    await call('POST', `${editor.path}/publish?version=${current.version}`)
+    await page.goto(`${base}/admin/cms${editor.path}`)
+    await page.getByRole('button', { name: 'View revision', exact: true }).first().click()
+    await page.getByRole('button', { name: 'Restore to draft', exact: true }).click()
+    await page.getByRole('dialog').getByRole('button', { name: 'Restore to draft', exact: true }).focus()
+    const { seen, release } = await holdGet(editor.path)
+    await page.keyboard.press('Enter')
+    check((await seen) === 200, `${editor.kind} reload after the restore is held`)
+    await page.waitForTimeout(1000)
+    release()
+    await page.waitForTimeout(500)
+    await shot(`${editor.kind}-slow-restore-focus`)
+    await usableFocus(`${editor.kind} restore whose reload outlasts the dialog`)
+  }
+
   await writeFile(`${process.env.EVIDENCE_DIR}/editor-lock.json`, JSON.stringify(evidence, null, 2))
 }
