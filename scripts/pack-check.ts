@@ -127,6 +127,7 @@ import { gzipSync } from 'node:zlib'
 import { build, createLogger, createServer } from 'vite'
 import { opulonAdmin } from '@opulonjs/admin/vite'
 import { packagesLoadedTwice } from '${pathToFileURL(join(import.meta.dirname, 'dev-packages.ts')).href}'
+import { firstRoute } from '${pathToFileURL(join(import.meta.dirname, 'first-route.ts')).href}'
 const { brand } = await import('./host/admin/brand.ts')
 const { components } = await import('./host/admin/override-components.ts')
 const checkOverrides = {
@@ -147,24 +148,27 @@ const checkOverrides = {
     console.log('ok dashboard chunks: host', dashboard.fileName, 'original', originalDashboard.fileName)
   },
 }
-const onDemand = ['/@tanstack/', '/@tiptap/', '/prosemirror-', '/effect/dist/http-api/HttpApiClient.']
-const checkFirstLoad = {
-  name: 'check-first-load',
+const editorCode = ['/@tanstack/', '/@tiptap/', '/prosemirror-']
+const staticImports = (bundle, name, found = new Set()) => {
+  if (found.has(name)) return found
+  found.add(name)
+  for (const next of bundle[name].imports) staticImports(bundle, next, found)
+  return found
+}
+const including = (bundle, names, parts) =>
+  [...new Set([...names].flatMap((name) => bundle[name].moduleIds).filter((id) => parts.some((part) => id.includes(part))))]
+let built
+const checkEagerCode = {
+  name: 'check-eager-code',
   writeBundle(_options, bundle) {
-    const firstLoad = new Set()
-    const addWithStaticImports = (name) => {
-      if (firstLoad.has(name)) return
-      firstLoad.add(name)
-      for (const next of bundle[name].imports) addWithStaticImports(next)
-    }
-    addWithStaticImports(Object.values(bundle).find((output) => output.type === 'chunk' && output.isEntry).fileName)
-    const chunks = [...firstLoad].map((name) => bundle[name])
-    const eager = chunks.flatMap((chunk) => chunk.moduleIds).filter((id) => onDemand.some((part) => id.includes(part)))
-    if (eager.length > 0) throw new Error('admin first load includes on-demand code: ' + eager.join(', '))
-    const kB = (bytes) => (bytes / 1000).toFixed(1) + ' kB'
-    const size = chunks.reduce((sum, chunk) => sum + Buffer.byteLength(chunk.code), 0)
-    const gzip = chunks.reduce((sum, chunk) => sum + gzipSync(chunk.code).length, 0)
-    console.log('ok admin first load:', chunks.length, 'chunks,', kB(size) + ',', kB(gzip), 'gzip, no table or editor code')
+    built = bundle
+    const entry = Object.values(bundle).find((output) => output.type === 'chunk' && output.isEntry).fileName
+    const eager = including(bundle, staticImports(bundle, entry), [...editorCode, '/effect/dist/http-api/HttpApiClient.'])
+    if (eager.length > 0) throw new Error('admin entry statically imports on-demand code: ' + eager.join(', '))
+    const cmsChunks = Object.values(bundle).filter((output) => output.type === 'chunk' && output.moduleIds.some((id) => id.includes('/@opulonjs/cms/dist/')))
+    const cmsEditor = including(bundle, cmsChunks.flatMap((chunk) => [...staticImports(bundle, chunk.fileName)]), ['/@tiptap/', '/prosemirror-'])
+    if (cmsEditor.length > 0) throw new Error('cms admin screens statically import the rich text editor: ' + cmsEditor.join(', '))
+    console.log('ok admin entry and cms screens import no table or editor code statically')
   },
 }
 const logger = createLogger('warn')
@@ -174,7 +178,7 @@ logger.warn = (message, options) => {
   warnings.push(message)
   warn(message, options)
 }
-const config = { root: 'host/admin', configFile: false, logLevel: 'warn', customLogger: logger, plugins: [...opulonAdmin({ brand, overrides: { components } }), checkOverrides, checkFirstLoad] }
+const config = { root: 'host/admin', configFile: false, logLevel: 'warn', customLogger: logger, plugins: [...opulonAdmin({ brand, overrides: { components } }), checkOverrides, checkEagerCode] }
 await build({ ...config, build: { outDir: '../../admin-dist', emptyOutDir: true } })
 if (warnings.some((message) => message.includes('Some chunks are larger than'))) throw new Error('admin build warns about chunk size')
 console.log('ok admin build from the packed tarballs')
@@ -213,6 +217,24 @@ try {
   if ((await new Promise((done) => screen.on('exit', done))) !== 0) throw new Error('the cms Collections screen failed to load its items in dev')
   console.log('ok admin dev renders the cms Collections screen with its decoded API response')
 } finally { await vite.close() }
+const me = {
+  buildId: 'pack-check',
+  user: { id: 'u', name: 'U', email: 'u@example.com' },
+  locale: null,
+  permissions: ['core.audit.view', ...adminModules.flatMap((m) => m.permissions ?? [])],
+  modules: ['core', ...adminModules.map((m) => m.id)],
+  permissionCatalog: [],
+  contentLocales: ['en'],
+}
+const route = await firstRoute(resolve('admin-dist'), me)
+const routeEager = including(built, route.filter((file) => built[file]?.type === 'chunk'), editorCode)
+if (routeEager.length > 0) throw new Error('admin first route fetches on-demand code: ' + routeEager.join(', '))
+const kB = (bytes) => (bytes / 1000).toFixed(1) + ' kB'
+const size = (ext) => {
+  const files = route.filter((file) => file.endsWith(ext)).map((file) => readFileSync('admin-dist/' + file))
+  return files.length + ' ' + ext.slice(1).toUpperCase() + ' files ' + kB(files.reduce((sum, file) => sum + file.length, 0)) + ' (' + kB(files.reduce((sum, file) => sum + gzipSync(file).length, 0)) + ' gzip)'
+}
+console.log('ok admin first route fetches', size('.js') + ',', size('.css') + ', no table or editor code')
 const { server } = await import('./host/server/opulon.ts')
 const serverIds = new Set(server.modules.map((m) => m.id))
 const missing = adminModules.map((m) => m.id).filter((id) => !serverIds.has(id))
