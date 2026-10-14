@@ -10,9 +10,15 @@ const cases = [
     kind: 'page',
     create: '/pages',
     path: (d?: Document) => `/pages/${d && 'id' in d ? d.id : ''}`,
-    first: page({ en: '/conflict-page' }),
-    second: page({ en: '/conflict-page-new' }),
-    third: page({ en: '/conflict-page-newer' }),
+    get first() {
+      return page({ en: `/conflict-${crypto.randomUUID()}` })
+    },
+    get second() {
+      return page({ en: `/conflict-${crypto.randomUUID()}` })
+    },
+    get third() {
+      return page({ en: `/conflict-${crypto.randomUUID()}` })
+    },
   },
   {
     kind: 'item',
@@ -70,7 +76,7 @@ const publish = (path: string, version: number) =>
   host.call<Document>('POST', `${path}/publish?version=${version}`)
 
 test.each(cases)(
-  "$kind: a save from a stale draft version is refused and changes nothing",
+  '$kind: a save from a stale draft version is refused and changes nothing',
   async (c) => {
     const { path, loaded } = await load(c)
     const fresh = await save(path, loaded.version, c.second)
@@ -121,9 +127,13 @@ test.each(cases)(
 
 test('saving or publishing without the loaded draft version is a bad request', async () => {
   const created = (await host.create(page({ en: '/conflict-unversioned' }))).body
-  expect((await host.call('PUT', `/pages/${created.id}/draft`, { body: page({}) })).status).toBe(
-    400,
-  )
+  expect(
+    (
+      await host.call('PUT', `/pages/${created.id}/draft`, {
+        body: page({ en: '/conflict-unversioned' }),
+      })
+    ).status,
+  ).toBe(400)
   expect((await host.call('POST', `/pages/${created.id}/publish`)).status).toBe(400)
   expect((await host.call<Page>('GET', `/pages/${created.id}`)).body).toEqual(created)
 })

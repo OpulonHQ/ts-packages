@@ -14,6 +14,7 @@ import RevisionHistory from './RevisionHistory.vue'
 import FieldsForm from './FieldsForm.vue'
 import LocaleDetails from './LocaleDetails.vue'
 import PublishActions from './PublishActions.vue'
+import ActionStatus from './ActionStatus.vue'
 import { useAction, useCmsContext, useContent } from './use-cms.ts'
 
 interface Draft {
@@ -85,19 +86,16 @@ watch(
   { immediate: true },
 )
 
-const save = async () =>
-  show(await run(() => content.saveItem(item.value!.id, draft.value!), t('cms.page.saved')))
+const saveDraft = () => content.saveItem(item.value!.id, item.value!.version, draft.value!)
+const save = async () => show(await run(saveDraft, t('cms.page.saved')))
 
 // Publishing publishes what is on screen: the draft is saved first.
-const publish = async () =>
-  show(
-    await run(async () => {
-      const id = item.value!.id
-      const document = draft.value!
-      await content.saveItem(id, document)
-      return content.publishItem(id)
-    }, t('cms.page.published')),
-  )
+async function publish() {
+  const saved = await run(saveDraft, '')
+  show(saved)
+  if (saved)
+    show(await run(() => content.publishItem(saved.id, saved.version), t('cms.page.published')))
+}
 const unpublish = async () =>
   show(await run(() => content.unpublishItem(item.value!.id), t('cms.item.unpublished')))
 async function remove() {
@@ -110,6 +108,7 @@ async function remove() {
 async function restored() {
   show(await run(() => content.getItem(item.value!.id), t('cms.revisions.restored')))
 }
+const reload = async () => show(await run(() => content.getItem(item.value!.id), ''))
 </script>
 
 <template>
@@ -142,14 +141,7 @@ async function restored() {
         </template>
       </PageHeader>
 
-      <p
-        v-if="status && status.message"
-        :role="status.kind === 'error' ? 'alert' : 'status'"
-        :class="status.kind === 'error' ? 'text-error' : 'text-success'"
-        class="mb-4 text-sm"
-      >
-        {{ status.message }}
-      </p>
+      <ActionStatus :status="status" @reload="reload" />
 
       <form class="space-y-6" @submit.prevent="save">
         <UCard v-if="collection.routed">

@@ -10,6 +10,7 @@ import { labelText, type Menu, MenuDocument } from '../api.ts'
 import RevisionHistory from './RevisionHistory.vue'
 import MenuItemsEditor, { type EditedMenuItem } from './MenuItemsEditor.vue'
 import PublishActions from './PublishActions.vue'
+import ActionStatus from './ActionStatus.vue'
 import { useAction, useCmsContext, useContent } from './use-cms.ts'
 
 const { t, locale } = useI18n()
@@ -48,22 +49,20 @@ watch(
 
 const document = () => Schema.decodeUnknownSync(MenuDocument)({ items: items.value })
 // The server validates links; the editor's working copy is sent as is.
-const save = async () =>
-  show(await run(() => content.saveMenu(current.value!, document()), t('cms.page.saved')))
-const publish = async () =>
-  show(
-    await run(async () => {
-      const key = current.value!
-      const draft = document()
-      await content.saveMenu(key, draft)
-      return content.publishMenu(key)
-    }, t('cms.page.published')),
-  )
+const saveDraft = () => content.saveMenu(current.value!, menu.value!.version, document())
+const save = async () => show(await run(saveDraft, t('cms.page.saved')))
+async function publish() {
+  const saved = await run(saveDraft, '')
+  show(saved)
+  if (saved)
+    show(await run(() => content.publishMenu(saved.key, saved.version), t('cms.page.published')))
+}
 const unpublish = async () =>
   show(await run(() => content.unpublishMenu(current.value!), t('cms.site.unpublished')))
 async function restored() {
   show(await run(() => content.getMenu(current.value!), t('cms.revisions.restored')))
 }
+const reload = async () => show(await run(() => content.getMenu(current.value!), ''))
 </script>
 
 <template>
@@ -93,14 +92,7 @@ async function restored() {
         :aria-current="key === current ? 'page' : undefined"
       />
     </nav>
-    <p
-      v-if="status && status.message"
-      :role="status.kind === 'error' ? 'alert' : 'status'"
-      :class="status.kind === 'error' ? 'text-error' : 'text-success'"
-      class="mb-4 text-sm"
-    >
-      {{ status.message }}
-    </p>
+    <ActionStatus :status="status" @reload="reload" />
     <form v-if="menu && current" @submit.prevent="save">
       <UCard>
         <p v-if="items.length === 0" class="mb-3 text-sm text-muted">{{ t('cms.menus.empty') }}</p>

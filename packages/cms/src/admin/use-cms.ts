@@ -45,10 +45,11 @@ export const usePages = () => {
     list: () => cms((client) => client.listPages()),
     get: (id: string) => cms((client) => client.getPage({ params: { id } })),
     create: (draft: PageDocument) => cms((client) => client.createPage({ payload: draft })),
-    save: (id: string, draft: PageDocument) =>
-      cms((client) => client.saveDraft({ params: { id }, payload: draft })),
+    save: (id: string, version: number, draft: PageDocument) =>
+      cms((client) => client.saveDraft({ params: { id }, query: { version }, payload: draft })),
     remove: (id: string) => cms((client) => client.deletePage({ params: { id } })),
-    publish: (id: string) => cms((client) => client.publishPage({ params: { id } })),
+    publish: (id: string, version: number) =>
+      cms((client) => client.publishPage({ params: { id }, query: { version } })),
     unpublish: (id: string) => cms((client) => client.unpublishPage({ params: { id } })),
     can: admin.can,
     contentLocales: computed(() => admin.me.value?.contentLocales ?? []),
@@ -81,20 +82,25 @@ export const useContent = () => {
     getItem: (id: string) => cms((client) => client.getItem({ params: { id } })),
     createItem: (collection: string, draft: ItemDocument) =>
       cms((client) => client.createItem({ params: { collection }, payload: draft })),
-    saveItem: (id: string, draft: ItemDocument) =>
-      cms((client) => client.saveItemDraft({ params: { id }, payload: draft })),
+    saveItem: (id: string, version: number, draft: ItemDocument) =>
+      cms((client) => client.saveItemDraft({ params: { id }, query: { version }, payload: draft })),
     removeItem: (id: string) => cms((client) => client.deleteItem({ params: { id } })),
-    publishItem: (id: string) => cms((client) => client.publishItem({ params: { id } })),
+    publishItem: (id: string, version: number) =>
+      cms((client) => client.publishItem({ params: { id }, query: { version } })),
     unpublishItem: (id: string) => cms((client) => client.unpublishItem({ params: { id } })),
     getSettings: () => cms((client) => client.getSettings()),
-    saveSettings: (draft: SettingsDocument) =>
-      cms((client) => client.saveSettingsDraft({ payload: draft })),
-    publishSettings: () => cms((client) => client.publishSettings()),
+    saveSettings: (version: number, draft: SettingsDocument) =>
+      cms((client) => client.saveSettingsDraft({ query: { version }, payload: draft })),
+    publishSettings: (version: number) =>
+      cms((client) => client.publishSettings({ query: { version } })),
     unpublishSettings: () => cms((client) => client.unpublishSettings()),
     getMenu: (key: string) => cms((client) => client.getMenu({ params: { key } })),
-    saveMenu: (key: string, draft: MenuDocument) =>
-      cms((client) => client.saveMenuDraft({ params: { key }, payload: draft })),
-    publishMenu: (key: string) => cms((client) => client.publishMenu({ params: { key } })),
+    saveMenu: (key: string, version: number, draft: MenuDocument) =>
+      cms((client) =>
+        client.saveMenuDraft({ params: { key }, query: { version }, payload: draft }),
+      ),
+    publishMenu: (key: string, version: number) =>
+      cms((client) => client.publishMenu({ params: { key }, query: { version } })),
     unpublishMenu: (key: string) => cms((client) => client.unpublishMenu({ params: { key } })),
     listPages: () => cms((client) => client.listPages()),
     can: admin.can,
@@ -102,10 +108,16 @@ export const useContent = () => {
   }
 }
 
+/** What an editor action ended with; `conflict`: another editor changed the draft meanwhile. */
+export interface ActionStatus {
+  kind: 'ok' | 'error' | 'conflict'
+  message: string
+}
+
 /** Runs an editor action: pending flag, then a success or failure message to show. */
 export const useAction = (failed: () => string) => {
   const pending = ref(false)
-  const status = ref<{ kind: 'ok' | 'error'; message: string }>()
+  const status = ref<ActionStatus>()
   let ticket = 0
   const invalidate = () => {
     ticket++
@@ -123,8 +135,7 @@ export const useAction = (failed: () => string) => {
       status.value = { kind: 'ok', message: done }
       return result
     } catch (error) {
-      if (request === ticket)
-        status.value = { kind: 'error', message: failureMessage(error, failed()) }
+      if (request === ticket) status.value = failureStatus(error, failed())
       return undefined
     } finally {
       if (request === ticket) pending.value = false
@@ -146,3 +157,8 @@ export const pageTitle = (
 /** The editor-facing message of a failure: the server's own for validation and conflicts. */
 export const failureMessage = (error: unknown, fallback: string) =>
   error instanceof CmsInvalid || error instanceof CmsConflict ? error.message : fallback
+
+export const failureStatus = (error: unknown, fallback: string): ActionStatus => ({
+  kind: error instanceof CmsConflict && error.reason === 'draft_changed' ? 'conflict' : 'error',
+  message: failureMessage(error, fallback),
+})

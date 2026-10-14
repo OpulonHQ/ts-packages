@@ -19,6 +19,7 @@ import createDocument from './migrations/0001_create_document.ts'
 import createRedirect from './migrations/0002_create_redirect.ts'
 import singletons from './migrations/0003_singletons.ts'
 import itemListOrder from './migrations/0004_item_list_order.ts'
+import documentVersion from './migrations/0005_document_version.ts'
 import { Pages } from './pages.ts'
 import { makeReader, type Tagged } from './read.ts'
 import { Redirects } from './redirects.ts'
@@ -118,6 +119,7 @@ export const cms = (options: CmsOptions) =>
       '0002_create_redirect': createRedirect,
       '0003_singletons': singletons,
       '0004_item_list_order': itemListOrder,
+      '0005_document_version': documentVersion,
     },
     permissions: cmsPermissions,
     auditActions: cmsAuditActions,
@@ -162,9 +164,11 @@ const handlers = (api: HttpApi.HttpApi<'opulon', typeof CmsGroup | typeof CmsRea
         .handle('listPages', () => pages.list())
         .handle('getPage', ({ params }) => pages.get(params.id))
         .handle('createPage', ({ payload }) => pages.create(payload))
-        .handle('saveDraft', ({ params, payload }) => pages.saveDraft(params.id, payload))
+        .handle('saveDraft', ({ params, query, payload }) =>
+          pages.saveDraft(params.id, query.version, payload),
+        )
         .handle('deletePage', ({ params }) => pages.remove(params.id))
-        .handle('publishPage', ({ params }) => pages.publish(params.id))
+        .handle('publishPage', ({ params, query }) => pages.publish(params.id, query.version))
         .handle('unpublishPage', ({ params }) => pages.unpublish(params.id))
         .handle('previewPage', ({ params, query }) =>
           preview(pages.preview(params.id, query.locale)),
@@ -172,22 +176,28 @@ const handlers = (api: HttpApi.HttpApi<'opulon', typeof CmsGroup | typeof CmsRea
         .handle('listItems', ({ params, query }) => items.list(params.collection, query))
         .handle('createItem', ({ params, payload }) => items.create(params.collection, payload))
         .handle('getItem', ({ params }) => items.get(params.id))
-        .handle('saveItemDraft', ({ params, payload }) => items.saveDraft(params.id, payload))
+        .handle('saveItemDraft', ({ params, query, payload }) =>
+          items.saveDraft(params.id, query.version, payload),
+        )
         .handle('deleteItem', ({ params }) => items.remove(params.id))
-        .handle('publishItem', ({ params }) => items.publish(params.id))
+        .handle('publishItem', ({ params, query }) => items.publish(params.id, query.version))
         .handle('unpublishItem', ({ params }) => items.unpublish(params.id))
         .handle('previewItem', ({ params, query }) =>
           preview(items.preview(params.id, query.locale)),
         )
         .handle('getSettings', () => settings.get())
-        .handle('saveSettingsDraft', ({ payload }) => settings.saveDraft(payload))
-        .handle('publishSettings', () => settings.publish())
+        .handle('saveSettingsDraft', ({ query, payload }) =>
+          settings.saveDraft(query.version, payload),
+        )
+        .handle('publishSettings', ({ query }) => settings.publish(query.version))
         .handle('unpublishSettings', () => settings.unpublish())
         .handle('previewSettings', ({ query }) => preview(settings.preview(query.locale)))
         .handle('listMenus', () => menus.list())
         .handle('getMenu', ({ params }) => menus.get(params.key))
-        .handle('saveMenuDraft', ({ params, payload }) => menus.saveDraft(params.key, payload))
-        .handle('publishMenu', ({ params }) => menus.publish(params.key))
+        .handle('saveMenuDraft', ({ params, query, payload }) =>
+          menus.saveDraft(params.key, query.version, payload),
+        )
+        .handle('publishMenu', ({ params, query }) => menus.publish(params.key, query.version))
         .handle('unpublishMenu', ({ params }) => menus.unpublish(params.key))
         .handle('previewMenu', ({ params, query }) =>
           preview(menus.preview(params.key, query.locale)),

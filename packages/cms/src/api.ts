@@ -105,6 +105,7 @@ export const PageSummary = Schema.Struct({
   status: PageStatus,
   updatedAt: Schema.String,
   publishedAt: Schema.NullOr(Schema.String),
+  version: Schema.Number,
 })
 export type PageSummary = typeof PageSummary.Type
 
@@ -132,6 +133,8 @@ const documentState = {
   status: PageStatus,
   updatedAt: Schema.String,
   publishedAt: Schema.NullOr(Schema.String),
+  /** The draft's version: saving or publishing sends the one it was loaded at. */
+  version: Schema.Number,
 }
 
 /** An item's draft or published document. `locales` carries path, availability and SEO per
@@ -278,7 +281,13 @@ export class CmsNotFound extends Schema.TaggedError<CmsNotFound>()(
 export class CmsConflict extends Schema.TaggedError<CmsConflict>()(
   'CmsConflict',
   {
-    reason: Schema.Literals(['path_taken', 'system_page', 'redirect_taken', 'redirect_loop']),
+    reason: Schema.Literals([
+      'path_taken',
+      'system_page',
+      'redirect_taken',
+      'redirect_loop',
+      'draft_changed',
+    ]),
     message: Schema.String,
   },
   { httpApiStatus: 409 },
@@ -354,6 +363,8 @@ export type MenuRevision = typeof MenuRevision.Type
 const id = { id: Schema.String }
 const collection = { collection: Schema.String }
 const key = { key: Schema.String }
+/** The draft version the editor loaded; another version answers `CmsConflict` `draft_changed`. */
+const loadedVersion = { version: Schema.NumberFromString.check(Schema.isInt()) }
 const localeQuery = { locale: Schema.optionalKey(Schema.String) }
 
 export const CmsGroup = HttpApiGroup.make('cms')
@@ -466,6 +477,7 @@ export const CmsGroup = HttpApiGroup.make('cms')
   .add(
     HttpApiEndpoint.put('saveDraft', '/pages/:id/draft', {
       params: id,
+      query: loadedVersion,
       payload: PageDocument,
       success: Page,
       error: [CmsInvalid, CmsConflict, CmsNotFound],
@@ -480,6 +492,7 @@ export const CmsGroup = HttpApiGroup.make('cms')
   .add(
     HttpApiEndpoint.post('publishPage', '/pages/:id/publish', {
       params: id,
+      query: loadedVersion,
       success: Page,
       error: [CmsInvalid, CmsConflict, CmsNotFound],
     }).annotate(Policy, 'cms.pages.publish'),
@@ -526,6 +539,7 @@ export const CmsGroup = HttpApiGroup.make('cms')
   .add(
     HttpApiEndpoint.put('saveItemDraft', '/items/:id/draft', {
       params: id,
+      query: loadedVersion,
       payload: ItemDocument,
       success: Item,
       error: [CmsInvalid, CmsConflict, CmsNotFound],
@@ -540,6 +554,7 @@ export const CmsGroup = HttpApiGroup.make('cms')
   .add(
     HttpApiEndpoint.post('publishItem', '/items/:id/publish', {
       params: id,
+      query: loadedVersion,
       success: Item,
       error: [CmsInvalid, CmsConflict, CmsNotFound],
     }).annotate(Policy, 'cms.collections.publish'),
@@ -567,15 +582,17 @@ export const CmsGroup = HttpApiGroup.make('cms')
   )
   .add(
     HttpApiEndpoint.put('saveSettingsDraft', '/settings/draft', {
+      query: loadedVersion,
       payload: SettingsDocument,
       success: SiteSettings,
-      error: CmsInvalid,
+      error: [CmsInvalid, CmsConflict],
     }).annotate(Policy, 'cms.site.edit'),
   )
   .add(
     HttpApiEndpoint.post('publishSettings', '/settings/publish', {
+      query: loadedVersion,
       success: SiteSettings,
-      error: CmsInvalid,
+      error: [CmsInvalid, CmsConflict],
     }).annotate(Policy, 'cms.site.publish'),
   )
   .add(
@@ -604,16 +621,18 @@ export const CmsGroup = HttpApiGroup.make('cms')
   .add(
     HttpApiEndpoint.put('saveMenuDraft', '/menus/:key/draft', {
       params: key,
+      query: loadedVersion,
       payload: MenuDocument,
       success: Menu,
-      error: [CmsInvalid, CmsNotFound],
+      error: [CmsInvalid, CmsConflict, CmsNotFound],
     }).annotate(Policy, 'cms.site.edit'),
   )
   .add(
     HttpApiEndpoint.post('publishMenu', '/menus/:key/publish', {
       params: key,
+      query: loadedVersion,
       success: Menu,
-      error: [CmsInvalid, CmsNotFound],
+      error: [CmsInvalid, CmsConflict, CmsNotFound],
     }).annotate(Policy, 'cms.site.publish'),
   )
   .add(

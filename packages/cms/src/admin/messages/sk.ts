@@ -143,6 +143,12 @@ export default {
     editor: 'Editor sa nepodarilo načítať. Obnovením stránky prídete o neuložené zmeny.',
     reload: 'Obnoviť stránku',
   },
+  conflict: {
+    title: 'Tento koncept medzitým zmenil niekto iný.',
+    description:
+      'Vaše úpravy sa neuložili a zostávajú na obrazovke. Načítajte najnovší koncept; načítanie vaše úpravy nahradí.',
+    reload: 'Načítať koncept',
+  },
   permissions: {
     'cms.pages.view': 'Zobraziť stránky',
     'cms.pages.edit': 'Vytvárať a upravovať stránky',

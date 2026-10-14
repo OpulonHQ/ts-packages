@@ -27,7 +27,7 @@ import { cacheTags } from './cache.ts'
 import { checkFields, cleanData, linkProblem, localizeData, uuid } from './document.ts'
 import { type DocumentRow, documentState, makeDocuments } from './documents.ts'
 
-/** Menus and settings have no paths, so a path conflict cannot happen. */
+/** Menus and settings have no paths, so a restore cannot conflict. */
 const noConflict = <A, E, R>(effect: Effect.Effect<A, E | CmsConflict, R>) =>
   effect.pipe(Effect.catchTag('CmsConflict', Effect.die))
 
@@ -123,9 +123,12 @@ export class Settings extends Context.Service<
     ) => Effect.Effect<SiteSettings, Failure | CmsInvalid>
     readonly get: () => Effect.Effect<SiteSettings, Forbidden>
     readonly saveDraft: (
+      version: number,
       draft: SettingsDocument,
-    ) => Effect.Effect<SiteSettings, Forbidden | CmsInvalid>
-    readonly publish: () => Effect.Effect<SiteSettings, Forbidden | CmsInvalid>
+    ) => Effect.Effect<SiteSettings, Forbidden | CmsInvalid | CmsConflict>
+    readonly publish: (
+      version: number,
+    ) => Effect.Effect<SiteSettings, Forbidden | CmsInvalid | CmsConflict>
     readonly unpublish: () => Effect.Effect<SiteSettings, Forbidden>
     readonly preview: (locale?: string) => Effect.Effect<SettingsPreview, Forbidden>
   }
@@ -177,10 +180,10 @@ export class Settings extends Context.Service<
               .restoreRevision(settingsKey, revisionId)
               .pipe(noConflict, Effect.map(toSettings)),
           get: () => orDie(documents.get(settingsKey)).pipe(Effect.map(toSettings)),
-          saveDraft: (draft) =>
-            orDie(documents.saveDraft(settingsKey, draft)).pipe(noConflict, Effect.map(toSettings)),
-          publish: () =>
-            orDie(documents.publish(settingsKey)).pipe(noConflict, Effect.map(toSettings)),
+          saveDraft: (version, draft) =>
+            orDie(documents.saveDraft(settingsKey, version, draft)).pipe(Effect.map(toSettings)),
+          publish: (version) =>
+            orDie(documents.publish(settingsKey, version)).pipe(Effect.map(toSettings)),
           unpublish: () => orDie(documents.unpublish(settingsKey)).pipe(Effect.map(toSettings)),
           preview: (requested) =>
             Effect.gen(function* () {
@@ -213,9 +216,13 @@ export class Menus extends Context.Service<
     readonly get: (key: string) => Effect.Effect<Menu, Failure>
     readonly saveDraft: (
       key: string,
+      version: number,
       draft: MenuDocument,
-    ) => Effect.Effect<Menu, Failure | CmsInvalid>
-    readonly publish: (key: string) => Effect.Effect<Menu, Failure | CmsInvalid>
+    ) => Effect.Effect<Menu, Failure | CmsInvalid | CmsConflict>
+    readonly publish: (
+      key: string,
+      version: number,
+    ) => Effect.Effect<Menu, Failure | CmsInvalid | CmsConflict>
     readonly unpublish: (key: string) => Effect.Effect<Menu, Failure>
     /** The draft in one locale, links resolved against what is published. */
     readonly preview: (key: string, locale?: string) => Effect.Effect<MenuPreview, Failure>
@@ -344,18 +351,13 @@ export class Menus extends Context.Service<
               Effect.map((rows) => ({ rows: rows.map(toSummary), total: rows.length })),
             ),
           get: (key) => declared(key).pipe(Effect.andThen(documents.get(key)), Effect.map(toMenu)),
-          saveDraft: (key, draft) =>
+          saveDraft: (key, version, draft) =>
             declared(key).pipe(
-              Effect.andThen(documents.saveDraft(key, draft)),
-              noConflict,
+              Effect.andThen(documents.saveDraft(key, version, draft)),
               Effect.map(toMenu),
             ),
-          publish: (key) =>
-            declared(key).pipe(
-              Effect.andThen(documents.publish(key)),
-              noConflict,
-              Effect.map(toMenu),
-            ),
+          publish: (key, version) =>
+            declared(key).pipe(Effect.andThen(documents.publish(key, version)), Effect.map(toMenu)),
           unpublish: (key) =>
             declared(key).pipe(Effect.andThen(documents.unpublish(key)), Effect.map(toMenu)),
           preview: (key, requested) =>

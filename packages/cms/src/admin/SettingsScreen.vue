@@ -8,6 +8,7 @@ import type { SiteSettings } from '../api.ts'
 import RevisionHistory from './RevisionHistory.vue'
 import FieldsForm from './FieldsForm.vue'
 import PublishActions from './PublishActions.vue'
+import ActionStatus from './ActionStatus.vue'
 import { useAction, useCmsContext, useContent } from './use-cms.ts'
 
 const { t } = useI18n()
@@ -27,20 +28,19 @@ const show = (next: SiteSettings | undefined) => {
 }
 onMounted(async () => show(await run(() => content.getSettings(), '')))
 
-const save = async () =>
-  show(await run(() => content.saveSettings({ data: data.value }), t('cms.page.saved')))
-const publish = async () =>
-  show(
-    await run(async () => {
-      await content.saveSettings({ data: data.value })
-      return content.publishSettings()
-    }, t('cms.page.published')),
-  )
+const saveDraft = () => content.saveSettings(settings.value!.version, { data: data.value })
+const save = async () => show(await run(saveDraft, t('cms.page.saved')))
+async function publish() {
+  const saved = await run(saveDraft, '')
+  show(saved)
+  if (saved) show(await run(() => content.publishSettings(saved.version), t('cms.page.published')))
+}
 const unpublish = async () =>
   show(await run(() => content.unpublishSettings(), t('cms.site.unpublished')))
 async function restored() {
   show(await run(() => content.getSettings(), t('cms.revisions.restored')))
 }
+const reload = async () => show(await run(() => content.getSettings(), ''))
 </script>
 
 <template>
@@ -59,14 +59,7 @@ async function restored() {
         />
       </template>
     </PageHeader>
-    <p
-      v-if="status && status.message"
-      :role="status.kind === 'error' ? 'alert' : 'status'"
-      :class="status.kind === 'error' ? 'text-error' : 'text-success'"
-      class="mb-4 text-sm"
-    >
-      {{ status.message }}
-    </p>
+    <ActionStatus :status="status" @reload="reload" />
     <form v-if="settings" @submit.prevent="save">
       <UCard>
         <FieldsForm

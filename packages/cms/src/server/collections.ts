@@ -49,10 +49,14 @@ export class Items extends Context.Service<
     ) => Effect.Effect<Item, Failure | CmsInvalid | CmsConflict>
     readonly saveDraft: (
       id: string,
+      version: number,
       draft: ItemDocument,
     ) => Effect.Effect<Item, Failure | CmsInvalid | CmsConflict>
     readonly remove: (id: string) => Effect.Effect<void, Failure>
-    readonly publish: (id: string) => Effect.Effect<Item, Failure | CmsInvalid | CmsConflict>
+    readonly publish: (
+      id: string,
+      version: number,
+    ) => Effect.Effect<Item, Failure | CmsInvalid | CmsConflict>
     readonly unpublish: (id: string) => Effect.Effect<Item, Failure>
     readonly preview: (id: string, locale?: string) => Effect.Effect<ItemPreview, Failure>
   }
@@ -174,11 +178,12 @@ export class Items extends Context.Service<
               Effect.andThen(documents.create(collection, draft)),
               Effect.map(toItem),
             ),
-          saveDraft: (id, draft) => documents.saveDraft(id, draft).pipe(Effect.map(toItem)),
+          saveDraft: (id, version, draft) =>
+            documents.saveDraft(id, version, draft).pipe(Effect.map(toItem)),
 
           // Only system pages refuse deletion.
           remove: (id) => documents.remove(id).pipe(Effect.catchTag('CmsConflict', Effect.die)),
-          publish: (id) => documents.publish(id).pipe(Effect.map(toItem)),
+          publish: (id, version) => documents.publish(id, version).pipe(Effect.map(toItem)),
           unpublish: (id) => documents.unpublish(id).pipe(Effect.map(toItem)),
           preview: (id, requested) =>
             Effect.gen(function* () {

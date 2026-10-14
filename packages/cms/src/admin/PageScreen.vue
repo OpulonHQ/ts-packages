@@ -15,7 +15,14 @@ import { labelText, type Page, type PageDocument, type PageLocale } from '../api
 import RevisionHistory from './RevisionHistory.vue'
 import FieldsForm from './FieldsForm.vue'
 import LocaleDetails from './LocaleDetails.vue'
-import { failureMessage, pageTitle, useCmsContext, usePages } from './use-cms.ts'
+import ActionStatus from './ActionStatus.vue'
+import {
+  type ActionStatus as Status,
+  failureStatus,
+  pageTitle,
+  useCmsContext,
+  usePages,
+} from './use-cms.ts'
 
 /** The draft as edited: plain mutable copies of the document's parts. */
 interface Draft {
@@ -35,7 +42,7 @@ const missing = ref(false)
 const pending = ref(false)
 const confirming = ref(false)
 const revisionPending = ref(false)
-const status = ref<{ kind: 'ok' | 'error'; message: string }>()
+const status = ref<Status>()
 const newType = ref<string | number | null>(null)
 
 const locales = computed(() => pages.contentLocales.value)
@@ -106,23 +113,21 @@ async function run(action: () => Promise<Page | void>, done: string) {
     if (next) show(next)
     status.value = { kind: 'ok', message: done }
   } catch (error) {
-    if (request === actionTicket)
-      status.value = { kind: 'error', message: failureMessage(error, t('cms.errors.failed')) }
+    if (request === actionTicket) status.value = failureStatus(error, t('cms.errors.failed'))
   } finally {
     if (request === actionTicket) pending.value = false
   }
 }
 
-const save = () => run(() => pages.save(page.value!.id, draft.value!), t('cms.page.saved'))
+const saveDraft = () => pages.save(page.value!.id, page.value!.version, draft.value!)
+const save = () => run(saveDraft, t('cms.page.saved'))
 
 // Publishing publishes what is on screen: the draft is saved first.
-const publish = () =>
-  run(async () => {
-    const id = page.value!.id
-    const document = draft.value!
-    await pages.save(id, document)
-    return pages.publish(id)
-  }, t('cms.page.published'))
+async function publish() {
+  await run(saveDraft, '')
+  if (status.value?.kind === 'ok')
+    await run(() => pages.publish(page.value!.id, page.value!.version), t('cms.page.published'))
+}
 const unpublish = () => run(() => pages.unpublish(page.value!.id), t('cms.page.unpublished'))
 async function remove() {
   confirming.value = false
@@ -143,6 +148,7 @@ function move(index: number, by: -1 | 1) {
 async function restored() {
   await run(() => pages.get(page.value!.id), t('cms.revisions.restored'))
 }
+const reload = () => run(() => pages.get(page.value!.id), '')
 </script>
 
 <template>
@@ -195,14 +201,7 @@ async function restored() {
       </PageHeader>
       <CachePurgeNotice :pending="pending || revisionPending" class="mb-4" />
 
-      <p
-        v-if="status && status.message"
-        :role="status.kind === 'error' ? 'alert' : 'status'"
-        :class="status.kind === 'error' ? 'text-error' : 'text-success'"
-        class="mb-4 text-sm"
-      >
-        {{ status.message }}
-      </p>
+      <ActionStatus :status="status" @reload="reload" />
 
       <form class="space-y-6" @submit.prevent="save">
         <UCard>
