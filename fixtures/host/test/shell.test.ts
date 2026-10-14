@@ -249,10 +249,14 @@ const heldCatalogs = (holding = true) => {
   const held = Promise.withResolvers<void>()
   onTestFinished(() => held.resolve())
   const loads: Array<Promise<unknown>> = []
+  let asked = false
   const hold =
     <T>(load: () => Promise<T>) =>
     async () => {
-      if (holding) await held.promise
+      if (holding) {
+        asked = true
+        await held.promise
+      }
       const loaded = load()
       loads.push(loaded)
       return loaded
@@ -265,6 +269,7 @@ const heldCatalogs = (holding = true) => {
     hold: () => {
       holding = true
     },
+    asked: () => asked,
     release: async () => {
       held.resolve()
       await tick()
@@ -503,5 +508,24 @@ test('an unmounted admin keeps its user when a language change answers late', as
   request.release()
   await changed
   await tick(50)
+  expect(me.value).toBe(before)
+})
+
+test('an unmounted admin keeps its user when the new language loads late', async () => {
+  const user = await seedUser(db.url, { name: 'Late Catalogs', locale: 'sk' })
+  const own = await hosts.b1.signIn(user.email, user.password)
+  const catalogs = heldCatalogs(false)
+  const dashboard = capturedState()
+  const admin = mountDisposable(catalogs.modules, own, { overrides: dashboard.overrides })
+  await expect.poll(() => document.body.textContent).toContain('state captured')
+  const { setLocale, me } = dashboard.state()
+  if (!setLocale) throw new Error('the auth provider offers no language change')
+  const before = me.value
+  catalogs.hold()
+  const changed = setLocale('en').catch(() => {})
+  await expect.poll(catalogs.asked).toBe(true)
+  admin.unmount()
+  await catalogs.release()
+  await changed
   expect(me.value).toBe(before)
 })

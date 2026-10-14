@@ -316,7 +316,7 @@ export const createAdmin = (options: AdminOptions): App => {
             // Applied here rather than by reading /me again, which on failure would take the
             // whole shell down for a saved language.
             await applyLocale(locale, enabled.value)
-            if (me.value) me.value = { ...me.value, locale }
+            if (me.value && !unmounted) me.value = { ...me.value, locale }
           },
         }
       : {}),
