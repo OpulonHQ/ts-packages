@@ -150,6 +150,29 @@ test('a single item link resolves a target beyond page one and can be cleared an
     .toBeUndefined()
 })
 
+test('an item link whose target was deleted shows it missing and stays removable', async () => {
+  const target = (
+    await host.call<Item>('POST', '/collections/posts/items', {
+      body: { locales: {}, data: { title: { en: 'Deleted link target' } } },
+    })
+  ).body
+  expect(
+    (
+      await host.call('PUT', '/settings/draft', {
+        body: { data: { cta: { type: 'item', id: target.id } } },
+      })
+    ).status,
+  ).toBe(200)
+  expect((await host.call('DELETE', `/items/${target.id}`)).status).toBe(204)
+  admin.mount('/admin/cms/settings', { fetch: host.fetch })
+  const remove = () =>
+    document.querySelector<HTMLButtonElement>(
+      `[aria-label="Odstrániť Chýbajúca alebo vymazaná položka (${target.id})"]`,
+    )
+  await expect.poll(remove).toBeTruthy()
+  expect(document.querySelector('[role="alert"]')).toBeNull()
+})
+
 test('saved reference labels load together while individual document requests cannot settle', async () => {
   const ids: string[] = []
   for (const title of ['Batch first', 'Batch second']) {

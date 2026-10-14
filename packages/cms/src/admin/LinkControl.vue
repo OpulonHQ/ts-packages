@@ -5,7 +5,7 @@ import { useI18n } from '@opulonjs/admin'
 import FieldSelect from '@opulonjs/ui/components/Field/Select'
 import FieldText from '@opulonjs/ui/components/Field/Text'
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
-import { fields, labelText, type ItemSummary, type Link } from '../api.ts'
+import { CmsNotFound, fields, labelText, type ItemSummary, type Link } from '../api.ts'
 import { pageTitle, useCmsContext, useContent } from './use-cms.ts'
 import ReferenceControl from './ReferenceControl.vue'
 
@@ -114,8 +114,10 @@ watch(
           knownItem.value = { id: item.id, collection: item.collection }
           itemCollection.value = item.collection
         }
-      } catch {
-        if (ticket === latest) failure.value = true
+      } catch (error) {
+        if (ticket !== latest) return
+        if (error instanceof CmsNotFound) itemCollection.value ??= routed.value[0]?.value ?? null
+        else failure.value = true
       }
     }
   },
