@@ -19,6 +19,37 @@ const serverDeps = {
 }
 const adminEntryDeps = ['admin', 'ui']
 
+// Core's withTransaction owns the afterCommit queue, so it is the only way to open one.
+const ownTransactions = {
+  selector: "CallExpression > MemberExpression.callee[property.name='withTransaction']",
+  message: 'Open transactions with withTransaction from @opulonjs/core (afterCommit).',
+}
+
+const sleepMessage =
+  'Wait for the state itself with expect.poll or vi.waitFor, or on a gate the test opens. A fixed sleep only proves something does not happen: disable this line with that reason.'
+
+// Reports every fixed sleep in a test: a `new Promise` around `setTimeout`, written inline or
+// wrapped in a helper (`const tick = (ms) => new Promise(...)`), where each call is reported.
+const noSleep = {
+  meta: { type: 'problem', schema: [] },
+  create(context) {
+    const report = (node) => context.report({ node, message: sleepMessage })
+    return {
+      "NewExpression[callee.name='Promise']:has(CallExpression[callee.name='setTimeout'])"(node) {
+        const helper = node.parent.type === 'ArrowFunctionExpression' ? node.parent.parent : null
+        if (helper?.type !== 'VariableDeclarator') return report(node)
+        for (const variable of context.sourceCode.getDeclaredVariables(helper))
+          for (const { identifier } of variable.references)
+            if (
+              identifier.parent.type === 'CallExpression' &&
+              identifier.parent.callee === identifier
+            )
+              report(identifier.parent)
+      },
+    }
+  },
+}
+
 const nuxtUi = {
   group: ['@nuxt/ui', '@nuxt/ui/*'],
   message: '@nuxt/ui may only be imported inside @opulonjs/ui.',
@@ -77,17 +108,13 @@ export default defineConfig(
     },
   ]),
   {
-    // Core's withTransaction owns the afterCommit queue, so it is the only way to open one.
     ignores: ['packages/core/src/background.ts'],
-    rules: {
-      'no-restricted-syntax': [
-        'error',
-        {
-          selector: "CallExpression > MemberExpression.callee[property.name='withTransaction']",
-          message: 'Open transactions with withTransaction from @opulonjs/core (afterCommit).',
-        },
-      ],
-    },
+    rules: { 'no-restricted-syntax': ['error', ownTransactions] },
+  },
+  {
+    files: ['**/*.test.ts'],
+    plugins: { tests: { rules: { 'no-sleep': noSleep } } },
+    rules: { 'tests/no-sleep': 'error' },
   },
   prettier,
 )

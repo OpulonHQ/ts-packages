@@ -1,0 +1,52 @@
+{
+  "fixtures/host/test/admin-lifetime-late-mount.test.ts": {
+    "tests/no-sleep": {
+      "count": 3
+    }
+  },
+  "fixtures/host/test/admin-lifetime.test.ts": {
+    "tests/no-sleep": {
+      "count": 9
+    }
+  },
+  "fixtures/host/test/audit-admin.test.ts": {
+    "tests/no-sleep": {
+      "count": 1
+    }
+  },
+  "fixtures/host/test/cms/content-admin.test.ts": {
+    "tests/no-sleep": {
+      "count": 4
+    }
+  },
+  "fixtures/host/test/cms/durable-purge.test.ts": {
+    "tests/no-sleep": {
+      "count": 1
+    }
+  },
+  "fixtures/host/test/cms/focus-return.test.ts": {
+    "tests/no-sleep": {
+      "count": 20
+    }
+  },
+  "fixtures/host/test/cms/reference-paging-admin.test.ts": {
+    "tests/no-sleep": {
+      "count": 1
+    }
+  },
+  "fixtures/host/test/shell.test.ts": {
+    "tests/no-sleep": {
+      "count": 23
+    }
+  },
+  "packages/admin/test/overrides.test.ts": {
+    "tests/no-sleep": {
+      "count": 7
+    }
+  },
+  "packages/core/test/migrate.test.ts": {
+    "tests/no-sleep": {
+      "count": 1
+    }
+  }
+}

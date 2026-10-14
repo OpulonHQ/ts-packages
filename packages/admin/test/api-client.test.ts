@@ -55,7 +55,7 @@ test('an answer that arrives after the component unmounted never settles', async
   await expect.poll(() => fetch.mock.calls.length).toBe(1)
   app.unmount()
   release()
-  // eslint-disable-next-line no-restricted-syntax -- proves the late answer never applies
+  // eslint-disable-next-line tests/no-sleep -- proves the late answer never applies
   await new Promise((resolve) => setTimeout(resolve, 50))
   expect(seen).toEqual([])
 })
