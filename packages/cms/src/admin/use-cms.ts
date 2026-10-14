@@ -1,5 +1,5 @@
 import { useAdmin, useApiClient } from '@opulonjs/admin'
-import { computed, inject, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, inject, onBeforeUnmount, onScopeDispose, ref, watch } from 'vue'
 import { cmsContextKey } from './context.ts'
 import {
   CmsConflict,
@@ -121,7 +121,9 @@ export interface ActionResult {
  */
 export const useFocusReturn = (locked: () => boolean, form: () => HTMLElement | null) => {
   let held: HTMLElement | 'form' | undefined
+  let timer: ReturnType<typeof setTimeout> | undefined
   const lost = () => !document.activeElement || document.activeElement === document.body
+  onScopeDispose(() => clearTimeout(timer))
   watch(
     locked,
     (now) => {
@@ -131,7 +133,7 @@ export const useFocusReturn = (locked: () => boolean, form: () => HTMLElement | 
           held = active.closest('[role="dialog"]') ? 'form' : active
         return
       }
-      setTimeout(() => {
+      timer = setTimeout(() => {
         if (locked() || !held) return
         const target = held
         held = undefined

@@ -100,7 +100,7 @@ const reload = async (done = '') => show(await run(() => content.getMenu(current
       v-if="menu && current"
       ref="form"
       tabindex="-1"
-      :aria-label="t('cms.menus.title')"
+      :aria-label="labelText(definitions.menus[current]!.label, locale)"
       @submit.prevent="save"
     >
       <fieldset :disabled="pending || revisionPending" class="min-w-0">
