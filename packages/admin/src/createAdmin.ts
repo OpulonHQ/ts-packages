@@ -170,10 +170,20 @@ export const createAdmin = (options: AdminOptions): App => {
 
   let unmounted = false
   let epoch = 0
-  let session = 0
   const begin = () => {
     const turn = ++epoch
     return () => !unmounted && turn === epoch
+  }
+  let session = 0
+  const setMe = (next: Me | undefined) => {
+    if (next?.user.id !== me.value?.user.id) session++
+    me.value = next
+  }
+  const latestWrite = { signOut: 0, locale: 0 }
+  const beginWrite = (kind: keyof typeof latestWrite) => {
+    const turn = ++latestWrite[kind]
+    const signedIn = session
+    return () => !unmounted && turn === latestWrite[kind] && signedIn === session
   }
   const getMe = async (): Promise<Me | 'signedOut'> => {
     const response = await fetch(new URL(`${apiPrefix}/me`, location.origin), {
@@ -214,10 +224,11 @@ export const createAdmin = (options: AdminOptions): App => {
     const live = begin()
     return getMe().then(
       async (first) => {
-        if (first === 'signedOut' || first.user.id !== me.value?.user.id) session++
         if (first === 'signedOut') {
           await loadMessages(defaultLocale, [auth], live)
-          if (live()) status.value = 'signedOut'
+          if (!live()) return
+          setMe(undefined)
+          status.value = 'signedOut'
           return
         }
         for (const m of options.modules) {
@@ -233,7 +244,7 @@ export const createAdmin = (options: AdminOptions): App => {
           live,
         )
         if (!live()) return
-        me.value = first
+        setMe(first)
         status.value = 'ready'
       },
       (error: unknown) => {
@@ -295,7 +306,6 @@ export const createAdmin = (options: AdminOptions): App => {
       .map(({ key, component }) => ({ key, component })),
   )
 
-  let latestLocale = 0
   const providerSignOut = auth.auth?.signOut
   const providerSetLocale = auth.auth?.setLocale
   const accountRoute = auth.auth?.accountRoute
@@ -313,11 +323,11 @@ export const createAdmin = (options: AdminOptions): App => {
     ...(providerSignOut
       ? {
           signOut: async () => {
+            const current = beginWrite('signOut')
             await providerSignOut({ apiPrefix, fetch })
-            if (unmounted) return
+            if (!current()) return
             epoch++
-            session++
-            me.value = undefined
+            setMe(undefined)
             status.value = 'signedOut'
             await router.push({ name: auth.auth!.signInRoute })
           },
@@ -329,15 +339,14 @@ export const createAdmin = (options: AdminOptions): App => {
           setLocale: async (locale: string | null) => {
             const userId = me.value?.user.id
             if (!userId) return
-            const write = ++latestLocale
-            const signedIn = session
+            const current = beginWrite('locale')
             await providerSetLocale({ apiPrefix, fetch, userId, locale })
-            if (write !== latestLocale || signedIn !== session) return
-            const live = begin()
+            if (!current()) return
+            epoch++
             // Applied here rather than by reading /me again, which on failure would take the
             // whole shell down for a saved language.
-            await applyLocale(locale, enabled.value, live)
-            if (me.value && live()) me.value = { ...me.value, locale }
+            await applyLocale(locale, enabled.value, current)
+            if (me.value && current()) setMe({ ...me.value, locale })
           },
         }
       : {}),
@@ -409,7 +418,7 @@ export const createAdmin = (options: AdminOptions): App => {
     getMe().then(
       (next) => {
         if (unmounted || turn !== epoch || check !== latestCheck || next === 'signedOut') return
-        me.value = { ...next, modules: known.modules }
+        setMe({ ...next, modules: known.modules })
       },
       // A failed re-check keeps the last known state; the next navigation retries.
       (error: unknown) => console.warn(error),
