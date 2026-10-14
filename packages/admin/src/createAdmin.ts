@@ -254,7 +254,9 @@ export const createAdmin = (options: AdminOptions): App => {
         console.error(error)
         if (!live()) return
         if (status.value !== 'ready') status.value = 'failed'
-        else if (lastWrite && lastWrite.userId === me.value?.user.id) void lastWrite.apply(live)
+        else if (lastWrite && lastWrite.userId === me.value?.user.id) {
+          Promise.resolve(lastWrite.apply(live)).catch((error: unknown) => console.error(error))
+        }
       },
     )
     reading = loading
@@ -452,7 +454,6 @@ export const createAdmin = (options: AdminOptions): App => {
           showSignedOut()
           return toSignIn().catch((error: unknown) => console.warn(error))
         }
-        // A signed-in check carries no locale or fallback, and a read in flight may hold an older answer.
         if (reading || next.user.id !== me.value?.user.id || next.locale !== me.value.locale) {
           return void read().catch((error: unknown) => console.warn(error))
         }

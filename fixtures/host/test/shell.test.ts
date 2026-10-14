@@ -1738,6 +1738,45 @@ test('a deploy check keeps the modules of a read that applied after it started',
   expect(me.value?.modules).not.toContain('emails')
 })
 
+test('a saved language whose fallback catalog fails to load logs the failure', async () => {
+  const user = await seedUser(db.url, { name: 'Fallback Catalog Failure', locale: 'en' })
+  const own = await hosts.b1.signIn(user.email, user.password)
+  const dashboard = capturedState()
+  let failing = false
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+  onTestFinished(() => error.mockRestore())
+  const modules = adminModules.map((m) =>
+    m.auth
+      ? {
+          ...m,
+          messages: {
+            ...m.messages,
+            sk: async () => {
+              if (failing) throw new Error('users catalog unavailable')
+              return m.messages.sk()
+            },
+          },
+        }
+      : m,
+  )
+  mountDisposable(modules, own, {
+    overrides: dashboard.overrides,
+    onResponse: (url) => {
+      if (failing && url.endsWith('/api/me')) throw new Error('read failed')
+    },
+  })
+  await expect.poll(() => document.body.textContent).toContain('state captured')
+  const { setLocale, status } = dashboard.state()
+  if (!setLocale) throw new Error('the auth provider offers no language change')
+  failing = true
+  await setLocale('sk')
+  await expect
+    .poll(() => error.mock.calls.some(([e]) => String(e).includes('users catalog unavailable')))
+    .toBe(true)
+  expect(status.value).toBe('ready')
+  expect(document.documentElement.lang).toBe('en')
+})
+
 test('a sign-out sticks when the read after it fails', async () => {
   const user = await seedUser(db.url, { name: 'Sign-out Then Failed Read', locale: 'en' })
   const own = await hosts.b1.signIn(user.email, user.password)
