@@ -17,6 +17,7 @@ import {
 import { builtinModules } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { build } from 'vite'
 
 // Server-only code a browser bundle of `/api` entries must never reach.
@@ -118,17 +119,43 @@ async function checkPublicSite(scratch: string) {
 // imports .vue files): every admin module must have a server module of the same id;
 // server-only modules are fine.
 const adminCheck = `
+import { spawn } from 'node:child_process'
+import { readdirSync, readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { resolve } from 'node:path'
 import { build, createServer } from 'vite'
 import { opulonAdmin } from '@opulonjs/admin/vite'
+import { packagesLoadedTwice } from '${pathToFileURL(join(import.meta.dirname, 'dev-packages.ts')).href}'
 const { brand } = await import('./host/admin/brand.ts')
-const config = { root: 'host/admin', configFile: false, logLevel: 'warn', plugins: opulonAdmin({ brand }) }
+const { components } = await import('./host/admin/override-components.ts')
+const checkOverrides = {
+  name: 'check-packed-ui-override',
+  generateBundle(_options, bundle) {
+    const chunks = Object.values(bundle).filter((output) => output.type === 'chunk')
+    const modules = chunks.flatMap((chunk) => chunk.moduleIds)
+    if (modules.some((id) => id.split('?')[0].endsWith('/ui/dist/components/EmptyState.mjs'))) {
+      throw new Error('kit internal import bypassed the host EmptyState override')
+    }
+    const lazyChunk = (match, message) => {
+      const chunk = chunks.find((chunk) => chunk.moduleIds.some(match))
+      if (!chunk || chunk.isEntry || !chunk.isDynamicEntry) throw new Error(message)
+      return chunk
+    }
+    const dashboard = lazyChunk((id) => id.endsWith('/admin/overrides/Dashboard.vue'), 'host Dashboard override is not a separate lazy chunk')
+    const originalDashboard = lazyChunk((id) => id.includes('/admin/dist/') && id.split('/').pop().startsWith('Dashboard-'), 'original Dashboard is not in an unused lazy chunk')
+    console.log('ok dashboard chunks: host', dashboard.fileName, 'original', originalDashboard.fileName)
+  },
+}
+const config = { root: 'host/admin', configFile: false, logLevel: 'warn', plugins: [...opulonAdmin({ brand, overrides: { components } }), checkOverrides] }
 await build({ ...config, build: { outDir: '../../admin-dist', emptyOutDir: true } })
 console.log('ok admin build from the packed tarballs')
 // Every icon a screen names is in the offline bundle (as an icon or an alias): package screens
 // are found without sources.
-const { readdirSync, readFileSync } = await import('node:fs')
 const js = readdirSync('admin-dist/assets').filter((f) => f.endsWith('.js'))
   .map((f) => readFileSync('admin-dist/assets/' + f, 'utf8')).join('\\n')
+if (!js.includes('Fixture dashboard override')) throw new Error('packed admin screen override missing')
+if (!js.includes('Fixture UI override')) throw new Error('packed admin UI override missing')
+console.log('ok packed UI override for direct and kit internal imports')
 const used = new Set([...js.matchAll(/i-lucide-([a-z0-9]+(?:-[a-z0-9]+)*)/g)].map((m) => m[1]))
 const bundled = new Set([...js.matchAll(/[{,](?:"([a-z0-9-]+)"|([a-z0-9]+)):\\{(?:body:[\`'"]<|parent:)/g)].map((m) => m[1] ?? m[2]))
 const missingIcons = [...used].filter((name) => !bundled.has(name))
@@ -136,12 +163,27 @@ if (missingIcons.length > 0) throw new Error('icons missing from the admin bundl
 console.log('ok admin bundles all', used.size, 'icons its screens use')
 const vite = await createServer({
   ...config,
-  server: { middlewareMode: true },
-  appType: 'custom',
+  server: { port: 0, host: '127.0.0.1' },
   // Every @opulonjs package: module admin entries import the shell and kit (virtual modules).
   ssr: { noExternal: [/^@opulonjs\\//, '@nuxt/ui'] },
 })
-const { adminModules } = await vite.ssrLoadModule('/modules.ts').finally(() => vite.close())
+await vite.listen()
+let adminModules
+try {
+  const transformed = await vite.transformRequest('/modules.ts')
+  if (!transformed || transformed.code.split('\\n').some((line) => line.includes('.vite/deps/') && line.includes('opulonjs'))) throw new Error('published admin module was prebundled in dev')
+  const require = createRequire(resolve('package.json'))
+  const table = await vite.transformRequest('/@fs/' + require.resolve('@opulonjs/ui/components/DataTable'))
+  if (!table?.code.includes('/overrides/EmptyState.vue')) throw new Error('published DataTable bypassed the host override in dev')
+  ;({ adminModules } = await vite.ssrLoadModule('/modules.ts'))
+  console.log('ok published admin dev imports use host kit overrides without prebundling')
+  const { raw, bundled, twice } = await packagesLoadedTwice(vite, '/main.ts')
+  if (twice.length > 0) throw new Error('admin dev loads packages both prebundled and raw, as two instances: ' + twice.join(', '))
+  console.log('ok admin dev loads', raw.size, 'packages raw and', bundled.size, 'prebundled, none in both')
+  const screen = spawn(process.execPath, [${JSON.stringify(join(import.meta.dirname, 'dev-screen.ts'))}, 'http://127.0.0.1:' + vite.httpServer.address().port + vite.config.base, vite.config.base + '@fs' + require.resolve('@opulonjs/admin')], { stdio: 'inherit' })
+  if ((await new Promise((done) => screen.on('exit', done))) !== 0) throw new Error('the cms Collections screen failed to load its items in dev')
+  console.log('ok admin dev renders the cms Collections screen with its decoded API response')
+} finally { await vite.close() }
 const { server } = await import('./host/server/opulon.ts')
 const serverIds = new Set(server.modules.map((m) => m.id))
 const missing = adminModules.map((m) => m.id).filter((id) => !serverIds.has(id))

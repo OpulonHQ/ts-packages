@@ -6,6 +6,8 @@ We rejected core knowing every extension point (it would stop being minimal and 
 
 TSPACK-41 extends the existing `core/api` contract with audit schemas so the shell shares the authoritative schema instead of mirroring it. The Audit log screen and reusable AuditTimeline belong to admin, keeping frontend dependencies out of core. A host's `core.audit` route replaces the built-in route and navigation entry.
 
+TSPACK-43 makes admin route names and UI component names host-facing contracts: renaming one breaks hosts' copy-in overrides.
+
 Audit reads mask IP addresses and user agents past the configured IP retention window independently of the retention task. Server queries cap the offset at 10,000; the audit screen and timeline bound their page controls while retaining the actual match count and explaining the accessible history window.
 
 Composition reserves the module IDs `me` and `audit` for core’s root API routes. This breaks hosts that use either ID: those modules must be renamed before upgrading. Renaming requires migration of the module's schema and data, migration history, permission keys and audit-action keys.

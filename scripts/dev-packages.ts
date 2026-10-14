@@ -1,0 +1,47 @@
+import { readFileSync } from 'node:fs'
+import { isCSSRequest, type ViteDevServer } from 'vite'
+
+const assetQuery = /[?&](?:url|raw|inline|worker|sharedworker)\b/
+const isScript = (url: string, file: string) =>
+  /\.(?:[cm]?[jt]sx?|vue)$/.test(file) && !assetQuery.test(url)
+const packageOf = (path: string) =>
+  /node_modules\/(?:\.pnpm\/[^/]+\/node_modules\/)?((?:@[^/]+\/)?[^/]+)\//.exec(path)?.[1]
+
+export const packagesLoadedTwice = async (vite: ViteDevServer, entry: string) => {
+  const graph = vite.environments.client.moduleGraph
+  const raw = new Set<string>()
+  const seen = new Set([entry])
+  for (let frontier = [entry]; frontier.length > 0;) {
+    const imported = await Promise.all(
+      frontier.map(async (url) => {
+        const code = (await vite.transformRequest(url))?.code ?? ''
+        const edges = [...((await graph.getModuleByUrl(url))?.importedModules ?? [])]
+        // A stylesheet's or asset's other edges are watched source files (Tailwind content, the
+        // raw file), not modules the page loads.
+        return isCSSRequest(url) || assetQuery.test(url)
+          ? edges.filter((edge) => code.includes(edge.url))
+          : edges
+      }),
+    )
+    frontier = []
+    for (const { url, file } of imported.flat()) {
+      if (seen.has(url) || url.includes('/.vite/deps/')) continue
+      seen.add(url)
+      const name = file && isScript(url, file) ? packageOf(file) : undefined
+      if (name) raw.add(name)
+      frontier.push(url)
+    }
+  }
+  const optimizer = vite.environments.client.depsOptimizer!
+  optimizer.run()
+  await Promise.all(Object.values(optimizer.metadata.discovered).map((dep) => dep.processing))
+  const { optimized, chunks } = optimizer.metadata
+  const bundled = new Set(
+    [...Object.values(optimized), ...Object.values(chunks)].flatMap(({ file }) =>
+      [...readFileSync(file, 'utf8').matchAll(/^\/\/#region (.+)$/gm)].flatMap(
+        (match) => packageOf(match[1]!) ?? [],
+      ),
+    ),
+  )
+  return { raw, bundled, twice: [...raw].filter((name) => bundled.has(name)) }
+}

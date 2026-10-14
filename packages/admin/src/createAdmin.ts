@@ -2,27 +2,47 @@ import 'virtual:opulon-ui.css'
 import { Me as MeSchema } from '@opulonjs/core/api'
 import { Schema } from 'effect'
 import { type Brand, uiPlugin } from '@opulonjs/ui'
-import { computed, createApp, defineAsyncComponent, shallowRef, type App } from 'vue'
+import {
+  computed,
+  createApp,
+  defineAsyncComponent,
+  isVNode,
+  shallowRef,
+  type App,
+  type FunctionalComponent,
+} from 'vue'
 import { createI18n } from 'vue-i18n'
-import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
+import {
+  createRouter,
+  createWebHistory,
+  isNavigationFailure,
+  NavigationFailureType,
+  type RouteComponent,
+  type RouteLocationNormalized,
+  type RouteRecordSingleView,
+} from 'vue-router'
 import { apiContextKey } from './api-client.ts'
 import { shellMessages } from './messages.ts'
 import type { Access, AdminModule, Messages } from './module.ts'
-import Dashboard from './shell/Dashboard.vue'
 import NotFound from './shell/NotFound.vue'
 import Shell from './shell/Shell.vue'
 import {
   adminStateKey,
+  failedScreenKey,
   type AdminState,
   type Me,
   type ShellNavGroup,
   type Status,
 } from './state.ts'
 
+type RouteLoader = () => Promise<RouteComponent | { readonly default: RouteComponent }>
+
 export interface AdminOptions {
   /** The same brand object the host passes to `opulonAdmin({ brand })` in its Vite config. */
   readonly brand: Brand
   readonly modules: ReadonlyArray<AdminModule>
+  /** Host components by route name; the route's path, access and navigation stay intact. */
+  readonly overrides?: Readonly<Record<string, RouteComponent | RouteLoader>>
   /** Host messages by admin locale, merged over the shell's; a new locale key adds a locale. */
   readonly messages?: Readonly<Record<string, Messages>>
   /** Host nav groups (`admin.groups.<id>` labels) by order; built-ins are 100, 200, 300. */
@@ -45,6 +65,20 @@ declare module 'vue-router' {
 }
 
 const builtInGroups: Readonly<Record<string, number>> = { content: 100, users: 200, settings: 300 }
+
+const isRouteComponent = (component: RouteComponent | RouteLoader): component is RouteComponent =>
+  typeof component !== 'function' ||
+  'displayName' in component ||
+  'props' in component ||
+  '__vccOpts' in component
+
+const lazy = (component: RouteLoader) => () =>
+  Promise.resolve(component()).then((loaded: unknown): RouteComponent => {
+    if (typeof loaded === 'function') return loaded as RouteComponent
+    if (loaded && typeof loaded === 'object' && !isVNode(loaded) && !Array.isArray(loaded))
+      return 'default' in loaded ? (loaded.default as RouteComponent) : (loaded as RouteComponent)
+    return component as FunctionalComponent
+  })
 
 const injected = (name: string) =>
   document.querySelector<HTMLMetaElement>(`meta[name="${name}"]`)?.content
@@ -74,6 +108,15 @@ const toI18n = (catalog: Messages, namespace?: string): Messages => {
  * Mount the returned app: `createAdmin({...}).mount('#app')`.
  */
 export const createAdmin = (options: AdminOptions): App => {
+  const routeNames = new Set([
+    'dashboard',
+    'core.audit',
+    'notFound',
+    ...options.modules.flatMap((m) => m.routes.map((r) => r.name)),
+  ])
+  for (const name of Object.keys(options.overrides ?? {})) {
+    if (!routeNames.has(name)) throw new Error(`createAdmin: unknown route override "${name}"`)
+  }
   const ids = new Set<string>()
   for (const m of options.modules) {
     for (const route of m.routes) {
@@ -275,8 +318,13 @@ export const createAdmin = (options: AdminOptions): App => {
       : {}),
   }
 
-  const routes: Array<RouteRecordRaw> = [
-    { path: '/', name: 'dashboard', component: Dashboard, meta: { access: { signedIn: true } } },
+  const routes: Array<RouteRecordSingleView> = [
+    {
+      path: '/',
+      name: 'dashboard',
+      component: lazy(() => import('./shell/Dashboard.vue')),
+      meta: { access: { signedIn: true } },
+    },
     ...(!auditOverride
       ? [
           {
@@ -290,15 +338,29 @@ export const createAdmin = (options: AdminOptions): App => {
     ...options.modules.flatMap((m) =>
       m.routes.map((r) => {
         const { name, path, component, ...access } = r
-        // Lazy modules may be plain `{ default }` objects, which neither Vue nor the router unwrap.
-        const lazy = () => component().then((loaded) => loaded.default)
-        return { path, name, component: lazy, meta: { module: m.id, access: access as Access } }
+        return {
+          path,
+          name,
+          component: lazy(component),
+          meta: { module: m.id, access: access as Access },
+        }
       }),
     ),
     { path: '/:rest(.*)*', name: 'notFound', component: NotFound },
   ]
-  const router = createRouter({ history: createWebHistory('/admin/'), routes })
+  const router = createRouter({
+    history: createWebHistory('/admin/'),
+    routes: routes.map((route) => {
+      const component = typeof route.name === 'string' ? options.overrides?.[route.name] : undefined
+      return component
+        ? { ...route, component: isRouteComponent(component) ? component : lazy(component) }
+        : route
+    }),
+  })
+  // Leave guards run before beforeEach, so a host leave guard's error stays in the console.
+  let latest: RouteLocationNormalized | undefined
   router.beforeEach(async (to) => {
+    latest = to
     await ready
     const { module, access } = to.meta
     if (access?.public) return true
@@ -312,15 +374,30 @@ export const createAdmin = (options: AdminOptions): App => {
     return true
   })
   // Re-check the build after each navigation, so an open tab learns about a deploy.
-  router.afterEach((_to, from) => {
-    if (from.matched.length === 0 || !me.value) return
+  let latestCheck = 0
+  const checkForNewDeploy = () => {
+    if (!me.value) return
+    const check = ++latestCheck
     getMe().then(
       (next) => {
-        if (next !== 'signedOut') me.value = { ...next, modules: me.value?.modules ?? next.modules }
+        if (check !== latestCheck || next === 'signedOut') return
+        me.value = { ...next, modules: me.value?.modules ?? next.modules }
       },
       // A failed re-check keeps the last known state; the next navigation retries.
       (error: unknown) => console.warn(error),
     )
+  }
+  const failedScreen = shallowRef<string>()
+  router.onError((error: unknown, to) => {
+    console.error(error)
+    if (to !== latest) return
+    failedScreen.value = to.fullPath
+    checkForNewDeploy()
+  })
+  router.afterEach((to, from, failure) => {
+    if (isNavigationFailure(failure, NavigationFailureType.duplicated)) latest = to
+    if (to === latest) failedScreen.value = undefined
+    if (from.matched.length > 0) checkForNewDeploy()
   })
 
   document.title = options.brand.name
@@ -330,4 +407,5 @@ export const createAdmin = (options: AdminOptions): App => {
     .use(uiPlugin)
     .provide(apiContextKey, { apiPrefix, fetch })
     .provide(adminStateKey, state)
+    .provide(failedScreenKey, failedScreen)
 }

@@ -6,6 +6,7 @@ import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { PluginOption } from 'vite'
+import { adminOverrides } from './vite-overrides.ts'
 
 export interface OpulonAdminOptions {
   /** The host's brand; pass the same object to `createAdmin({ brand })`. */
@@ -20,6 +21,11 @@ export interface OpulonAdminOptions {
    * (an `./admin` export) add themselves.
    */
   readonly sources?: ReadonlyArray<string>
+  /**
+   * Kit components by canonical name (e.g. `EmptyState` or `Field/Text`) to host file paths. Any
+   * `overrides`, even `{}` for screen copies only, turns on the copied files' source-header checks.
+   */
+  readonly overrides?: { readonly components?: Readonly<Record<string, string>> }
 }
 
 const headSha = () => {
@@ -38,33 +44,32 @@ const packageDir = (dir: string): string | undefined => {
   }
 }
 
-/**
- * The built (and, in a workspace, source) directories of the host's `@opulonjs/*` dependencies
- * that ship admin screens (an `./admin` export), from the host package.json at or above the
- * Vite root. Their screens are code-split chunks across `dist/`, so the whole directory is
- * scanned. A dependency without `./admin` is skipped.
- */
-const moduleSources = (root: string): Array<string> => {
+const hostPackages = (root: string) => {
   const hostDir = packageDir(root)
-  if (!hostDir) return []
+  if (!hostDir) return undefined
   const manifest = join(hostDir, 'package.json')
   const host = JSON.parse(readFileSync(manifest, 'utf8')) as {
     dependencies?: Record<string, string>
     devDependencies?: Record<string, string>
   }
-  const require = createRequire(manifest)
-  return Object.keys({ ...host.dependencies, ...host.devDependencies })
-    .filter((name) => name.startsWith('@opulonjs/'))
-    .flatMap((name) => {
-      let entry: string
-      try {
-        entry = require.resolve(`${name}/admin`)
-      } catch {
-        return []
-      }
-      const dir = packageDir(dirname(entry))
-      return dir ? ['dist', 'src'].map((d) => join(dir, d)).filter(existsSync) : []
-    })
+  const names = Object.keys({ ...host.dependencies, ...host.devDependencies })
+  return { manifest, names: names.filter((name) => name.startsWith('@opulonjs/')) }
+}
+
+const moduleSources = (root: string): Array<string> => {
+  const host = hostPackages(root)
+  if (!host) return []
+  const require = createRequire(host.manifest)
+  return host.names.flatMap((name) => {
+    let entry: string
+    try {
+      entry = require.resolve(`${name}/admin`)
+    } catch {
+      return []
+    }
+    const dir = packageDir(dirname(entry))
+    return dir ? ['dist', 'src'].map((d) => join(dir, d)).filter(existsSync) : []
+  })
 }
 
 /**
@@ -77,6 +82,7 @@ export const opulonAdmin = (options: OpulonAdminOptions = {}): Array<PluginOptio
   const apiPrefix = options.apiPrefix ?? '/api'
   const shellDir = dirname(fileURLToPath(import.meta.url))
   return [
+    adminOverrides(options.overrides, (root) => hostPackages(root)?.names ?? []),
     vue(),
     ...opulonUi({
       ...(options.brand ? { brand: options.brand } : {}),

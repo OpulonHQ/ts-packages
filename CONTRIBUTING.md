@@ -45,6 +45,71 @@ const db = useTestDatabase() // fresh clone per file, dropped afterwards; use db
 
 `createTestDatabase()` returns an extra clone (`{ url, drop }`) when one test needs its own. Package migrations are applied to the template once per run in `test/postgres/global-setup.ts`.
 
+## Replace an admin screen or UI component
+
+From your host project root, copy the installed EmptyState module and record its installed version. This works before release tags exist:
+
+```sh
+node --input-type=module <<'JS'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { dirname, relative } from 'node:path'
+let require = createRequire(import.meta.url)
+try { require.resolve('@opulonjs/ui/package.json') }
+catch { require = createRequire(require.resolve('@opulonjs/admin/package.json')) }
+const manifest = require.resolve('@opulonjs/ui/package.json')
+const { version } = JSON.parse(readFileSync(manifest, 'utf8'))
+const original = require.resolve('@opulonjs/ui/components/EmptyState')
+const source = readFileSync(original, 'utf8').replace(
+  /^import UIcon from ["']@nuxt\/ui\/components\/Icon\.vue["'];?$/m,
+  'import { UIcon } from "@opulonjs/ui";'
+)
+if (!source.includes('from "@opulonjs/ui"')) throw new Error(`no Nuxt UI icon import to replace in ${original}`)
+mkdirSync('admin/overrides', { recursive: true })
+writeFileSync('admin/overrides/EmptyState.mjs',
+  `// @opulonjs/source @opulonjs/ui@${version} ${relative(dirname(manifest), original)}\n${source}`)
+JS
+```
+
+Register this file as `EmptyState: './overrides/EmptyState.mjs'` in the Vite options below. The command copies compiled Vue code and replaces its Nuxt UI import with the kit's public export. Preserve props and slots when editing it. For other files, change private imports to public package imports. If you copy Vue source from the repository, put a header on its first line:
+
+```vue
+<!-- @opulonjs/source @opulonjs/ui@0.1.0 src/components/EmptyState.vue -->
+```
+
+For TypeScript, use `// @opulonjs/source @opulonjs/admin@0.1.0 src/shell/Dashboard.vue`. A single-line `/* @opulonjs/source ... */` comment also works. The header contains the package name, exact SemVer, and original path relative to the package. With the `overrides` option set on `opulonAdmin()`, the Vite preset warns when an imported copy's version is older than the installed package. Compare the upstream source before updating the header. A warning does not stop the build.
+
+Keep copied screens in an `overrides/` directory under the Vite root. With the `overrides` option set, the build warns once per file when a registered component or an imported file under that directory is missing its source header, and a malformed header warns as invalid in any imported file. Without the option the preset checks no headers. Headers may start with a UTF-8 BOM and use CRLF. If the host cannot resolve a package version, the preset tries its own dependencies, then warns that it could not check the version.
+
+Register a screen's host component by route name:
+
+```ts
+createAdmin({
+  brand,
+  modules,
+  overrides: { dashboard: () => import('./overrides/Dashboard.vue') },
+}).mount('#app')
+```
+
+Module routes and the built-in `dashboard`, `core.audit`, and `notFound` routes accept replacements. The original path, navigation, module availability, and access checks remain attached to the route. Unknown names throw before startup. Pass a host component or a lazy loader returning a component or its default-export module. A dynamic import keeps the copied screen in a separate chunk. A host that copies screens but no UI components turns on the header checks with `opulonAdmin({ brand, overrides: {} })`.
+
+For functional components that need Vue props, slots, or composables, use `defineComponent` or set the function's `displayName`, so Vue Router treats it as a component rather than invoking it as a loader.
+
+Register UI components in the Vite config:
+
+```ts
+opulonAdmin({
+  brand,
+  overrides: { components: { EmptyState: './overrides/EmptyState.vue' } },
+})
+```
+
+Component names are relative to `@opulonjs/ui/components/`, including names such as `Field/Text`. Host paths are absolute or relative to the Vite root. The preset replaces direct imports and imports between kit components. A host copy can import its own canonical name to wrap the original component; that import resolves to the package's original file.
+
+Only an exact canonical self-import from the override file resolves to the original. A helper module importing that same name receives the host copy; using it to wrap the original would cause recursive rendering.
+
+The fixture's `admin/overrides/Dashboard.vue` adds “Fixture dashboard override”; its `EmptyState.vue` adds “Fixture UI override”, including empty states inside the kit's DataTable. Run `pnpm build`, start `wtdev` from `fixtures/host`, sign in, and open Dashboard and an empty list to see both. `pnpm pack:check` repeats the alias check using installed tarballs and rejects a bundle containing the original EmptyState.
+
 ## Releases
 
 All `@opulonjs/*` packages share one fixed version. They sit at 0.0.0 until the first `minor` changeset releases 0.1.0. Add a changeset to every PR that changes a package (`pnpm changeset`, or `pnpm changeset --empty` when nothing is released). Merging to `main` opens a "version packages" PR; merging that PR publishes to npm with provenance through trusted publishing. The manual **Snapshot** workflow publishes pending changes as `<version>-next-<timestamp>` under the `next` dist-tag.
