@@ -16,7 +16,14 @@ import RevisionHistory from './RevisionHistory.vue'
 import FieldsForm from './FieldsForm.vue'
 import LocaleDetails from './LocaleDetails.vue'
 import ActionStatus from './ActionStatus.vue'
-import { type ActionResult, failureStatus, pageTitle, useCmsContext, usePages } from './use-cms.ts'
+import {
+  type ActionResult,
+  failureStatus,
+  pageTitle,
+  useCmsContext,
+  usePages,
+  useFocusReturn,
+} from './use-cms.ts'
 
 /** The draft as edited: plain mutable copies of the document's parts. */
 interface Draft {
@@ -42,6 +49,7 @@ const newType = ref<string | number | null>(null)
 const locales = computed(() => pages.contentLocales.value)
 const canEdit = computed(() => pages.can('cms.pages.edit'))
 const locked = computed(() => !canEdit.value || pending.value || revisionPending.value)
+useFocusReturn(() => pending.value || revisionPending.value)
 const title = computed(() => (page.value ? pageTitle(definitions, page.value, locale.value) : ''))
 const typeLabel = (type: string) => labelText(definitions.sections[type]?.label, locale.value)
 const typeItems = computed(() =>

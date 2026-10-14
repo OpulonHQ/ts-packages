@@ -16,7 +16,7 @@ export default async (ctx) => {
   const menu = await call('GET', '/menus/footer')
   await call('PUT', `/menus/footer/draft?version=${menu.version}`, { items: [{ id: crypto.randomUUID(), label: { en: 'Lock link' }, link: { type: 'url', url: '/lock' }, children: [] }] })
   const editors = [
-    { kind: 'page', path: `/pages/${page_.id}`, field: `locales.en.path`, value: `/lock-${run}-typed` },
+    { kind: 'page', path: `/pages/${page_.id}`, field: 'locales.en.seo.title', value: 'Typed' },
     { kind: 'item', path: `/items/${item.id}`, field: 'data.title.en', value: 'Typed' },
     { kind: 'settings', path: '/settings', field: 'data.siteName.en', value: 'Typed' },
     { kind: 'menu', path: '/menus/footer', field: 'items.0.label.en', value: 'Typed' },
@@ -58,6 +58,13 @@ export default async (ctx) => {
     evidence.push({ kind: editor.kind, pending, after, value })
     await shot(`${editor.kind}-focus-after-save`)
     check(value === `${editor.value} continued`, `${editor.kind} typing right after the save reaches the field (focus ${pending} -> ${after}, value "${value}")`)
+
+    const publish = page.getByRole('button', { name: 'Publish', exact: true })
+    await publish.focus()
+    await page.keyboard.press('Enter')
+    await page.getByText('Published.', { exact: true }).waitFor()
+    await page.waitForTimeout(200)
+    check(await publish.evaluate((button) => button === document.activeElement), `${editor.kind} focus returns to Publish after save-then-publish`)
   }
 
   await page.goto(`${base}/admin/cms/items/${item.id}`)

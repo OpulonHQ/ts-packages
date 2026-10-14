@@ -11,7 +11,7 @@ import RevisionHistory from './RevisionHistory.vue'
 import MenuItemsEditor, { type EditedMenuItem } from './MenuItemsEditor.vue'
 import PublishActions from './PublishActions.vue'
 import ActionStatus from './ActionStatus.vue'
-import { useAction, useCmsContext, useContent } from './use-cms.ts'
+import { useAction, useCmsContext, useContent, useFocusReturn } from './use-cms.ts'
 
 const { t, locale } = useI18n()
 const content = useContent()
@@ -29,6 +29,7 @@ const items = ref<EditedMenuItem[]>([])
 const revisionPending = ref(false)
 const canEdit = computed(() => content.can('cms.site.edit'))
 const locked = computed(() => !canEdit.value || pending.value || revisionPending.value)
+useFocusReturn(() => pending.value || revisionPending.value)
 
 const show = (next: Menu | undefined) => {
   if (!next) return

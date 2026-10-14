@@ -1,5 +1,5 @@
 import { useAdmin, useApiClient } from '@opulonjs/admin'
-import { computed, inject, onBeforeUnmount, ref } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { cmsContextKey } from './context.ts'
 import {
   CmsConflict,
@@ -111,6 +111,32 @@ export const useContent = () => {
 export interface ActionResult {
   kind: 'ok' | 'error' | 'conflict'
   message: string
+}
+
+/**
+ * Disabling the form while `locked` blurs the focused control to `<body>`; this gives focus back
+ * when it ends, unless something else took focus meanwhile.
+ */
+export const useFocusReturn = (locked: () => boolean) => {
+  let held: HTMLElement | undefined
+  watch(
+    locked,
+    (now) => {
+      if (now) {
+        const active = document.activeElement
+        if (active instanceof HTMLElement && active !== document.body) held = active
+        return
+      }
+      void nextTick(() => {
+        if (locked() || !held) return
+        const element = held
+        held = undefined
+        const active = document.activeElement
+        if (element.isConnected && (!active || active === document.body)) element.focus()
+      })
+    },
+    { flush: 'sync' },
+  )
 }
 
 /** Runs one editor action at a time: pending flag, then a success or failure message to show. */

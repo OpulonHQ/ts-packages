@@ -15,7 +15,7 @@ import FieldsForm from './FieldsForm.vue'
 import LocaleDetails from './LocaleDetails.vue'
 import PublishActions from './PublishActions.vue'
 import ActionStatus from './ActionStatus.vue'
-import { useAction, useCmsContext, useContent } from './use-cms.ts'
+import { useAction, useCmsContext, useContent, useFocusReturn } from './use-cms.ts'
 
 interface Draft {
   locales: Record<string, PageLocale>
@@ -38,6 +38,7 @@ const revisionPending = ref(false)
 const locales = computed(() => content.contentLocales.value)
 const canEdit = computed(() => content.can('cms.collections.edit'))
 const locked = computed(() => !canEdit.value || pending.value || revisionPending.value)
+useFocusReturn(() => pending.value || revisionPending.value)
 const collection = computed(() =>
   item.value ? definitions.collections[item.value.collection] : undefined,
 )
