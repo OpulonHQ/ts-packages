@@ -449,6 +449,36 @@ test('the next admin shows the language an unmounted admin saved after it mounte
   expect(next.text()).toContain('Dashboard')
 })
 
+test('the next admin shows the language an unmounted admin saved even when its read after it fails', async () => {
+  const user = await seedUser(db.url, { name: 'Remount Read Fails', locale: 'sk' })
+  const jar = { cookie: await host.signIn(user.email, user.password) }
+  const save = held(isLocaleSave)
+  const old = mount('/admin/', save.wrap(host.browserFetch(jar)))
+  await expect.poll(old.text).toContain('Prehľad')
+  await pickLanguage('Používateľské menu', 'Jazyk', 'English')
+  await expect.poll(save.reached).toBe(true)
+  await pickLanguage('Používateľské menu', 'Jazyk', 'Slovenčina')
+  old.unmount()
+
+  let reads = 0
+  const failingReread: typeof globalThis.fetch = async (input, init) => {
+    const request = new Request(input, init)
+    if (request.method === 'GET' && new URL(request.url).pathname === '/api/me' && ++reads > 1)
+      return new Response('down', { status: 503 })
+    return host.browserFetch(jar)(input, init)
+  }
+  const next = mount('/admin/', failingReread)
+  await expect.poll(next.text).toContain('Prehľad')
+  save.release()
+  await expect.poll(save.done).toBe(true)
+  await expect.poll(() => reads).toBeGreaterThan(1)
+  await tick(100)
+
+  expect((await host.me(jar.cookie)).locale).toBe('en')
+  expect(document.documentElement.lang).toBe('en')
+  expect(next.text()).toContain('Dashboard')
+})
+
 test('a language save that answers after a sign-out does not keep the user signed in when reads fail', async () => {
   const user = await seedUser(db.url, { name: 'Save Then Sign-out', locale: 'sk' })
   const jar = { cookie: await host.signIn(user.email, user.password) }
