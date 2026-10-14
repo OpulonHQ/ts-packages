@@ -1,66 +1,71 @@
 import { type AdminOptions, createAdmin } from '@opulonjs/admin'
-import { afterEach, beforeEach } from 'vitest'
+import { beforeEach } from 'vitest'
 import { brand } from '../admin/brand.ts'
 import { adminModules } from '../admin/modules.ts'
 
 /**
- * Admin journeys for one test file. After each test the mounted admins unmount, the test's gates
- * open and every request the admins or a `track`ed host started settles (failing after 5s). Vitest does not cancel a
- * timed-out test body or hook, so once a test or its hooks time out, or its requests do not
- * settle, no later test in the file runs: a late body cannot reach another test's DOM or data.
+ * Admin journeys for one test file. When a test finishes, after its own cleanup callbacks, the
+ * mounted admins unmount, the test's gates open and every call the admins or a `track`ed host
+ * started settles (failing after 5s); a tracked host call that rejected fails the test. Vitest
+ * does not cancel a timed-out test body or hook, so once a test or its hooks time out, or its
+ * calls do not settle, no later test in the file runs: a late body cannot reach another test's
+ * DOM or data.
  */
 export const useAdminLifetime = () => {
   type Lifetime = {
     readonly apps: Array<{ unmount: () => void }>
     readonly gates: Array<() => void>
-    readonly pending: Set<Promise<unknown>>
+    readonly pending: Array<Promise<unknown>>
+    readonly failures: Array<unknown>
   }
-  let current: Lifetime = { apps: [], gates: [], pending: new Set() }
+  const fresh = (): Lifetime => ({ apps: [], gates: [], pending: [], failures: [] })
+  let current = fresh()
   let unfinished: string | undefined
   let previous: { readonly signal: AbortSignal; readonly name: string } | undefined
-  const settle = (pending: Set<Promise<unknown>>, work: Promise<unknown>) => {
-    pending.add(work)
-    void work.then(
-      () => pending.delete(work),
-      () => pending.delete(work),
-    )
-  }
   const tracked =
     (fn: Parameters<typeof Reflect.apply>[0], self: unknown) =>
     (...args: unknown[]): unknown => {
       const result: unknown = Reflect.apply(fn, self, args)
-      if (result instanceof Promise) settle(current.pending, result)
+      if (result instanceof Promise) {
+        const { pending, failures } = current
+        pending.push(result)
+        result.catch((error: unknown) => failures.push(error))
+      }
       return typeof result === 'function' ? tracked(result, undefined) : result
     }
 
-  beforeEach(({ signal, task }) => {
-    if (previous?.signal.aborted) unfinished ??= previous.name
-    previous = { signal, name: task.name }
-    if (unfinished)
-      throw new Error(
-        `Not run: "${unfinished}" timed out or left requests pending and may still run`,
-      )
-  })
-
-  afterEach(async ({ task }) => {
-    const { apps, gates, pending } = current
+  const finish = async (name: string) => {
+    const { apps, gates, pending, failures } = current
     for (const app of apps) app.unmount()
     for (const release of gates) release()
+    let settled = false
     const drained = (async () => {
-      while (pending.size > 0) await Promise.allSettled([...pending])
+      for (let i = 0; i < pending.length; i++)
+        await pending[i]?.then(
+          () => {},
+          () => {},
+        )
+      settled = true
     })()
     const limit = Promise.withResolvers<void>()
     const timer = setTimeout(limit.resolve, 5000)
     await Promise.race([drained, limit.promise])
     clearTimeout(timer)
     document.body.replaceChildren()
-    current = { apps: [], gates: [], pending: new Set() }
-    if (pending.size > 0) {
-      unfinished ??= task.name
-      throw new Error(
-        `${pending.size} admin or host call(s) still pending 5s after the test finished`,
-      )
+    current = fresh()
+    if (!settled) {
+      unfinished ??= name
+      throw new Error('admin or host calls still pending 5s after the test finished')
     }
+    if (failures.length > 0) throw new AggregateError(failures, 'a tracked host call failed')
+  }
+
+  beforeEach(({ signal, task, onTestFinished }) => {
+    if (previous?.signal.aborted) unfinished ??= previous.name
+    previous = { signal, name: task.name }
+    onTestFinished(() => finish(task.name))
+    if (unfinished)
+      throw new Error(`Not run: "${unfinished}" timed out or left calls pending and may still run`)
   })
 
   return {
@@ -92,7 +97,7 @@ export const useAdminLifetime = () => {
         buildId: 'build-1',
         fetch: (input, init) => {
           const response = fetch(input, init)
-          settle(pending, response)
+          pending.push(response)
           return response
         },
       })
