@@ -912,6 +912,7 @@ test.each([
   const uploadHeld = admin.gate()
   const actionHeld = admin.gate()
   let uploaded: string | undefined
+  let uploadReturned = false
   let holding = false
   const fetch: typeof host.fetch = async (input, init) => {
     const request = new Request(input, init)
@@ -920,6 +921,7 @@ test.each([
     if (request.method === 'POST' && pathname === '/api/media/items') {
       uploaded = ((await response.clone().json()) as { id: string }).id
       await uploadHeld.promise
+      uploadReturned = true
     } else if (`${request.method} /${pathname.split('/').pop()}` === c.held && !holding) {
       holding = true
       await actionHeld.promise
@@ -960,6 +962,7 @@ test.each([
   }
   await expect.poll(() => holding).toBe(true)
   uploadHeld.resolve()
+  await expect.poll(() => uploadReturned).toBe(true)
   await new Promise((resolve) => setTimeout(resolve, 30))
   actionHeld.resolve()
   await expect.poll(text).toContain(c.done)

@@ -16,6 +16,7 @@ const props = defineProps<{
   label?: string
   /** Only images or only PDFs; default both. */
   accept?: 'image' | 'pdf'
+  /** An upload that finishes while disabled is picked once enabled again. */
   disabled?: boolean
 }>()
 
