@@ -101,7 +101,7 @@ test.each(cases)(
 
     const restored = await host.call<Document>(
       'POST',
-      `${path}/revisions/${first.publishedRevisionId}/restore`,
+      `${path}/revisions/${first.publishedRevisionId}/restore?version=${second.version}`,
     )
     expect(restored.status).toBe(200)
     expect(restored.body.version).toBeGreaterThan(second.version)
@@ -125,8 +125,27 @@ test.each(cases)(
   },
 )
 
-test('saving or publishing without the loaded draft version is a bad request', async () => {
+test.each(cases)(
+  '$kind: a restore from a stale draft version is refused and changes nothing',
+  async (c) => {
+    const { path, loaded } = await load(c)
+    const saved = await save(path, loaded.version, c.first)
+    const first = (await publish(path, saved.body.version)).body
+    const theirs = (await save(path, first.version, c.second)).body
+
+    const stale = await host.call(
+      'POST',
+      `${path}/revisions/${first.publishedRevisionId}/restore?version=${first.version}`,
+    )
+    expect(stale.status).toBe(409)
+    expect(stale.body).toMatchObject({ _tag: 'CmsConflict', reason: 'draft_changed' })
+    expect((await host.call<Document>('GET', path)).body).toEqual(theirs)
+  },
+)
+
+test('saving, publishing or restoring without the loaded draft version is a bad request', async () => {
   const created = (await host.create(page({ en: '/conflict-unversioned' }))).body
+  const published = (await host.publish(created.id)).body
   expect(
     (
       await host.call('PUT', `/pages/${created.id}/draft`, {
@@ -135,5 +154,13 @@ test('saving or publishing without the loaded draft version is a bad request', a
     ).status,
   ).toBe(400)
   expect((await host.call('POST', `/pages/${created.id}/publish`)).status).toBe(400)
-  expect((await host.call<Page>('GET', `/pages/${created.id}`)).body).toEqual(created)
+  expect(
+    (
+      await host.call(
+        'POST',
+        `/pages/${created.id}/revisions/${published.publishedRevisionId}/restore`,
+      )
+    ).status,
+  ).toBe(400)
+  expect((await host.call<Page>('GET', `/pages/${created.id}`)).body).toEqual(published)
 })

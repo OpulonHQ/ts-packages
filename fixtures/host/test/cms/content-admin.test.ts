@@ -610,6 +610,61 @@ test.each([
   expect(text()).not.toContain('Tento koncept medzitým zmenil niekto iný.')
 })
 
+test('a publish still saving cannot publish the page the editor navigated to', async () => {
+  const a = (await host.create(page({ en: '/admin-publish-race-a' }))).body
+  const b = (await host.create(page({ en: '/admin-publish-race-b' }))).body
+  const held = admin.gate()
+  let saving = false
+  const fetch: typeof host.fetch = async (input, init) => {
+    const request = new Request(input, init)
+    const response = await host.fetch(request)
+    if (request.method === 'PUT' && request.url.includes(`/pages/${a.id}/draft`)) {
+      saving = true
+      await held.promise
+    }
+    return response
+  }
+  const text = mountAdmin(`/admin/cms/pages/${a.id}`, fetch)
+  await expect.poll(() => input('locales.en.path')).toBeTruthy()
+  button('Zverejniť')!.click()
+  await expect.poll(() => saving).toBe(true)
+  history.pushState(null, '', `/admin/cms/pages/${b.id}`)
+  window.dispatchEvent(new PopStateEvent('popstate'))
+  await expect.poll(() => input('locales.en.path')?.value).toBe('/admin-publish-race-b')
+  button('Uložiť koncept')!.click()
+  await expect.poll(text).toContain('Koncept uložený.')
+  held.resolve()
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  expect((await host.call<Page>('GET', `/pages/${b.id}`)).body.published).toBeNull()
+  expect((await host.call<Page>('GET', `/pages/${a.id}`)).body.published).toBeNull()
+})
+
+test('edits typed while a publish saves survive the conflict that stops it', async () => {
+  const held = admin.gate()
+  let saving = false
+  const fetch: typeof host.fetch = async (input, init) => {
+    const request = new Request(input, init)
+    const response = await host.fetch(request)
+    if (request.method === 'PUT' && request.url.includes('/settings/draft')) {
+      saving = true
+      await held.promise
+    }
+    return response
+  }
+  const text = mountAdmin('/admin/cms/settings', fetch)
+  await expect.poll(() => input('data.siteName.en')).toBeTruthy()
+  type('data.siteName.en', 'Submitted')
+  button('Zverejniť')!.click()
+  await expect.poll(() => saving).toBe(true)
+  type('data.siteName.en', 'Typed while saving')
+  expect((await host.saveDraft('/settings', { data: { siteName: { en: 'Theirs' } } })).status).toBe(
+    200,
+  )
+  held.resolve()
+  await expect.poll(text).toContain('Tento koncept medzitým zmenil niekto iný.')
+  expect(input('data.siteName.en')?.value).toBe('Typed while saving')
+})
+
 test('editors build a menu from entries with labels per locale and links', async () => {
   const text = mountAdmin('/admin/cms/menus/main')
   await expect.poll(() => button('Pridať položku')).toBeTruthy()
