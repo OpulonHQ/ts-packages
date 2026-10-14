@@ -694,7 +694,7 @@ test('a publish still saving cannot publish the page the editor navigated to', a
   expect((await host.call<Page>('GET', `/pages/${a.id}`)).body.published).toBeNull()
 })
 
-test('edits typed while a publish saves survive the conflict that stops it', async () => {
+test('a publish that conflicts after its save keeps the input and editing re-enabled', async () => {
   const held = admin.gate()
   let saving = false
   const fetch: typeof host.fetch = async (input, init) => {
@@ -711,13 +711,14 @@ test('edits typed while a publish saves survive the conflict that stops it', asy
   type('data.siteName.en', 'Submitted')
   button('Zverejniť')!.click()
   await expect.poll(() => saving).toBe(true)
-  type('data.siteName.en', 'Typed while saving')
+  expect(input('data.siteName.en')!.closest('fieldset[disabled]')).not.toBeNull()
   expect((await host.saveDraft('/settings', { data: { siteName: { en: 'Theirs' } } })).status).toBe(
     200,
   )
   held.resolve()
   await expect.poll(text).toContain('Tento koncept medzitým zmenil niekto iný.')
-  expect(input('data.siteName.en')?.value).toBe('Typed while saving')
+  expect(input('data.siteName.en')?.value).toBe('Submitted')
+  expect(input('data.siteName.en')!.closest('fieldset[disabled]')).toBeNull()
 })
 
 test.each([

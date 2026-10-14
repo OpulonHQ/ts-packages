@@ -68,5 +68,22 @@ export default async (ctx) => {
     check((await publishing).status() === 200, `${journey.kind} publish after reload 200`)
     const final = await call('GET', path)
     check(JSON.stringify(final.published) === JSON.stringify(first.draft), `${journey.kind} reloaded editor publishes the restored draft`)
+
+    if (journey.input) {
+      const field = page.locator(`input[name="${journey.input}"]`)
+      await page.route(`**/api/cms${path}/draft?*`, async (route) => {
+        await new Promise((resolve) => setTimeout(resolve, 1500))
+        await route.continue()
+      })
+      const saving = page.waitForResponse((r) => r.url().includes(`${path}/draft`) && r.request().method() === 'PUT')
+      await page.getByRole('button', { name: 'Save draft', exact: true }).click()
+      await page.waitForTimeout(300)
+      check(!(await field.isEditable()), `${journey.kind} field not editable while the save is in flight`)
+      await shot(`${journey.kind}-locked-while-saving`)
+      check((await saving).status() === 200, `${journey.kind} delayed save 200`)
+      await page.unroute(`**/api/cms${path}/draft?*`)
+      await page.waitForFunction((name) => !document.querySelector(`input[name="${name}"]`)?.closest('fieldset')?.disabled, journey.input)
+      check(await field.isEditable(), `${journey.kind} field editable again after the save`)
+    }
   }
 }

@@ -91,17 +91,21 @@ const reload = async (done = '') => show(await run(() => content.getMenu(current
     </nav>
     <ActionStatus :status="status" @reload="reload()" />
     <form v-if="menu && current" @submit.prevent="save">
-      <UCard>
-        <p v-if="items.length === 0" class="mb-3 text-sm text-muted">{{ t('cms.menus.empty') }}</p>
-        <MenuItemsEditor
-          v-model:items="items"
-          :level="1"
-          :depth="definitions.menus[current]!.depth ?? 3"
-          :locales="content.contentLocales.value"
-          name="items"
-          :disabled="!canEdit"
-        />
-      </UCard>
+      <fieldset :disabled="pending || revisionPending" class="min-w-0">
+        <UCard>
+          <p v-if="items.length === 0" class="mb-3 text-sm text-muted">
+            {{ t('cms.menus.empty') }}
+          </p>
+          <MenuItemsEditor
+            v-model:items="items"
+            :level="1"
+            :depth="definitions.menus[current]!.depth ?? 3"
+            :locales="content.contentLocales.value"
+            name="items"
+            :disabled="!canEdit"
+          />
+        </UCard>
+      </fieldset>
     </form>
     <RevisionHistory
       v-if="menu && current"

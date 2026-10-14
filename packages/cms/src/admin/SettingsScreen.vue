@@ -59,15 +59,17 @@ const reload = async (done = '') => show(await run(() => content.getSettings(), 
     </PageHeader>
     <ActionStatus :status="status" @reload="reload()" />
     <form v-if="settings" @submit.prevent="save">
-      <UCard>
-        <FieldsForm
-          v-model:data="data"
-          :group="definitions.settings"
-          :locales="content.contentLocales.value"
-          name="data"
-          :disabled="!canEdit"
-        />
-      </UCard>
+      <fieldset :disabled="pending || revisionPending" class="min-w-0">
+        <UCard>
+          <FieldsForm
+            v-model:data="data"
+            :group="definitions.settings"
+            :locales="content.contentLocales.value"
+            name="data"
+            :disabled="!canEdit"
+          />
+        </UCard>
+      </fieldset>
     </form>
     <RevisionHistory
       v-if="settings"

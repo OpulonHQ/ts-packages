@@ -140,25 +140,27 @@ const reload = async (done = '') => show(await run(() => content.getItem(item.va
 
       <ActionStatus :status="status" @reload="reload()" />
 
-      <form class="space-y-6" @submit.prevent="save">
-        <UCard v-if="collection.routed">
-          <template #header>
-            <h2 class="font-semibold text-highlighted">{{ t('cms.item.details') }}</h2>
-          </template>
-          <LocaleDetails :value="draft.locales" :locales="locales" :disabled="!canEdit" />
-        </UCard>
-        <UCard>
-          <template #header>
-            <h2 class="font-semibold text-highlighted">{{ t('cms.item.content') }}</h2>
-          </template>
-          <FieldsForm
-            v-model:data="draft.data"
-            :group="collection"
-            :locales="locales"
-            name="data"
-            :disabled="!canEdit"
-          />
-        </UCard>
+      <form @submit.prevent="save">
+        <fieldset :disabled="pending || revisionPending" class="min-w-0 space-y-6">
+          <UCard v-if="collection.routed">
+            <template #header>
+              <h2 class="font-semibold text-highlighted">{{ t('cms.item.details') }}</h2>
+            </template>
+            <LocaleDetails :value="draft.locales" :locales="locales" :disabled="!canEdit" />
+          </UCard>
+          <UCard>
+            <template #header>
+              <h2 class="font-semibold text-highlighted">{{ t('cms.item.content') }}</h2>
+            </template>
+            <FieldsForm
+              v-model:data="draft.data"
+              :group="collection"
+              :locales="locales"
+              name="data"
+              :disabled="!canEdit"
+            />
+          </UCard>
+        </fieldset>
       </form>
       <RevisionHistory
         v-if="item"

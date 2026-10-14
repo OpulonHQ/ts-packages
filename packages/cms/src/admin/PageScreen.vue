@@ -199,79 +199,81 @@ const reload = async (done = '') => run(() => pages.get(page.value!.id), done)
 
       <ActionStatus :status="status" @reload="reload()" />
 
-      <form class="space-y-6" @submit.prevent="save">
-        <UCard>
-          <template #header>
-            <h2 class="font-semibold text-highlighted">{{ t('cms.page.details') }}</h2>
-          </template>
-          <LocaleDetails :value="draft.locales" :locales="locales" :disabled="!canEdit" />
-        </UCard>
-
-        <div class="space-y-4">
-          <h2 class="font-semibold text-highlighted">{{ t('cms.page.sections') }}</h2>
-          <p v-if="draft.sections.length === 0" class="text-sm text-muted">
-            {{ t('cms.page.noSections') }}
-          </p>
-          <UCard v-for="(section, index) in draft.sections" :key="section.id">
+      <form @submit.prevent="save">
+        <fieldset :disabled="pending || revisionPending" class="min-w-0 space-y-6">
+          <UCard>
             <template #header>
-              <div class="flex items-center justify-between gap-2">
-                <h3 class="font-medium text-highlighted">
-                  {{ index + 1 }}. {{ typeLabel(section.type) }}
-                </h3>
-                <div v-if="canEdit" class="flex gap-1">
-                  <UButton
-                    icon="i-lucide-arrow-up"
-                    color="neutral"
-                    variant="ghost"
-                    :aria-label="t('cms.page.moveUp')"
-                    :disabled="index === 0"
-                    @click="move(index, -1)"
-                  />
-                  <UButton
-                    icon="i-lucide-arrow-down"
-                    color="neutral"
-                    variant="ghost"
-                    :aria-label="t('cms.page.moveDown')"
-                    :disabled="index === draft.sections.length - 1"
-                    @click="move(index, 1)"
-                  />
-                  <UButton
-                    icon="i-lucide-x"
-                    color="error"
-                    variant="ghost"
-                    :aria-label="t('cms.page.removeSection')"
-                    @click="draft.sections.splice(index, 1)"
-                  />
-                </div>
-              </div>
+              <h2 class="font-semibold text-highlighted">{{ t('cms.page.details') }}</h2>
             </template>
-            <FieldsForm
-              v-if="definitions.sections[section.type]"
-              v-model:data="section.data"
-              :group="definitions.sections[section.type]!"
-              :locales="locales"
-              :name="`sections.${index}`"
-              :disabled="!canEdit"
-            />
+            <LocaleDetails :value="draft.locales" :locales="locales" :disabled="!canEdit" />
           </UCard>
-          <div v-if="canEdit" class="flex items-end gap-2">
-            <FieldSelect
-              v-model="newType"
-              name="newSection"
-              :label="t('cms.page.sectionType')"
-              :items="typeItems"
-              class="min-w-60"
-            />
-            <UButton
-              icon="i-lucide-plus"
-              color="neutral"
-              variant="outline"
-              :label="t('cms.page.addSection')"
-              :disabled="!newType"
-              @click="addSection"
-            />
+
+          <div class="space-y-4">
+            <h2 class="font-semibold text-highlighted">{{ t('cms.page.sections') }}</h2>
+            <p v-if="draft.sections.length === 0" class="text-sm text-muted">
+              {{ t('cms.page.noSections') }}
+            </p>
+            <UCard v-for="(section, index) in draft.sections" :key="section.id">
+              <template #header>
+                <div class="flex items-center justify-between gap-2">
+                  <h3 class="font-medium text-highlighted">
+                    {{ index + 1 }}. {{ typeLabel(section.type) }}
+                  </h3>
+                  <div v-if="canEdit" class="flex gap-1">
+                    <UButton
+                      icon="i-lucide-arrow-up"
+                      color="neutral"
+                      variant="ghost"
+                      :aria-label="t('cms.page.moveUp')"
+                      :disabled="index === 0"
+                      @click="move(index, -1)"
+                    />
+                    <UButton
+                      icon="i-lucide-arrow-down"
+                      color="neutral"
+                      variant="ghost"
+                      :aria-label="t('cms.page.moveDown')"
+                      :disabled="index === draft.sections.length - 1"
+                      @click="move(index, 1)"
+                    />
+                    <UButton
+                      icon="i-lucide-x"
+                      color="error"
+                      variant="ghost"
+                      :aria-label="t('cms.page.removeSection')"
+                      @click="draft.sections.splice(index, 1)"
+                    />
+                  </div>
+                </div>
+              </template>
+              <FieldsForm
+                v-if="definitions.sections[section.type]"
+                v-model:data="section.data"
+                :group="definitions.sections[section.type]!"
+                :locales="locales"
+                :name="`sections.${index}`"
+                :disabled="!canEdit"
+              />
+            </UCard>
+            <div v-if="canEdit" class="flex items-end gap-2">
+              <FieldSelect
+                v-model="newType"
+                name="newSection"
+                :label="t('cms.page.sectionType')"
+                :items="typeItems"
+                class="min-w-60"
+              />
+              <UButton
+                icon="i-lucide-plus"
+                color="neutral"
+                variant="outline"
+                :label="t('cms.page.addSection')"
+                :disabled="!newType"
+                @click="addSection"
+              />
+            </div>
           </div>
-        </div>
+        </fieldset>
       </form>
       <RevisionHistory
         v-if="page"
