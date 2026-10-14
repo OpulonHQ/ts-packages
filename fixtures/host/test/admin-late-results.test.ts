@@ -3,14 +3,12 @@ import { useTestDatabase } from '../../../test/postgres/index.ts'
 import { useAdminLifetime } from './admin-lifetime.ts'
 import { makeHost, seedUser } from './support/users.ts'
 
-// Runs in the `admin` vitest project: the shell and users screens in happy-dom, against the real Worker.
 const lifetime = useAdminLifetime()
 const db = useTestDatabase()
 const host = lifetime.track(makeHost(() => db.url, { buildId: 'b1' }))
 
 const tick = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms))
 
-/** Holds the next matching request before the Worker, or its answer after it, until `release`. */
 const held = (matches: (request: Request) => boolean, at: 'request' | 'answer' = 'request') => {
   const gate = lifetime.gate()
   let state: 'waiting' | 'reached' | 'done' = 'waiting'
@@ -41,7 +39,6 @@ const mount = (path: string, fetch: typeof globalThis.fetch) => {
   return { text, unmount: text.unmount }
 }
 
-/** Every document language the admin shows from now on. */
 const languagesShown = () => {
   const shown: Array<string> = []
   const observer = new MutationObserver(() => shown.push(document.documentElement.lang))
@@ -58,7 +55,6 @@ const menuItem = (name: string) =>
     el.textContent?.includes(name),
   )
 
-/** Picks a language in the shell's user menu, as a keyboard and pointer user does. */
 async function pickLanguage(menu: string, language: string, name: string) {
   document
     .querySelector<HTMLElement>(`[aria-label="${menu}"]`)!

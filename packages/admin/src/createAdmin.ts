@@ -351,22 +351,20 @@ export const createAdmin = (options: AdminOptions): App => {
   const providerSignOut = auth.auth?.signOut
   const providerSetLocale = auth.auth?.setLocale
   const accountRoute = auth.auth?.accountRoute
-  // One save at a time, as the server keeps whichever save reaches it last. A save picked after
-  // this one reads and shows the result of both.
-  let saving: Promise<unknown> = Promise.resolve()
+  let lastLocaleSave: Promise<void> = Promise.resolve()
   const saveLocale = async (locale: string | null, save: (userId: string) => Promise<void>) => {
     const userId = me.value?.user.id
     if (!userId) return
-    const write = saving.then(() => save(userId))
+    const write = lastLocaleSave.then(() => save(userId))
     const queued = write.catch(() => {})
-    saving = queued
+    lastLocaleSave = queued
     await afterWrite(
       write,
       async (live) => {
         await applyLocale(locale, enabled.value, live)
         if (me.value && live()) me.value = { ...me.value, locale }
       },
-      () => saving !== queued,
+      () => lastLocaleSave !== queued,
     )
   }
   const state: AdminState = {
