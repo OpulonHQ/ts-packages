@@ -213,7 +213,6 @@ export const createAdmin = (options: AdminOptions): App => {
     const live = begin()
     return getMe().then(
       async (first) => {
-        if (!live()) return
         if (first === 'signedOut') {
           await loadMessages(defaultLocale, [auth], live)
           if (live()) status.value = 'signedOut'
@@ -294,6 +293,7 @@ export const createAdmin = (options: AdminOptions): App => {
       .map(({ key, component }) => ({ key, component })),
   )
 
+  let latestLocale = 0
   const providerSignOut = auth.auth?.signOut
   const providerSetLocale = auth.auth?.setLocale
   const accountRoute = auth.auth?.accountRoute
@@ -311,9 +311,9 @@ export const createAdmin = (options: AdminOptions): App => {
     ...(providerSignOut
       ? {
           signOut: async () => {
-            const live = begin()
             await providerSignOut({ apiPrefix, fetch })
-            if (!live()) return
+            if (unmounted) return
+            epoch++
             me.value = undefined
             status.value = 'signedOut'
             await router.push({ name: auth.auth!.signInRoute })
@@ -326,9 +326,10 @@ export const createAdmin = (options: AdminOptions): App => {
           setLocale: async (locale: string | null) => {
             const userId = me.value?.user.id
             if (!userId) return
-            const live = begin()
+            const write = ++latestLocale
             await providerSetLocale({ apiPrefix, fetch, userId, locale })
-            if (!live()) return
+            if (write !== latestLocale || me.value?.user.id !== userId) return
+            const live = begin()
             // Applied here rather than by reading /me again, which on failure would take the
             // whole shell down for a saved language.
             await applyLocale(locale, enabled.value, live)
@@ -399,10 +400,11 @@ export const createAdmin = (options: AdminOptions): App => {
   const checkForNewDeploy = () => {
     const known = me.value
     if (!known || unmounted) return
+    const turn = epoch
     const check = ++latestCheck
     getMe().then(
       (next) => {
-        if (unmounted || check !== latestCheck || me.value !== known || next === 'signedOut') return
+        if (unmounted || turn !== epoch || check !== latestCheck || next === 'signedOut') return
         me.value = { ...next, modules: known.modules }
       },
       // A failed re-check keeps the last known state; the next navigation retries.
