@@ -102,6 +102,7 @@ async function run(
   done: string,
   apply: (next: Page) => void = show,
 ) {
+  if (pending.value) return
   const request = ++actionTicket
   pending.value = true
   status.value = undefined

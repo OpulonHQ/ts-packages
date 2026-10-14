@@ -113,7 +113,7 @@ export interface ActionResult {
   message: string
 }
 
-/** Runs an editor action: pending flag, then a success or failure message to show. */
+/** Runs one editor action at a time: pending flag, then a success or failure message to show. */
 export const useAction = (failed: () => string) => {
   const pending = ref(false)
   const status = ref<ActionResult>()
@@ -125,6 +125,7 @@ export const useAction = (failed: () => string) => {
   }
   onBeforeUnmount(invalidate)
   const run = async <T>(action: () => Promise<T>, done: string): Promise<T | undefined> => {
+    if (pending.value) return undefined
     const request = ++ticket
     pending.value = true
     status.value = undefined

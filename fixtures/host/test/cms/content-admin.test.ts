@@ -727,6 +727,7 @@ test.each([
   'a $kind editor submitting twice before the first $action returns can keep saving',
   async (c) => {
     const path = await c.open()
+    const run = crypto.randomUUID()
     const held = admin.gate()
     const saves: Array<number> = []
     const fetch: typeof host.fetch = async (input, init) => {
@@ -738,9 +739,9 @@ test.each([
       }
       return response
     }
-    mountAdmin(`/admin/cms${path}`, fetch)
+    const text = mountAdmin(`/admin/cms${path}`, fetch)
     await expect.poll(() => input(c.field)).toBeTruthy()
-    type(c.field, '/rapid-one')
+    type(c.field, `/rapid-one-${run}`)
     const submit = () =>
       c.action === 'save'
         ? document.querySelector('form')!.dispatchEvent(new Event('submit', { cancelable: true }))
@@ -750,15 +751,13 @@ test.each([
     submit()
     await new Promise((resolve) => setTimeout(resolve, 30))
     held.resolve()
-    await expect.poll(() => input(c.field)?.value).toBe('/rapid-one')
-    await new Promise((resolve) => setTimeout(resolve, 30))
+    await expect.poll(text).toContain(c.action === 'save' ? 'Koncept uložený.' : 'Zverejnené.')
 
-    type(c.field, '/rapid-two')
+    type(c.field, `/rapid-two-${run}`)
     document.querySelector('form')!.dispatchEvent(new Event('submit', { cancelable: true }))
-    await expect
-      .poll(async () => c.stored((await host.call<Document>('GET', path)).body))
-      .toBe('/rapid-two')
-    expect(saves).not.toContain(409)
+    await expect.poll(() => saves.length).toBe(2)
+    expect(saves).toEqual([200, 200])
+    expect(c.stored((await host.call<Document>('GET', path)).body)).toBe(`/rapid-two-${run}`)
   },
 )
 
