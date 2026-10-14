@@ -37,7 +37,6 @@ const provenance = (source: string): SourceProvenance | 'invalid' | undefined =>
 
 export const adminOverrides = (
   overrides: { readonly components?: Readonly<Record<string, string>> } | undefined,
-  packages: (root: string) => ReadonlyArray<string>,
 ): Plugin => {
   const components = overrides?.components ?? {}
   let config: ResolvedConfig
@@ -64,21 +63,6 @@ export const adminOverrides = (
   return {
     name: '@opulonjs/admin-overrides',
     enforce: 'pre',
-    config(user) {
-      if (Object.keys(components).length)
-        return {
-          optimizeDeps: {
-            exclude: [
-              ...new Set([
-                'effect',
-                '@opulonjs/admin',
-                '@opulonjs/ui',
-                ...packages(resolve(user.root ?? '.')),
-              ]),
-            ],
-          },
-        }
-    },
     configResolved(resolved) {
       config = resolved
       for (const [name, target] of Object.entries(components)) {

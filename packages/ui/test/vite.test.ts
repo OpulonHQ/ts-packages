@@ -2,7 +2,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { build, resolveConfig, type Rolldown } from 'vite'
+import { build, createServer, resolveConfig, type Rolldown } from 'vite'
 import { expect, onTestFinished, test } from 'vitest'
 import { editorChunkGroup, opulonUi } from '../src/vite.ts'
 
@@ -59,4 +59,35 @@ test('editorChunkGroup puts ProseMirror in its own chunk', async () => {
     '/node_modules/prosemirror-model/index.js',
   ])
   expect(chunks.find((chunk) => chunk.code.includes("'tiptap'"))?.name).not.toBe('prosemirror')
+})
+
+test('dev serves the installed kit unbundled, beside the Nuxt UI it imports', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'opulon-ui-dev-'))
+  onTestFinished(() => rmSync(root, { recursive: true, force: true }))
+  const write = (path: string, source: string) => {
+    mkdirSync(dirname(join(root, path)), { recursive: true })
+    writeFileSync(join(root, path), source)
+  }
+  write('tsconfig.json', '{}')
+  write('entry.js', "import Empty from '@opulonjs/ui/components/EmptyState'; console.log(Empty)")
+  write(
+    'node_modules/@opulonjs/ui/package.json',
+    JSON.stringify({
+      name: '@opulonjs/ui',
+      type: 'module',
+      exports: { './components/*': './dist/*.mjs' },
+    }),
+  )
+  write('node_modules/@opulonjs/ui/dist/EmptyState.mjs', 'export default "empty"')
+  const server = await createServer({
+    root,
+    configFile: false,
+    logLevel: 'silent',
+    plugins: opulonUi(),
+    server: { middlewareMode: true },
+    optimizeDeps: { entries: ['entry.js'] },
+  })
+  onTestFinished(() => server.close())
+  const entry = await server.transformRequest('/entry.js')
+  expect(entry?.code).toContain('/node_modules/@opulonjs/ui/dist/EmptyState.mjs')
 })

@@ -3,7 +3,7 @@ import vue from '@vitejs/plugin-vue'
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { PluginOption } from 'vite'
 import { adminOverrides } from './vite-overrides.ts'
@@ -50,11 +50,18 @@ const hostPackages = (root: string) => {
   const hostDir = packageDir(root)
   if (!hostDir) return undefined
   const manifest = join(hostDir, 'package.json')
-  const host = JSON.parse(readFileSync(manifest, 'utf8')) as {
-    dependencies?: Record<string, string>
-    devDependencies?: Record<string, string>
-  }
-  const names = Object.keys({ ...host.dependencies, ...host.devDependencies })
+  const host = JSON.parse(readFileSync(manifest, 'utf8')) as Partial<
+    Record<
+      'dependencies' | 'devDependencies' | 'optionalDependencies' | 'peerDependencies',
+      Record<string, string>
+    >
+  >
+  const names = Object.keys({
+    ...host.dependencies,
+    ...host.devDependencies,
+    ...host.optionalDependencies,
+    ...host.peerDependencies,
+  })
   return { manifest, names: names.filter((name) => name.startsWith('@opulonjs/')) }
 }
 
@@ -84,7 +91,7 @@ export const opulonAdmin = (options: OpulonAdminOptions = {}): Array<PluginOptio
   const apiPrefix = options.apiPrefix ?? '/api'
   const shellDir = dirname(fileURLToPath(import.meta.url))
   return [
-    adminOverrides(options.overrides, (root) => hostPackages(root)?.names ?? []),
+    adminOverrides(options.overrides),
     vue(),
     ...opulonUi({
       ...(options.brand ? { brand: options.brand } : {}),
@@ -92,7 +99,18 @@ export const opulonAdmin = (options: OpulonAdminOptions = {}): Array<PluginOptio
     }),
     {
       name: '@opulonjs/admin',
-      config: () => ({ base: '/admin/' }),
+      // Unbundled like the kit, since module screens import Nuxt UI too; Effect as well, or the
+      // raw packages and the prebundled ones load two Effect instances.
+      config: (user) => ({
+        base: '/admin/',
+        optimizeDeps: {
+          exclude: [
+            'effect',
+            '@opulonjs/admin',
+            ...(hostPackages(resolve(user.root ?? '.'))?.names ?? []),
+          ],
+        },
+      }),
       transformIndexHtml: () => [
         { tag: 'meta', attrs: { name: 'opulon-build-id', content: buildId }, injectTo: 'head' },
         { tag: 'meta', attrs: { name: 'opulon-api-prefix', content: apiPrefix }, injectTo: 'head' },
