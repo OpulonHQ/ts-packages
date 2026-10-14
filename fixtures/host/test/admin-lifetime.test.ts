@@ -1,4 +1,4 @@
-import { afterAll, expect, onTestFinished, test } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, onTestFinished, test } from 'vitest'
 import { useAdminLifetime } from './admin-lifetime.ts'
 
 const admin = useAdminLifetime()
@@ -107,6 +107,41 @@ test.fails('a failing test that chains tracked calls from onTestFailed', ({ onTe
 
 test('the next test starts after the calls from onTestFailed settled', () => {
   expect(startedOnFailure).toBe(2)
+})
+
+describe('a call tracked before its test', () => {
+  const early = admin.track({ value: async () => 1 })
+  let call: Promise<number>
+  beforeAll(() => {
+    call = early.value()
+  })
+  test.fails('fails the test whose chained work fails', () => {
+    void call.then((value) => {
+      expect(value).toBe(2)
+    })
+  })
+})
+
+describe('after a call between tests rejected', () => {
+  let settled = 0
+  const host = admin.track({
+    fail: async () => {
+      throw new Error('between-test failure')
+    },
+    slow: async () => {
+      await later()
+      settled++
+    },
+  })
+  afterEach(() => void host.slow())
+  test.fails('a failing test whose onTestFailed call rejects', ({ onTestFailed }) => {
+    onTestFailed(() => void host.fail())
+    expect('failed').toBe('passed')
+  })
+  test.fails('the next test fails on that rejection', () => {})
+  test('the test after it starts once the afterEach calls settled', () => {
+    expect(settled).toBe(2)
+  })
 })
 
 let ranAfterTimeout = false

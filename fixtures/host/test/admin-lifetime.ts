@@ -11,9 +11,10 @@ type Calls = {
 // `await` adopts a plain Promise without calling `then`, so only a subclass sees every consumer.
 class Watched<T> extends Promise<T> {
   observed = false
-  calls: Calls | undefined
-  watch(calls: Calls) {
-    this.calls = calls
+  current: (() => Calls) | undefined
+  watch(current: () => Calls) {
+    this.current = current
+    const calls = current()
     calls.pending.push(this)
     Promise.prototype.then.call(this, undefined, (error: unknown) =>
       calls.rejected.push({ call: this, error }),
@@ -26,7 +27,7 @@ class Watched<T> extends Promise<T> {
   ): Promise<A | B> {
     this.observed = true
     const next = super.then(onFulfilled, onRejected)
-    if (this.calls && next instanceof Watched) next.watch(this.calls)
+    if (this.current && next instanceof Watched) next.watch(this.current)
     return next
   }
 }
@@ -66,7 +67,7 @@ export const useAdminLifetime = () => {
       if (result instanceof Promise)
         return new Watched((resolve, reject) => {
           result.then(resolve, reject)
-        }).watch(current)
+        }).watch(() => current)
       return typeof result === 'function' ? tracked(result, undefined) : result
     }
 
@@ -132,8 +133,11 @@ export const useAdminLifetime = () => {
     })
     if (unfinished)
       throw new Error(`Not run: ${unfinished} timed out or left calls pending and may still run`)
-    await close(between)
-    current = lifetime
+    try {
+      await close(between)
+    } finally {
+      current = lifetime
+    }
   })
 
   return {
