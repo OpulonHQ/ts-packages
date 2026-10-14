@@ -403,7 +403,7 @@ export const makeDocuments = Effect.gen(function* () {
               const published = yield* one(
                 sql`update cms.document set draft = ${document}::jsonb,
                   published = ${document}::jsonb, published_at = now(),
-                  published_revision_id = ${revisionId}
+                  published_revision_id = ${revisionId}, version = version + 1
                   where id = ${row.id} returning ${sql.literal(columns)}`,
                 ref,
               )

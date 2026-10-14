@@ -142,8 +142,8 @@ test('a revision must belong to the requested document; missing and malformed id
 test('restore refuses an old path now occupied by another document without changing the draft or auditing', async () => {
   const a = (await host.create(page({ en: '/revision-reused' }))).body
   const old = (await host.publish(a.id)).body
-  const moved = (await host.save(a.id, page({ en: '/revision-moved' }))).body
-  await host.publish(a.id)
+  await host.save(a.id, page({ en: '/revision-moved' }))
+  const moved = (await host.publish(a.id)).body
   await host.create(page({ en: '/revision-reused' }))
   const refused = await host.call(
     'POST',
