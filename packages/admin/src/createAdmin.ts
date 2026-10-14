@@ -174,8 +174,11 @@ export const createAdmin = (options: AdminOptions): App => {
     const turn = ++epoch
     return () => !unmounted && turn === epoch
   }
-  const waitingPicks: Array<string> = []
-  const waitsForPick = (userId: string) => waitingPicks.includes(userId)
+  let session = 0
+  type Pick = { readonly userId: string; readonly session: number }
+  const waitingPicks: Array<Pick> = []
+  const waitsForPick = (userId: string) =>
+    waitingPicks.some((pick) => pick.userId === userId && pick.session === session)
   // The latest successful write, applied only when the read after it fails for the same user.
   // Write order only stops an older write's late answer from re-arming it.
   let lastWrite:
@@ -184,6 +187,7 @@ export const createAdmin = (options: AdminOptions): App => {
   let writeOrder = 0
   let armedWriteOrder = 0
   const showSignedOut = () => {
+    session++
     lastWrite = undefined
     me.value = undefined
     status.value = 'signedOut'
@@ -363,18 +367,20 @@ export const createAdmin = (options: AdminOptions): App => {
   const saveLocale = async (locale: string | null, save: (userId: string) => Promise<void>) => {
     const userId = me.value?.user.id
     if (!userId) return
-    waitingPicks.push(userId)
+    const pick: Pick = { userId, session }
+    waitingPicks.push(pick)
     const write = lastLocaleSave.then(() => {
       if (unmounted) throw new Error('the admin unmounted before this language was saved')
-      if (me.value?.user.id !== userId)
-        throw new Error('another user is shown, so this language was not saved')
+      if (me.value?.user.id !== userId || session !== pick.session)
+        throw new Error('another session is shown, so this language was not saved')
       return save(userId)
     })
-    const picked = () => void waitingPicks.splice(waitingPicks.indexOf(userId), 1)
+    const picked = () => void waitingPicks.splice(waitingPicks.indexOf(pick), 1)
     lastLocaleSave = write.then(picked, picked)
     await afterWrite(write, async (live) => {
-      await applyLocale(locale, enabled.value, live)
-      if (me.value && live()) me.value = { ...me.value, locale }
+      const shows = () => live() && session === pick.session
+      await applyLocale(locale, enabled.value, shows)
+      if (me.value && shows()) me.value = { ...me.value, locale }
     })
   }
   const state: AdminState = {

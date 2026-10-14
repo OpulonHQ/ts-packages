@@ -1,5 +1,6 @@
-import { createAdmin } from '@opulonjs/admin'
+import { type AdminState, createAdmin, useAdmin } from '@opulonjs/admin'
 import { expect, onTestFinished, test } from 'vitest'
+import { defineComponent, h } from 'vue'
 import { useTestDatabase } from '../../../test/postgres/index.ts'
 import { brand } from '../admin/brand.ts'
 import { adminModules } from '../admin/modules.ts'
@@ -105,7 +106,7 @@ test('a language save that fails after the admin unmounted shows no error in the
   await expect.poll(next.text).toContain('Prehľad')
   save.release()
   await expect.poll(save.done).toBe(true)
-  await tick(100)
+  await lifetime.settled()
   expect(next.text()).not.toContain('Jazyk sa nepodarilo uložiť.')
   expect(next.text()).not.toContain('The language could not be saved.')
 })
@@ -130,7 +131,7 @@ test('a sign-in that succeeds after the admin unmounted leaves the page where th
   signIn.release()
   await expect.poll(signIn.done).toBe(true)
   await expect.poll(() => jar.cookie).toMatch(/session_token=/)
-  await tick(100)
+  await lifetime.settled()
   expect(location.pathname).toBe('/elsewhere')
 })
 
@@ -149,7 +150,7 @@ test('two quick language changes save and show the last one picked', async () =>
   await tick(50)
   first.release()
   await expect.poll(() => counting.saves()).toBe(2)
-  await tick(100)
+  await lifetime.settled()
 
   expect(await host.me(jar.cookie)).toMatchObject({ locale: 'sk' })
   await expect.poll(() => document.documentElement.lang).toBe('sk')
@@ -210,7 +211,7 @@ test('a language pick made while the read after an earlier save loads shows only
   await tick(100)
   secondSave.release()
   await expect.poll(() => counting.saves()).toBe(2)
-  await tick(100)
+  await lifetime.settled()
 
   expect(await host.me(jar.cookie)).toMatchObject({ locale: 'sk' })
   expect(document.documentElement.lang).toBe('sk')
@@ -244,7 +245,7 @@ test('a navigation while a language pick waits shows only the last pick', async 
   await tick(100)
   first.release()
   await expect.poll(() => saved).toBe(2)
-  await tick(100)
+  await lifetime.settled()
 
   expect(await host.me(jar.cookie)).toMatchObject({ locale: 'sk' })
   expect(document.documentElement.lang).toBe('sk')
@@ -273,7 +274,7 @@ test('a deploy seen while a language pick waits shows its notice and keeps the l
 
   first.release()
   await expect.poll(async () => (await host.me(jar.cookie)).locale).toBe('sk')
-  await tick(100)
+  await lifetime.settled()
   expect(document.documentElement.lang).toBe('sk')
   expect(shown).not.toContain('en')
 })
@@ -312,7 +313,7 @@ test('a language pick that fails keeps a sign-out a deploy check found while it 
   await expect.poll(check.done).toBe(true)
   save.release()
   await expect.poll(save.done).toBe(true)
-  await tick(100)
+  await lifetime.settled()
 
   expect(location.pathname).toBe('/admin/sign-in')
 })
@@ -349,7 +350,7 @@ test('a language pick that fails keeps a deploy a deploy check found while it wa
   await expect.poll(check.done).toBe(true)
   save.release()
   await expect.poll(save.done).toBe(true)
-  await tick(100)
+  await lifetime.settled()
 
   expect(admin.text()).toContain('Je dostupná nová verzia administrácie.')
 })
@@ -402,7 +403,7 @@ test('a language pick still queued when the admin unmounts is never saved', asyn
   first.release()
   await expect.poll(first.done).toBe(true)
   await expect.poll(() => document.documentElement.lang).toBe('en')
-  await tick(100)
+  await lifetime.settled()
 
   expect(oldSaves).toBe(1)
   expect((await host.me(jar.cookie)).locale).toBe('en')
@@ -443,7 +444,7 @@ test('a language save that answers after a sign-out does not keep the user signe
   await expect.poll(() => location.pathname).toBe('/admin/sign-in')
   read.release()
   await expect.poll(read.done).toBe(true)
-  await tick(100)
+  await lifetime.settled()
   expect(location.pathname).toBe('/admin/sign-in')
   expect((await host.request('GET', '/me', { cookie: session })).status).toBe(401)
 })
@@ -509,7 +510,7 @@ test.each(['answers', 'fails', 'rejects'] as const)(
     const readsBeforeAnswer = oldReadsAfterSave
     gate.resolve()
     await expect.poll(() => oldReadsAfterSave).toBeGreaterThan(readsBeforeAnswer)
-    await tick(50)
+    await lifetime.settled()
 
     expect(next.text()).not.toContain('Jazyk sa nepodarilo uložiť.')
   },
@@ -541,4 +542,112 @@ test('a queued language pick is dropped when the shell shows another user before
 
   expect(writes).toEqual(['A'])
   expect((await host.me(cookieB)).locale).toBe('sk')
+})
+
+const mountWithState = (fetch: typeof globalThis.fetch) => {
+  let state: AdminState | undefined
+  lifetime.mount('/admin/', {
+    buildId: 'b1',
+    fetch,
+    overrides: {
+      dashboard: defineComponent(() => {
+        state = useAdmin()
+        return () => h('p', 'dashboard ready')
+      }),
+    },
+  })
+  return async () => {
+    await expect.poll(() => state).toBeDefined()
+    return state!
+  }
+}
+
+const signOutAndBackIn = async (
+  state: AdminState,
+  jar: { cookie: string },
+  user: { email: string; password: string },
+) => {
+  const signedOut = await host.request('POST', '/users/auth/sign-out', { cookie: jar.cookie })
+  expect(signedOut.status).toBe(204)
+  await state.refresh()
+  expect(state.status.value).toBe('signedOut')
+  jar.cookie = await host.signIn(user.email, user.password)
+}
+
+const saveOnServer = async (cookie: string, locale: string) => {
+  const { id } = (await host.me(cookie)).user
+  const saved = await host.request('PUT', `/users/users/${id}/locale`, { cookie, body: { locale } })
+  expect(saved.status).toBe(204)
+}
+
+test('a pick still waiting from before a sign-out does not hold back the language after the same user signs in again', async () => {
+  const user = await seedUser(db.url, { name: 'Same User Returns', locale: 'sk' })
+  const jar = { cookie: await host.signIn(user.email, user.password) }
+  const answer = held(isLocaleSave, 'answer')
+  const state = await mountWithState(answer.wrap(host.browserFetch(jar)))()
+  const pick = state.setLocale!('en')
+  await expect.poll(answer.reached).toBe(true)
+
+  await signOutAndBackIn(state, jar, user)
+  await state.refresh()
+
+  expect(state.status.value).toBe('ready')
+  expect(state.me.value?.locale).toBe('en')
+  expect(document.documentElement.lang).toBe('en')
+  answer.release()
+  await pick
+})
+
+test('a pick queued before a sign-out is not sent after the same user signs in again', async () => {
+  const user = await seedUser(db.url, { name: 'Queued Across Sessions', locale: 'sk' })
+  const jar = { cookie: await host.signIn(user.email, user.password) }
+  const answer = held(isLocaleSave, 'answer')
+  const counting = countingSaves(jar)
+  const state = await mountWithState(answer.wrap(counting))()
+  const first = state.setLocale!('en')
+  await expect.poll(answer.reached).toBe(true)
+  const second = state.setLocale!('sk').then(
+    () => 'saved',
+    () => 'dropped',
+  )
+
+  await signOutAndBackIn(state, jar, user)
+  await saveOnServer(jar.cookie, 'en')
+  await state.refresh()
+  answer.release()
+  await first
+
+  expect(await second).toBe('dropped')
+  expect(counting.saves()).toBe(1)
+  expect((await host.me(jar.cookie)).locale).toBe('en')
+  expect(document.documentElement.lang).toBe('en')
+})
+
+test('a pick answered after a sign-out is not the language shown when a read fails after the same user signs in again', async () => {
+  const user = await seedUser(db.url, { name: 'Old Session Fallback', locale: 'sk' })
+  const jar = { cookie: await host.signIn(user.email, user.password) }
+  const answer = held(isLocaleSave, 'answer')
+  let failingReads = false
+  const server: typeof globalThis.fetch = async (input, init) => {
+    const request = new Request(input, init)
+    if (failingReads && request.method === 'GET' && new URL(request.url).pathname === '/api/me')
+      return new Response('down', { status: 503 })
+    return host.browserFetch(jar)(input, init)
+  }
+  const state = await mountWithState(answer.wrap(server))()
+  const pick = state.setLocale!('en')
+  await expect.poll(answer.reached).toBe(true)
+
+  await signOutAndBackIn(state, jar, user)
+  await saveOnServer(jar.cookie, 'sk')
+  await state.refresh()
+  expect(document.documentElement.lang).toBe('sk')
+  failingReads = true
+  answer.release()
+  await pick
+  await lifetime.settled()
+
+  expect(state.status.value).toBe('ready')
+  expect(state.me.value?.locale).toBe('sk')
+  expect(document.documentElement.lang).toBe('sk')
 })

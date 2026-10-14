@@ -1266,7 +1266,7 @@ test('the last language picked stays when the reads after both saves fail', asyn
   failing = true
   await answer.release()
   await Promise.all([first, second])
-  await tick(100)
+  await lifetime.settled()
   expect((await hosts.b1.me(own)).locale).toBe('sk')
   expect(me.value?.locale).toBe('sk')
   expect(document.documentElement.lang).toBe('sk')
@@ -1345,12 +1345,12 @@ test('a language picked while the fallback after a failed read loads its catalog
   expect(document.documentElement.lang).toBe('sk')
   await answer.release()
   await second
-  await tick(50)
+  await lifetime.settled()
   expect((await hosts.b1.me(own)).locale).toBe('sk')
   expect(shown).not.toContain('en')
 })
 
-test('a language pick waiting for one account does not hold back the language of the next account shown', async () => {
+test('a language pick waiting for one user does not hold back the language of the next user shown', async () => {
   const waiting = await seedUser(db.url, { name: 'Waiting Account', locale: 'en' })
   const next = await seedUser(db.url, { name: 'Next Account', locale: 'sk' })
   let session = await hosts.b1.signIn(waiting.email, waiting.password)
@@ -1385,8 +1385,8 @@ test('a language pick waiting for one account does not hold back the language of
   expect(me.value?.locale).toBe('en')
   expect(document.documentElement.lang).toBe('en')
   await answer.release()
-  await Promise.allSettled([pick])
-  await tick(50)
+  await pick.catch(() => {})
+  await lifetime.settled()
   expect(me.value?.user.id).toBe(nextId)
   expect(document.documentElement.lang).toBe('en')
 })

@@ -153,6 +153,10 @@ export const useAdminLifetime = () => {
           return typeof value === 'function' ? tracked(value, target) : value
         },
       }),
+    settled: async () => {
+      if (!(await settle(current, Date.now() + 5000)))
+        throw new Error(`admin or host calls from ${current.name} still pending after 5s`)
+    },
     gate: () => {
       const gate = Promise.withResolvers<void>()
       current.gates.push(gate.resolve)
