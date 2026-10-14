@@ -288,7 +288,7 @@ export const createAdmin = (options: AdminOptions): App => {
     const order = ++writeOrder
     try {
       await write
-      if (userId && order > armedWriteOrder && !superseded()) {
+      if (userId && order > armedWriteOrder) {
         armedWriteOrder = order
         lastWrite = { userId, apply }
       }
@@ -356,7 +356,10 @@ export const createAdmin = (options: AdminOptions): App => {
     const userId = me.value?.user.id
     if (!userId) return
     epoch++
-    const write = lastLocaleSave.then(() => save(userId))
+    const write = lastLocaleSave.then(() => {
+      if (unmounted) throw new Error('the admin unmounted before this language was saved')
+      return save(userId)
+    })
     const queued = write.catch(() => {})
     lastLocaleSave = queued
     await afterWrite(
