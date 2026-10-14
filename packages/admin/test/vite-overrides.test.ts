@@ -192,7 +192,12 @@ test('dev serves published @opulonjs packages unbundled without overrides', asyn
   )
   fixture.write(
     'node_modules/@opulonjs/screen/package.json',
-    JSON.stringify({ name: '@opulonjs/screen', version: '1.0.0', type: 'module', exports: './index.mjs' }),
+    JSON.stringify({
+      name: '@opulonjs/screen',
+      version: '1.0.0',
+      type: 'module',
+      exports: './index.mjs',
+    }),
   )
   fixture.write('node_modules/@opulonjs/screen/index.mjs', 'export default "screen"')
   fixture.write(
@@ -200,7 +205,10 @@ test('dev serves published @opulonjs packages unbundled without overrides', asyn
     "import Screen from '@opulonjs/screen'; import Empty from '@opulonjs/ui/components/EmptyState'; console.log(Screen, Empty)",
   )
   const server = await createServer(
-    fixture.config({}, { server: { middlewareMode: true }, optimizeDeps: { entries: ['entry.js'] } }),
+    fixture.config(
+      {},
+      { server: { middlewareMode: true }, optimizeDeps: { entries: ['entry.js'] } },
+    ),
   )
   onTestFinished(() => server.close())
   const entry = await server.transformRequest('/entry.js')

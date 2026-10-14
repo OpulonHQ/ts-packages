@@ -72,7 +72,11 @@ test('dev serves the installed kit unbundled, beside the Nuxt UI it imports', as
   write('entry.js', "import Empty from '@opulonjs/ui/components/EmptyState'; console.log(Empty)")
   write(
     'node_modules/@opulonjs/ui/package.json',
-    JSON.stringify({ name: '@opulonjs/ui', type: 'module', exports: { './components/*': './dist/*.mjs' } }),
+    JSON.stringify({
+      name: '@opulonjs/ui',
+      type: 'module',
+      exports: { './components/*': './dist/*.mjs' },
+    }),
   )
   write('node_modules/@opulonjs/ui/dist/EmptyState.mjs', 'export default "empty"')
   const server = await createServer({
