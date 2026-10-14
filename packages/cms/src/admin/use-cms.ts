@@ -139,7 +139,7 @@ export const useFocusReturn = (locked: () => boolean, form: () => HTMLElement | 
         if (
           target !== 'form' &&
           target.isConnected &&
-          target.checkVisibility() &&
+          target.checkVisibility?.() !== false &&
           !target.closest('[aria-hidden="true"]')
         )
           target.focus()

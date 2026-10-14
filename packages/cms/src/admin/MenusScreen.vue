@@ -101,7 +101,6 @@ const reload = async (done = '') => show(await run(() => content.getMenu(current
       ref="form"
       tabindex="-1"
       :aria-label="t('cms.menus.title')"
-      class="focus:outline-none"
       @submit.prevent="save"
     >
       <fieldset :disabled="pending || revisionPending" class="min-w-0">

@@ -69,7 +69,6 @@ const reload = async (done = '') => show(await run(() => content.getSettings(), 
       ref="form"
       tabindex="-1"
       :aria-label="t('cms.settings.title')"
-      class="focus:outline-none"
       @submit.prevent="save"
     >
       <fieldset :disabled="pending || revisionPending" class="min-w-0">
