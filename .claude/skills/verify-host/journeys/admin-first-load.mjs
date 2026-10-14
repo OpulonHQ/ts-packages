@@ -45,12 +45,15 @@ export default async (ctx) => {
   const failed = page.getByRole('alert').filter({ hasText: 'The editor could not be loaded' })
   await failed.waitFor()
   check(
-    (await failed.getByRole('button', { name: 'Reload page' }).count()) === 1 &&
+    (await failed.getByRole('button', { name: 'Try again' }).count()) === 1 &&
       (await page.locator('[contenteditable="true"]').count()) === 0,
-    'posts item with the editor download blocked: alert with a Reload page action, no editor',
+    'posts item with the editor download blocked: alert with a Try again action, no editor',
   )
   await shot('posts-item-editor-failed')
   await page.unroute(/\/RichTextControl-[^/]+\.js$/)
+  await failed.getByRole('button', { name: 'Try again' }).click()
+  await page.locator('[contenteditable="true"]').first().waitFor()
+  check(true, 'Try again after the network returns: the editor loads')
 
   await open('/admin/emails/templates/users.invitation')
   await page.locator('[contenteditable="true"]').first().waitFor()
