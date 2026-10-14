@@ -6,10 +6,10 @@ import { adminModules } from '../admin/modules.ts'
 /**
  * Admin journeys for one test file. When a test finishes, after its own cleanup callbacks, the
  * mounted admins unmount, the test's gates open and every call the admins or a `track`ed host
- * started settles (failing after 5s); a tracked host call that rejected fails the test. Vitest
- * does not cancel a timed-out test body or hook, so once a test or its hooks time out, or its
- * calls do not settle, no later test in the file runs: a late body cannot reach another test's
- * DOM or data.
+ * started settles (failing after 5s); a tracked host call that rejected, or an unmount that
+ * threw, fails the test. Vitest does not cancel a timed-out test body or hook, so once a test or
+ * its hooks time out, or its calls do not settle, no later test in the file runs: a late body
+ * cannot reach another test's DOM or data.
  */
 export const useAdminLifetime = () => {
   type Lifetime = {
@@ -36,7 +36,13 @@ export const useAdminLifetime = () => {
 
   const finish = async (name: string) => {
     const { apps, gates, pending, failures } = current
-    for (const app of apps) app.unmount()
+    for (const app of apps) {
+      try {
+        app.unmount()
+      } catch (error) {
+        failures.push(error)
+      }
+    }
     for (const release of gates) release()
     let settled = false
     const drained = (async () => {
@@ -57,7 +63,8 @@ export const useAdminLifetime = () => {
       unfinished ??= name
       throw new Error('admin or host calls still pending 5s after the test finished')
     }
-    if (failures.length > 0) throw new AggregateError(failures, 'a tracked host call failed')
+    if (failures.length > 0)
+      throw new AggregateError(failures, 'a tracked host call or unmount failed')
   }
 
   beforeEach(({ signal, task, onTestFinished }) => {

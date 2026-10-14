@@ -1,4 +1,4 @@
-import { expect, onTestFinished, test } from 'vitest'
+import { afterAll, expect, onTestFinished, test } from 'vitest'
 import { useAdminLifetime } from './admin-lifetime.ts'
 
 const admin = useAdminLifetime()
@@ -31,3 +31,10 @@ test('the next test starts after that admin unmounted and its requests and clean
   expect(cleaned).toBe(1)
   expect(document.body.innerHTML).toBe('')
 })
+
+let ranAfterTimeout = false
+test.fails('a test that times out', { timeout: 50 }, () => new Promise(() => {}))
+test.fails('a later test is not run while the timed-out body may still run', () => {
+  ranAfterTimeout = true
+})
+afterAll(() => expect(ranAfterTimeout).toBe(false))
