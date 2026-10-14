@@ -293,6 +293,7 @@ export const createAdmin = (options: AdminOptions): App => {
     await ready
     await toSignIn()
   }
+  let picks = 0
   if (unmountedSaves.size > 0) {
     void Promise.all(unmountedSaves)
       .then((saves) => {
@@ -380,14 +381,22 @@ export const createAdmin = (options: AdminOptions): App => {
   const saveLocale = async (locale: string | null, save: (userId: string) => Promise<void>) => {
     const userId = me.value?.user.id
     if (!userId) return
+    const pick = ++picks
+    if (unmountedSaves.size > 0) {
+      void Promise.all(unmountedSaves)
+        .then((saves) => {
+          const overwritten = saves.some((saved) => saved !== undefined)
+          if (overwritten && !unmounted && pick === picks && me.value?.user.id === userId)
+            return saveLocale(locale, save)
+        })
+        .catch((error: unknown) => console.warn(error))
+    }
     waitingPicks.push(userId)
     const previous = lastLocaleSave
-    const write = previous
-      .then(() => (unmounted ? undefined : Promise.all(unmountedSaves)))
-      .then(() => {
-        if (unmounted) throw new Error('the admin unmounted before this language was saved')
-        return save(userId)
-      })
+    const write = previous.then(() => {
+      if (unmounted) throw new Error('the admin unmounted before this language was saved')
+      return save(userId)
+    })
     const picked = () => void waitingPicks.splice(waitingPicks.indexOf(userId), 1)
     lastLocaleSave = write.then(
       () => {
