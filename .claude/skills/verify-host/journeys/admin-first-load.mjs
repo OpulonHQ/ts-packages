@@ -40,6 +40,18 @@ export default async (ctx) => {
   )
   await shot('posts-item-editor')
 
+  await page.route(/\/RichTextControl-[^/]+\.js$/, (route) => route.abort())
+  await open(page.url().replace(base, ''))
+  const failed = page.getByRole('alert').filter({ hasText: 'The editor could not be loaded' })
+  await failed.waitFor()
+  check(
+    (await failed.getByRole('button', { name: 'Reload page' }).count()) === 1 &&
+      (await page.locator('[contenteditable="true"]').count()) === 0,
+    'posts item with the editor download blocked: alert with a Reload page action, no editor',
+  )
+  await shot('posts-item-editor-failed')
+  await page.unroute(/\/RichTextControl-[^/]+\.js$/)
+
   await open('/admin/emails/templates/users.invitation')
   await page.locator('[contenteditable="true"]').first().waitFor()
   check(true, 'email template editor renders its rich text body')

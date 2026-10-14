@@ -20,6 +20,7 @@ const adminTests = [
   'fixtures/host/test/cms/admin.test.ts',
   'fixtures/host/test/cms/redirects-admin.test.ts',
   'fixtures/host/test/cms/content-admin.test.ts',
+  'fixtures/host/test/cms/rich-text-failed.test.ts',
   'fixtures/host/test/cms/reference-paging-admin.test.ts',
   'fixtures/host/test/cms/cms-sections.test.ts',
 ]

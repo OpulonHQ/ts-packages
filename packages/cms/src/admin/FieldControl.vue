@@ -11,9 +11,13 @@ import { computed, defineAsyncComponent } from 'vue'
 import { type Field, labelText } from '../api.ts'
 import LinkControl from './LinkControl.vue'
 import ReferenceControl from './ReferenceControl.vue'
+import EditorFailed from './EditorFailed.vue'
 import { useCmsContext } from './use-cms.ts'
 
-const FieldRichText = defineAsyncComponent(() => import('@opulonjs/ui/components/Field/RichText'))
+const FieldRichText = defineAsyncComponent({
+  loader: () => import('@opulonjs/ui/components/Field/RichText'),
+  errorComponent: EditorFailed,
+})
 
 const model = defineModel<unknown>()
 const props = defineProps<{ field: Field; name: string; label: string; disabled?: boolean }>()

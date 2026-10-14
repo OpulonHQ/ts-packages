@@ -162,7 +162,7 @@ const checkFirstLoad = {
     const eager = chunks.flatMap((chunk) => chunk.moduleIds).filter((id) => onDemand.some((part) => id.includes(part)))
     if (eager.length > 0) throw new Error('admin first load includes on-demand code: ' + eager.join(', '))
     const kB = (bytes) => (bytes / 1000).toFixed(1) + ' kB'
-    const size = chunks.reduce((sum, chunk) => sum + chunk.code.length, 0)
+    const size = chunks.reduce((sum, chunk) => sum + Buffer.byteLength(chunk.code), 0)
     const gzip = chunks.reduce((sum, chunk) => sum + gzipSync(chunk.code).length, 0)
     console.log('ok admin first load:', chunks.length, 'chunks,', kB(size) + ',', kB(gzip), 'gzip, no table or editor code')
   },
