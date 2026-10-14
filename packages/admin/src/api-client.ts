@@ -5,14 +5,8 @@ import type { HttpClientError } from 'effect/http/HttpClientError'
 import * as HttpApi from 'effect/http-api/HttpApi'
 import * as HttpApiClient from 'effect/http-api/HttpApiClient'
 import type * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
-import { inject, type InjectionKey } from 'vue'
-
-export interface ApiContext {
-  readonly apiPrefix: string
-  readonly fetch: typeof globalThis.fetch
-}
-
-export const apiContextKey: InjectionKey<ApiContext> = Symbol('@opulonjs/admin/api')
+import { inject } from 'vue'
+import { apiContextKey } from './state.ts'
 
 /** The typed client of one HttpApi group: endpoint identifiers to client methods. */
 export type GroupClient<Group extends HttpApiGroup.Constraint> = HttpApiClient.Client.Group<

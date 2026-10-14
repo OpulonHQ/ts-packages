@@ -4,6 +4,13 @@ import { inject, type Component, type ComputedRef, type InjectionKey, type Shall
 
 export type { Me } from '@opulonjs/core/api'
 
+export interface ApiContext {
+  readonly apiPrefix: string
+  readonly fetch: typeof globalThis.fetch
+}
+
+export const apiContextKey: InjectionKey<ApiContext> = Symbol('@opulonjs/admin/api')
+
 export type Status = 'loading' | 'ready' | 'signedOut' | 'failed'
 
 /** A nav entry the user may open: label key (already namespaced), route name, icon. */

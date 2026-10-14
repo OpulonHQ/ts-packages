@@ -136,7 +136,12 @@ export default {
     target: 'Target',
     collection: 'Collection',
   },
-  errors: { failed: 'The action failed. Try again.', notFound: 'This page does not exist.' },
+  errors: {
+    failed: 'The action failed. Try again.',
+    notFound: 'This page does not exist.',
+    editor: 'The editor could not be loaded. Reloading the page discards unsaved changes.',
+    reload: 'Reload page',
+  },
   permissions: {
     'cms.pages.view': 'View pages',
     'cms.pages.edit': 'Create and edit pages',

@@ -29,6 +29,24 @@ export DATABASE_URL_TEST=postgres://postgres:postgres@127.0.0.1:54317/postgres
 - `fixtures/nuxt`: a minimal Nuxt 4 public site over the fixture host, deployed to real Workers to check `@opulonjs/cms/site/nuxt` (deploy steps in its `wrangler.jsonc`). Not part of `pnpm build`. After `pnpm build`, `pnpm --filter @opulonjs-fixtures/nuxt test:built` (with `DATABASE_URL_TEST`) builds it and drives the built Worker's own `fetch` in workerd through Miniflare: a cookie-personalized route must answer `private, no-store` and an opted-in cms page public with its Cache-Tags. Run it when changing `@opulonjs/cms/site/nuxt` or upgrading Nuxt/Nitro; it is not in `pnpm test` (a Nuxt build per run).
 - `test/`: repo-level tests and helpers.
 
+## Admin Vite config
+
+A host builds its admin with the `opulonAdmin()` preset from `@opulonjs/admin/vite`. The presets add no chunking options. The rich text editor always loads on demand, but without a chunk group its tiptap and ProseMirror code forms one chunk over 500 kB and Vite warns about it. Opt in to the split with `editorChunkGroup`, as `fixtures/host/vite.config.ts` does:
+
+```ts
+import { editorChunkGroup, opulonAdmin } from '@opulonjs/admin/vite'
+import { defineConfig } from 'vite'
+import { brand } from './admin/brand.ts'
+
+export default defineConfig({
+  root: 'admin',
+  plugins: [opulonAdmin({ brand })],
+  build: { rolldownOptions: { output: { codeSplitting: { groups: [editorChunkGroup] } } } },
+})
+```
+
+`editorChunkGroup` is also exported from `@opulonjs/ui/vite`. A host that sets its own chunking keeps it untouched; to split the editor as well, add the group to its own `codeSplitting.groups`. `pnpm pack:check` builds the packed fixture admin with the group and fails if the first route fetches table or editor code, goes over 330 kB gzip JS + CSS, or Vite warns about chunk size.
+
 ## Package graph
 
 `eslint.config.js` enforces the package graph from ADR 0001 with `no-restricted-imports`: on the server `users` may use `emails`, `cms` may use `media`, and every package may use `core`; in the browser `admin` uses `ui` and the client-safe `core/api` contract, and a package's `src/admin/**` entry may use `admin` and `ui`. `@nuxt/ui` may only be imported inside `packages/ui`.

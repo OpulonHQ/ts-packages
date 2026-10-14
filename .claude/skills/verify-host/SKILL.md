@@ -20,6 +20,8 @@ pnpm build                           # wrangler bundles packages from dist; admi
 cd fixtures/host && wtdev            # foreground: run it with run_in_background, log to a file
 ```
 
+The admin build splits the rich text editor into `RichTextControl` and `prosemirror` chunks because `fixtures/host/vite.config.ts` opts in with `editorChunkGroup` from `@opulonjs/admin/vite` (`build.rolldownOptions.output.codeSplitting.groups`). Without it the editor still loads on demand, as one chunk over 500 kB with Vite's chunk-size warning (see CONTRIBUTING, Admin Vite config).
+
 `wtdev` runs the host's `dev` script (`fixtures/host/scripts/dev.sh`): creates this worktree's database `tspack_verify_<worktree dir>` if missing, runs `opulon migrate`, then `wrangler dev` on this worktree's wtdev port (`wtdev port`, e.g. 3181) bound to `127.0.0.1`, with `--test-scheduled` and local vars (`OPULON_BUILD_ID` = the admin build's `build-id`, so the shell never reports itself stale, `USERS_BASE_URL` = `http://127.0.0.1:<port>`, a fixed local auth secret). Ready = the log line `[wrangler:info] Ready on http://127.0.0.1:<port>`; then run Doctor.
 
 - Use `127.0.0.1`, not `localhost`: `USERS_BASE_URL` is the 127.0.0.1 origin and the API rejects a mismatching `Origin`.

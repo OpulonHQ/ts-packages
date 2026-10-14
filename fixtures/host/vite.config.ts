@@ -1,4 +1,4 @@
-import { opulonAdmin } from '@opulonjs/admin/vite'
+import { editorChunkGroup, opulonAdmin } from '@opulonjs/admin/vite'
 import { defineConfig } from 'vite'
 import { brand } from './admin/brand.ts'
 import { components } from './admin/override-components.ts'
@@ -10,5 +10,10 @@ export default defineConfig({
     // The @opulonjs packages' admin screens are found from package.json; no sources needed.
     opulonAdmin({ brand, overrides: { components } }),
   ],
-  build: { outDir: '../public/admin', emptyOutDir: true, manifest: true },
+  build: {
+    outDir: '../public/admin',
+    emptyOutDir: true,
+    manifest: true,
+    rolldownOptions: { output: { codeSplitting: { groups: [editorChunkGroup] } } },
+  },
 })

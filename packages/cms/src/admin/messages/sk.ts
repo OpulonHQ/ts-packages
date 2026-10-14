@@ -137,7 +137,12 @@ export default {
     target: 'Cieľ',
     collection: 'Kolekcia',
   },
-  errors: { failed: 'Akcia zlyhala. Skúste to znova.', notFound: 'Táto stránka neexistuje.' },
+  errors: {
+    failed: 'Akcia zlyhala. Skúste to znova.',
+    notFound: 'Táto stránka neexistuje.',
+    editor: 'Editor sa nepodarilo načítať. Obnovením stránky prídete o neuložené zmeny.',
+    reload: 'Obnoviť stránku',
+  },
   permissions: {
     'cms.pages.view': 'Zobraziť stránky',
     'cms.pages.edit': 'Vytvárať a upravovať stránky',

@@ -1,7 +1,8 @@
 import { defineAdminModule, type Lazy } from '@opulonjs/admin'
 import { defineAsyncComponent, defineComponent, h, provide, type Component } from 'vue'
 import { cmsAuditActions, type CmsDefinitions, cmsPermissions, type FieldGroup } from '../api.ts'
-import { cmsContextKey } from './use-cms.ts'
+import { cmsContextKey } from './context.ts'
+import EditorFailed from './EditorFailed.vue'
 
 export type { CmsWidgetProps } from './use-cms.ts'
 
@@ -59,7 +60,10 @@ export const cmsAdmin = (options: CmsAdminOptions) => {
     widgets: Object.fromEntries(
       Object.entries(registered).map(([name, load]) => [
         name,
-        defineAsyncComponent(() => load().then((m) => m.default)),
+        defineAsyncComponent({
+          loader: () => load().then((m) => m.default),
+          errorComponent: EditorFailed,
+        }),
       ]),
     ),
   }

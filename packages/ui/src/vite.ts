@@ -132,6 +132,13 @@ const css = (brand: Brand | undefined, sources: ReadonlyArray<string>): string =
     .join('\n')
 
 /**
+ * Rolldown chunk group for the rich text editor's ProseMirror code, which otherwise shares one
+ * chunk with tiptap above Vite's 500 kB warning. Opt in from the host's Vite config:
+ * `build: { rolldownOptions: { output: { codeSplitting: { groups: [editorChunkGroup] } } } }`.
+ */
+export const editorChunkGroup = { name: 'prosemirror', test: /[\\/]prosemirror-[a-z-]+[\\/]/ }
+
+/**
  * Nuxt UI 4 for a plain Vue/Vite SPA, branded at build time: Tailwind, the theme and component
  * overrides, the self-hosted Inter font and an offline Lucide icon bundle. Add `@vitejs/plugin-vue`
  * next to it; `@opulonjs/admin/vite` does both.

@@ -1,5 +1,6 @@
 import { useAdmin, useApiClient } from '@opulonjs/admin'
-import { computed, inject, onBeforeUnmount, ref, type Component, type InjectionKey } from 'vue'
+import { computed, inject, onBeforeUnmount, ref } from 'vue'
+import { cmsContextKey } from './context.ts'
 import {
   CmsConflict,
   type CmsDefinitions,
@@ -29,13 +30,6 @@ export interface CmsWidgetProps {
   label: string
   disabled?: boolean
 }
-
-export interface CmsAdminContext {
-  readonly definitions: CmsDefinitions
-  readonly widgets: Readonly<Record<string, Component>>
-}
-
-export const cmsContextKey: InjectionKey<CmsAdminContext> = Symbol('@opulonjs/cms/admin')
 
 export const useCmsContext = () => {
   const context = inject(cmsContextKey)
