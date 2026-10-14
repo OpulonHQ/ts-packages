@@ -772,19 +772,19 @@ test('the later of two language changes wins in the shell', async () => {
   const user = await seedUser(db.url, { name: 'Two Languages', locale: 'sk' })
   const own = await hosts.b1.signIn(user.email, user.password)
   const dashboard = capturedState()
-  const request = heldNextRequest()
+  const answer = heldAnswer('/locale')
   mountDisposable(adminModules, own, {
     overrides: dashboard.overrides,
-    onRequest: request.onRequest,
+    onResponse: answer.onResponse,
   })
   await expect.poll(() => document.body.textContent).toContain('state captured')
   const { setLocale, me } = dashboard.state()
   if (!setLocale) throw new Error('the auth provider offers no language change')
-  request.hold()
+  answer.hold()
   const first = setLocale('en')
-  await expect.poll(request.reached).toBe(true)
+  await expect.poll(answer.answered).toBe(true)
   await setLocale('sk')
-  request.release()
+  await answer.release()
   await first
   expect(me.value?.locale).toBe('sk')
   expect(document.documentElement.lang).toBe('sk')
@@ -882,7 +882,7 @@ const lateLanguageInNextSession = async (
   expect(current?.locale).toBe('en')
   await answer.release()
   await changed
-  expect(me.value).toBe(current)
+  expect(me.value).toEqual(current)
   expect(document.documentElement.lang).toBe('en')
 }
 
@@ -991,6 +991,225 @@ test('a language save still applies when a refresh fails while its catalogs load
   await refresh()
   await catalogs.release()
   await changed
+  expect(me.value?.locale).toBe('sk')
+  expect(document.documentElement.lang).toBe('sk')
+})
+
+test('an older language save applies when a newer one fails', async () => {
+  const user = await seedUser(db.url, { name: 'Newer Save Fails', locale: 'en' })
+  const own = await hosts.b1.signIn(user.email, user.password)
+  const dashboard = capturedState()
+  const answer = heldAnswer('/locale')
+  let saves = 0
+  mountDisposable(adminModules, own, {
+    overrides: dashboard.overrides,
+    onRequest: (url) => {
+      if (url.endsWith('/locale') && ++saves === 2) throw new Error('second save failed')
+    },
+    onResponse: answer.onResponse,
+  })
+  await expect.poll(() => document.body.textContent).toContain('state captured')
+  const { setLocale, me } = dashboard.state()
+  if (!setLocale) throw new Error('the auth provider offers no language change')
+  answer.hold()
+  const first = setLocale('sk')
+  await expect.poll(answer.answered).toBe(true)
+  await expect(setLocale('en')).rejects.toThrow('second save failed')
+  await answer.release()
+  await first
+  expect(me.value?.locale).toBe('sk')
+  expect(document.documentElement.lang).toBe('sk')
+})
+
+test('an older deploy check that answers after a language save ends at the server’s language', async () => {
+  const user = await seedUser(db.url, { name: 'Check During Save', locale: 'en' })
+  const own = await hosts.b1.signIn(user.email, user.password)
+  const dashboard = capturedState()
+  const save = heldAnswer('/locale')
+  const check = heldAnswer()
+  mountDisposable(adminModules, own, {
+    overrides: dashboard.overrides,
+    onResponse: async (url) => {
+      await save.onResponse(url)
+      await check.onResponse(url)
+    },
+  })
+  await expect.poll(() => document.body.textContent).toContain('state captured')
+  const { setLocale, me } = dashboard.state()
+  if (!setLocale) throw new Error('the auth provider offers no language change')
+  save.hold()
+  const changed = setLocale('sk')
+  await expect.poll(save.answered).toBe(true)
+  check.hold()
+  navigate('/admin/nowhere')
+  await expect.poll(check.answered).toBe(true)
+  await save.release()
+  await changed
+  await check.release()
+  expect((await hosts.b1.me(own)).locale).toBe('sk')
+  expect(me.value?.locale).toBe('sk')
+  expect(document.documentElement.lang).toBe('sk')
+})
+
+test('a language save stays out of a shell whose deploy check found the session ended', async () => {
+  const user = await seedUser(db.url, { name: 'Ended Before Save Answered', locale: 'en' })
+  const own = await hosts.b1.signIn(user.email, user.password)
+  const dashboard = capturedState()
+  const answer = heldAnswer('/locale')
+  mountDisposable(adminModules, own, {
+    overrides: dashboard.overrides,
+    onResponse: answer.onResponse,
+  })
+  await expect.poll(() => document.body.textContent).toContain('state captured')
+  const { setLocale, me, status } = dashboard.state()
+  if (!setLocale) throw new Error('the auth provider offers no language change')
+  answer.hold()
+  const changed = setLocale('sk')
+  await expect.poll(answer.answered).toBe(true)
+  expect(
+    (await hosts.b1.request('POST', '/users/auth/sign-out', { cookie: own })).status,
+  ).toBeLessThan(300)
+  navigate('/admin/nowhere')
+  await expect.poll(() => status.value).toBe('signedOut')
+  await answer.release()
+  await changed
+  expect(status.value).toBe('signedOut')
+  expect(me.value).toBeUndefined()
+  expect(document.documentElement.lang).toBe('en')
+})
+
+test('a sign-out still leads to the sign-in form when a refresh saw it first', async () => {
+  const user = await seedUser(db.url, { name: 'Refresh Sees Sign-out', locale: 'en' })
+  const own = await hosts.b1.signIn(user.email, user.password)
+  const dashboard = capturedState()
+  const answer = heldAnswer('/sign-out')
+  mountDisposable(adminModules, own, {
+    overrides: dashboard.overrides,
+    onResponse: answer.onResponse,
+  })
+  await expect.poll(() => document.body.textContent).toContain('state captured')
+  const { signOut, refresh, status } = dashboard.state()
+  if (!signOut) throw new Error('the auth provider offers no sign-out')
+  answer.hold()
+  const done = signOut()
+  await expect.poll(answer.answered).toBe(true)
+  await refresh()
+  await answer.release()
+  await done
+  expect(status.value).toBe('signedOut')
+  await expect.poll(() => document.querySelector('input[type="password"]')).not.toBeNull()
+  expect(location.pathname).toBe('/admin/sign-in')
+})
+
+test('a sign-out that failed does not undo an earlier one that succeeded', async () => {
+  const user = await seedUser(db.url, { name: 'Second Sign-out Fails', locale: 'en' })
+  const own = await hosts.b1.signIn(user.email, user.password)
+  const dashboard = capturedState()
+  const answer = heldAnswer('/sign-out')
+  let signOuts = 0
+  mountDisposable(adminModules, own, {
+    overrides: dashboard.overrides,
+    onRequest: (url) => {
+      if (url.endsWith('/sign-out') && ++signOuts === 2) throw new Error('second sign-out failed')
+    },
+    onResponse: answer.onResponse,
+  })
+  await expect.poll(() => document.body.textContent).toContain('state captured')
+  const { signOut, me, status } = dashboard.state()
+  if (!signOut) throw new Error('the auth provider offers no sign-out')
+  answer.hold()
+  const first = signOut()
+  await expect.poll(answer.answered).toBe(true)
+  await expect(signOut()).rejects.toThrow('second sign-out failed')
+  await answer.release()
+  await first
+  expect(status.value).toBe('signedOut')
+  expect(me.value).toBeUndefined()
+  await expect.poll(() => document.querySelector('input[type="password"]')).not.toBeNull()
+})
+
+test('a language save stays out of another user’s shell when the read after it fails', async () => {
+  const user = await seedUser(db.url, { name: 'Save Then Failed Read', locale: 'en' })
+  let session = await hosts.b1.signIn(user.email, user.password)
+  const dashboard = capturedState()
+  const answer = heldAnswer('/locale')
+  let failing = false
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+  onTestFinished(() => error.mockRestore())
+  mountDisposable(adminModules, () => session, {
+    overrides: dashboard.overrides,
+    onRequest: (url) => {
+      if (failing && url.endsWith('/api/me')) throw new Error('read failed')
+    },
+    onResponse: answer.onResponse,
+  })
+  await expect.poll(() => document.body.textContent).toContain('state captured')
+  const { setLocale, me } = dashboard.state()
+  if (!setLocale) throw new Error('the auth provider offers no language change')
+  answer.hold()
+  const changed = setLocale('sk')
+  await expect.poll(answer.answered).toBe(true)
+  const other = await seedUser(db.url, { name: 'Shown Before Failure', locale: 'en' })
+  session = await hosts.b1.signIn(other.email, other.password)
+  const { id } = (await hosts.b1.me(session)).user
+  navigate('/admin/nowhere')
+  await expect.poll(() => me.value?.user.id).toBe(id)
+  failing = true
+  await answer.release()
+  await changed
+  await tick(50)
+  expect(me.value?.user.id).toBe(id)
+  expect(me.value?.locale).toBe('en')
+  expect(document.documentElement.lang).toBe('en')
+})
+
+test('a failed read does not bring back a language that a later read replaced', async () => {
+  const user = await seedUser(db.url, { name: 'Replaced Language', locale: 'en' })
+  const own = await hosts.b1.signIn(user.email, user.password)
+  const dashboard = capturedState()
+  let failing = false
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+  onTestFinished(() => error.mockRestore())
+  mountDisposable(adminModules, own, {
+    overrides: dashboard.overrides,
+    onRequest: (url) => {
+      if (failing && url.endsWith('/api/me')) throw new Error('read failed')
+    },
+  })
+  await expect.poll(() => document.body.textContent).toContain('state captured')
+  const { setLocale, refresh, me } = dashboard.state()
+  if (!setLocale) throw new Error('the auth provider offers no language change')
+  await setLocale('sk')
+  const { id } = (await hosts.b1.me(own)).user
+  const saved = await hosts.b1.request('PUT', `/users/users/${id}/locale`, {
+    cookie: own,
+    body: { locale: 'en' },
+  })
+  expect(saved.status).toBe(204)
+  await refresh()
+  expect(me.value?.locale).toBe('en')
+  failing = true
+  await refresh()
+  await tick(50)
+  expect(me.value?.locale).toBe('en')
+  expect(document.documentElement.lang).toBe('en')
+})
+
+test('a language save whose answer is lost still shows the language the server saved', async () => {
+  const user = await seedUser(db.url, { name: 'Lost Answer', locale: 'en' })
+  const own = await hosts.b1.signIn(user.email, user.password)
+  const dashboard = capturedState()
+  mountDisposable(adminModules, own, {
+    overrides: dashboard.overrides,
+    onResponse: (url) => {
+      if (url.endsWith('/locale')) throw new Error('answer lost')
+    },
+  })
+  await expect.poll(() => document.body.textContent).toContain('state captured')
+  const { setLocale, me } = dashboard.state()
+  if (!setLocale) throw new Error('the auth provider offers no language change')
+  await expect(setLocale('sk')).rejects.toThrow('answer lost')
+  expect((await hosts.b1.me(own)).locale).toBe('sk')
   expect(me.value?.locale).toBe('sk')
   expect(document.documentElement.lang).toBe('sk')
 })

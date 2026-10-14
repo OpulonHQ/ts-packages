@@ -174,16 +174,14 @@ export const createAdmin = (options: AdminOptions): App => {
     const turn = ++epoch
     return () => !unmounted && turn === epoch
   }
-  let session = 0
-  const setMe = (next: Me | undefined) => {
-    if (next?.user.id !== me.value?.user.id) session++
-    me.value = next
-  }
-  const latestWrite = { signOut: 0, locale: 0 }
-  const beginWrite = (kind: keyof typeof latestWrite) => {
-    const turn = ++latestWrite[kind]
-    const signedIn = session
-    return () => !unmounted && turn === latestWrite[kind] && signedIn === session
+  // The latest successful write, applied only when the read after it fails for the same user.
+  let lastWrite:
+    | { readonly userId: string; readonly apply: (live: () => boolean) => Promise<void> | void }
+    | undefined
+  const showSignedOut = () => {
+    lastWrite = undefined
+    me.value = undefined
+    status.value = 'signedOut'
   }
   const getMe = async (): Promise<Me | 'signedOut'> => {
     const response = await fetch(new URL(`${apiPrefix}/me`, location.origin), {
@@ -226,9 +224,7 @@ export const createAdmin = (options: AdminOptions): App => {
       async (first) => {
         if (first === 'signedOut') {
           await loadMessages(defaultLocale, [auth], live)
-          if (!live()) return
-          setMe(undefined)
-          status.value = 'signedOut'
+          if (live()) showSignedOut()
           return
         }
         for (const m of options.modules) {
@@ -244,16 +240,43 @@ export const createAdmin = (options: AdminOptions): App => {
           live,
         )
         if (!live()) return
-        setMe(first)
+        lastWrite = undefined
+        me.value = first
         status.value = 'ready'
       },
       (error: unknown) => {
         console.error(error)
-        if (live()) status.value = 'failed'
+        if (!live()) return
+        if (status.value === 'loading') status.value = 'failed'
+        else if (lastWrite && lastWrite.userId === me.value?.user.id) void lastWrite.apply(live)
       },
     )
   }
   let ready = load()
+  const toSignIn = async () => {
+    const route = router.currentRoute.value
+    if (unmounted || status.value !== 'signedOut' || route.meta.access?.public) return
+    if (route.matched.length > 0) await router.push({ name: auth.auth!.signInRoute })
+  }
+  const read = async () => {
+    ready = load()
+    await ready
+    await toSignIn()
+  }
+  // A write's own answer may belong to an ended session or be older than another write, so the
+  // shell shows what the server holds after it, read fresh.
+  const afterWrite = async (
+    write: Promise<void>,
+    apply: NonNullable<typeof lastWrite>['apply'],
+  ) => {
+    const userId = me.value?.user.id
+    try {
+      await write
+      if (userId) lastWrite = { userId, apply }
+    } finally {
+      await read()
+    }
+  }
 
   const nav = computed<ReadonlyArray<ShellNavGroup>>(() => {
     const routes = new Map<string, Access>([
@@ -319,18 +342,10 @@ export const createAdmin = (options: AdminOptions): App => {
     nav,
     widgets,
     can,
-    refresh: () => (ready = load()),
+    refresh: read,
     ...(providerSignOut
       ? {
-          signOut: async () => {
-            const current = beginWrite('signOut')
-            await providerSignOut({ apiPrefix, fetch })
-            if (!current()) return
-            epoch++
-            setMe(undefined)
-            status.value = 'signedOut'
-            await router.push({ name: auth.auth!.signInRoute })
-          },
+          signOut: () => afterWrite(providerSignOut({ apiPrefix, fetch }), showSignedOut),
         }
       : {}),
     ...(accountRoute ? { accountRoute } : {}),
@@ -339,14 +354,13 @@ export const createAdmin = (options: AdminOptions): App => {
           setLocale: async (locale: string | null) => {
             const userId = me.value?.user.id
             if (!userId) return
-            const current = beginWrite('locale')
-            await providerSetLocale({ apiPrefix, fetch, userId, locale })
-            if (!current()) return
-            epoch++
-            // Applied here rather than by reading /me again, which on failure would take the
-            // whole shell down for a saved language.
-            await applyLocale(locale, enabled.value, current)
-            if (me.value && current()) setMe({ ...me.value, locale })
+            await afterWrite(
+              providerSetLocale({ apiPrefix, fetch, userId, locale }),
+              async (live) => {
+                await applyLocale(locale, enabled.value, live)
+                if (me.value && live()) me.value = { ...me.value, locale }
+              },
+            )
           },
         }
       : {}),
@@ -417,8 +431,13 @@ export const createAdmin = (options: AdminOptions): App => {
     const check = ++latestCheck
     getMe().then(
       (next) => {
-        if (unmounted || turn !== epoch || check !== latestCheck || next === 'signedOut') return
-        setMe({ ...next, modules: known.modules })
+        if (unmounted || turn !== epoch || check !== latestCheck) return
+        if (next === 'signedOut') {
+          showSignedOut()
+          return toSignIn()
+        }
+        lastWrite = undefined
+        me.value = { ...next, modules: known.modules }
       },
       // A failed re-check keeps the last known state; the next navigation retries.
       (error: unknown) => console.warn(error),
