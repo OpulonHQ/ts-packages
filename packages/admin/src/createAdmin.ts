@@ -441,10 +441,11 @@ export const createAdmin = (options: AdminOptions): App => {
     getMe().then(
       (next) => {
         if (unmounted || turn !== epoch || check !== latestCheck) return
-        epoch++
+        // A read already in flight for the same account started after the last write, so it may still apply.
+        if (next === 'signedOut' || next.user.id !== known.user.id) epoch++
         if (next === 'signedOut') {
           showSignedOut()
-          return toSignIn()
+          return toSignIn().catch((error: unknown) => console.warn(error))
         }
         lastWrite = undefined
         me.value = { ...next, modules: known.modules }

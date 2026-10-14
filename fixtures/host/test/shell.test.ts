@@ -793,24 +793,35 @@ test('the later of two language changes wins in the shell', async () => {
 test('a deploy check does not cancel a language change that is still loading', async () => {
   const user = await seedUser(db.url, { name: 'Loading Language', locale: 'sk' })
   const own = await hosts.b1.signIn(user.email, user.password)
-  const catalogs = heldCatalogs(false)
   const dashboard = capturedState()
-  let checked = false
+  const catalogs = heldCatalogs(false)
+  const screenGate = Promise.withResolvers<Awaited<ReturnType<ReturnType<typeof screen>>>>()
+  onTestFinished(() => screenGate.resolve(screen('slow screen')()))
+  let screenAsked = false
+  let checks = 0
   mountDisposable(catalogs.modules, own, {
-    overrides: dashboard.overrides,
+    overrides: {
+      ...dashboard.overrides,
+      'users.signIn': () => {
+        screenAsked = true
+        return screenGate.promise
+      },
+    },
     onResponse: (url) => {
-      if (url.endsWith('/api/me')) checked = true
+      if (url.endsWith('/api/me')) checks++
     },
   })
   await expect.poll(() => document.body.textContent).toContain('state captured')
   const { setLocale, me } = dashboard.state()
   if (!setLocale) throw new Error('the auth provider offers no language change')
-  checked = false
+  navigate('/admin/sign-in')
+  await expect.poll(() => screenAsked).toBe(true)
   catalogs.hold()
   const changed = setLocale('en')
   await expect.poll(catalogs.asked).toBe(true)
-  navigate('/admin/nowhere')
-  await expect.poll(() => checked).toBe(true)
+  const beforeCheck = checks
+  screenGate.resolve(await screen('slow screen')())
+  await expect.poll(() => checks).toBe(beforeCheck + 1)
   await tick(50)
   await catalogs.release()
   await changed
@@ -1303,6 +1314,41 @@ test('a deploy check that finds the session ended cancels an older refresh still
   expect(me.value).toBeUndefined()
 })
 
+test('an older refresh that answers with the previous user leaves the user a deploy check showed', async () => {
+  const user = await seedUser(db.url, { name: 'Before Other Tab', locale: 'en' })
+  const other = await seedUser(db.url, { name: 'After Other Tab', locale: 'en' })
+  let session = await hosts.b1.signIn(user.email, user.password)
+  const dashboard = capturedState()
+  const answer = heldAnswer()
+  const screenGate = Promise.withResolvers<Awaited<ReturnType<ReturnType<typeof screen>>>>()
+  onTestFinished(() => screenGate.resolve(screen('slow screen')()))
+  let screenAsked = false
+  mountDisposable(adminModules, () => session, {
+    overrides: {
+      ...dashboard.overrides,
+      'users.signIn': () => {
+        screenAsked = true
+        return screenGate.promise
+      },
+    },
+    onResponse: answer.onResponse,
+  })
+  await expect.poll(() => document.body.textContent).toContain('state captured')
+  const { refresh, me } = dashboard.state()
+  navigate('/admin/sign-in')
+  await expect.poll(() => screenAsked).toBe(true)
+  answer.hold()
+  const refreshing = refresh()
+  await expect.poll(answer.answered).toBe(true)
+  session = await hosts.b1.signIn(other.email, other.password)
+  screenGate.resolve(await screen('slow screen')())
+  await expect.poll(() => me.value?.user.id).toBe(other.id)
+  await answer.release()
+  await refreshing
+  await tick(50)
+  expect(me.value?.user.id).toBe(other.id)
+})
+
 test('a sign-out sticks when the read after it fails', async () => {
   const user = await seedUser(db.url, { name: 'Sign-out Then Failed Read', locale: 'en' })
   const own = await hosts.b1.signIn(user.email, user.password)
@@ -1357,3 +1403,4 @@ test('a confirmed sign-out applies even if the sign-in messages fail to load', a
   expect(me.value).toBeUndefined()
   await expect.poll(() => location.pathname).toBe('/admin/sign-in')
 })
+
