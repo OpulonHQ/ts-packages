@@ -152,6 +152,9 @@ export const opulonUi = (options: UiPresetOptions = {}): Array<PluginOption> => 
   const styles: Plugin = {
     name: '@opulonjs/ui:styles',
     enforce: 'pre',
+    // Nuxt UI keeps itself out of prebundling; a prebundled kit would import it from the host
+    // root, where a strict (pnpm) install does not have it.
+    config: () => ({ optimizeDeps: { exclude: ['@opulonjs/ui'] } }),
     resolveId: (id) => (id === stylesId ? stylesPath : undefined),
     load: (id) => (id === stylesPath ? css(brand, sources) : undefined),
   }

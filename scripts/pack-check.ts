@@ -194,28 +194,43 @@ const bundled = new Set([...js.matchAll(/[{,](?:"([a-z0-9-]+)"|([a-z0-9]+)):\\{(
 const missingIcons = [...used].filter((name) => !bundled.has(name))
 if (missingIcons.length > 0) throw new Error('icons missing from the admin bundle: ' + missingIcons.join(', '))
 console.log('ok admin bundles all', used.size, 'icons its screens use')
-const vite = await createServer({
-  ...config,
-  server: { port: 0, host: '127.0.0.1' },
-  // Every @opulonjs package: module admin entries import the shell and kit (virtual modules).
-  ssr: { noExternal: [/^@opulonjs\\//, '@nuxt/ui'] },
-})
-await vite.listen()
+// Dev from the tarballs, with the host's component overrides and with the stock preset.
+const devServer = async (plugins) => {
+  const vite = await createServer({
+    ...config,
+    plugins,
+    server: { port: 0, host: '127.0.0.1' },
+    // Every @opulonjs package: module admin entries import the shell and kit (virtual modules).
+    ssr: { noExternal: [/^@opulonjs\\//, '@nuxt/ui'] },
+  })
+  await vite.listen()
+  return vite
+}
+const require = createRequire(resolve('package.json'))
+const loadsInDev = async (vite, label) => {
+  const { raw, bundled, twice } = await packagesLoadedTwice(vite, '/main.ts')
+  const prebundled = [...bundled].filter((name) => name.startsWith('@opulonjs/'))
+  if (prebundled.length > 0) throw new Error(label + ' admin dev prebundles published packages: ' + prebundled.join(', '))
+  if (twice.length > 0) throw new Error(label + ' admin dev loads packages both prebundled and raw, as two instances: ' + twice.join(', '))
+  console.log('ok', label, 'admin dev loads', raw.size, 'packages raw and', bundled.size, 'prebundled, none in both')
+  const screen = spawn(process.execPath, [${JSON.stringify(join(import.meta.dirname, 'dev-screen.ts'))}, 'http://127.0.0.1:' + vite.httpServer.address().port + vite.config.base, vite.config.base + '@fs' + require.resolve('@opulonjs/admin')], { stdio: 'inherit' })
+  if ((await new Promise((done) => screen.on('exit', done))) !== 0) throw new Error('the cms Collections screen failed to load its items in ' + label + ' dev')
+  console.log('ok', label, 'admin dev renders the cms Collections screen with its decoded API response')
+}
+let vite = await devServer(config.plugins)
 let adminModules
 try {
   const transformed = await vite.transformRequest('/modules.ts')
   if (!transformed || transformed.code.split('\\n').some((line) => line.includes('.vite/deps/') && line.includes('opulonjs'))) throw new Error('published admin module was prebundled in dev')
-  const require = createRequire(resolve('package.json'))
   const table = await vite.transformRequest('/@fs/' + require.resolve('@opulonjs/ui/components/DataTable'))
   if (!table?.code.includes('/overrides/EmptyState.vue')) throw new Error('published DataTable bypassed the host override in dev')
   ;({ adminModules } = await vite.ssrLoadModule('/modules.ts'))
   console.log('ok published admin dev imports use host kit overrides without prebundling')
-  const { raw, bundled, twice } = await packagesLoadedTwice(vite, '/main.ts')
-  if (twice.length > 0) throw new Error('admin dev loads packages both prebundled and raw, as two instances: ' + twice.join(', '))
-  console.log('ok admin dev loads', raw.size, 'packages raw and', bundled.size, 'prebundled, none in both')
-  const screen = spawn(process.execPath, [${JSON.stringify(join(import.meta.dirname, 'dev-screen.ts'))}, 'http://127.0.0.1:' + vite.httpServer.address().port + vite.config.base, vite.config.base + '@fs' + require.resolve('@opulonjs/admin')], { stdio: 'inherit' })
-  if ((await new Promise((done) => screen.on('exit', done))) !== 0) throw new Error('the cms Collections screen failed to load its items in dev')
-  console.log('ok admin dev renders the cms Collections screen with its decoded API response')
+  await loadsInDev(vite, 'overridden')
+} finally { await vite.close() }
+vite = await devServer(opulonAdmin({ brand }))
+try {
+  await loadsInDev(vite, 'stock')
 } finally { await vite.close() }
 const me = {
   buildId: 'pack-check',
