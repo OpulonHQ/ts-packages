@@ -203,9 +203,10 @@ export const createAdmin = (options: AdminOptions): App => {
   const load = () =>
     getMe().then(
       async (first) => {
+        if (unmounted) return
         if (first === 'signedOut') {
           await loadMessages(defaultLocale, [auth])
-          status.value = 'signedOut'
+          if (!unmounted) status.value = 'signedOut'
           return
         }
         for (const m of options.modules) {
@@ -219,12 +220,13 @@ export const createAdmin = (options: AdminOptions): App => {
           first.locale,
           options.modules.filter((m) => first.modules.includes(m.id)),
         )
+        if (unmounted) return
         me.value = first
         status.value = 'ready'
       },
       (error: unknown) => {
         console.error(error)
-        status.value = 'failed'
+        if (!unmounted) status.value = 'failed'
       },
     )
   let ready = load()

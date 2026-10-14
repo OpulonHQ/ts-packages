@@ -529,3 +529,24 @@ test('an unmounted admin keeps its user when the new language loads late', async
   await changed
   expect(me.value).toBe(before)
 })
+
+test('an unmounted admin keeps its state when a refresh answers late', async () => {
+  const dashboard = capturedState()
+  const request = heldNextRequest()
+  const admin = mountDisposable(adminModules, cookie, {
+    overrides: dashboard.overrides,
+    onRequest: request.onRequest,
+  })
+  await expect.poll(() => document.body.textContent).toContain('state captured')
+  const { refresh, me, status } = dashboard.state()
+  const before = me.value
+  request.hold()
+  const refreshed = refresh().catch(() => {})
+  await expect.poll(request.reached).toBe(true)
+  admin.unmount()
+  request.release()
+  await refreshed
+  await tick(50)
+  expect(me.value).toBe(before)
+  expect(status.value).toBe('ready')
+})
