@@ -95,7 +95,6 @@ export const PageStatus = Schema.Literals(['draft', 'published', 'changed'])
 /** `draft`: never published (or unpublished); `changed`: published, draft differs. */
 export type PageStatus = typeof PageStatus.Type
 
-/** Status and publish bookkeeping every editable document shares. */
 const documentState = {
   status: PageStatus,
   updatedAt: Schema.String,
@@ -360,7 +359,6 @@ export type MenuRevision = typeof MenuRevision.Type
 const id = { id: Schema.String }
 const collection = { collection: Schema.String }
 const key = { key: Schema.String }
-/** The draft version the editor loaded; another version answers `CmsConflict` `draft_changed`. */
 const loadedVersion = { version: Schema.NumberFromString.check(Schema.isInt()) }
 const localeQuery = { locale: Schema.optionalKey(Schema.String) }
 

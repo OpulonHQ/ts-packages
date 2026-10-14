@@ -92,19 +92,16 @@ export const useCmsHost = (composed = server, reply?: WorkersCache['purge']) => 
     }
   }
 
-  // An editor who just opened the document: the version comes from a GET as the full editor, so
-  // `as` only narrows the write. A missing document sends 0 so the write answers its own 404.
-  const opened = async (path: string) => {
+  const missingVersion = 0
+  const currentVersion = async (path: string) => {
     const { status, body } = await call<{ version: number }>('GET', path)
-    return `version=${status === 200 ? body.version : 0}`
+    return status === 200 ? body.version : missingVersion
   }
   type As = { as?: ReadonlyArray<string> | null }
-  /** Saves `path`'s draft (e.g. `/settings`, `/menus/main`) from its current version. */
   const saveDraft = async <Body = unknown>(path: string, body: unknown, { as }: As = {}) =>
-    call<Body>('PUT', `${path}/draft?${await opened(path)}`, { body, as })
-  /** Publishes `path`'s draft from its current version. */
+    call<Body>('PUT', `${path}/draft?version=${await currentVersion(path)}`, { body, as })
   const publishDraft = async <Body = unknown>(path: string, { as }: As = {}) =>
-    call<Body>('POST', `${path}/publish?${await opened(path)}`, { as })
+    call<Body>('POST', `${path}/publish?version=${await currentVersion(path)}`, { as })
 
   /** A `fetch` routed into the test Worker as the editor, for admin screens. */
   const fetchAs =

@@ -108,7 +108,6 @@ export const useContent = () => {
   }
 }
 
-/** What an editor action ended with; `conflict`: another editor changed the draft meanwhile. */
 export interface ActionResult {
   kind: 'ok' | 'error' | 'conflict'
   message: string

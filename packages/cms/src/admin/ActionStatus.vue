@@ -1,5 +1,4 @@
 <script setup lang="ts">
-/** An editor action's outcome; a draft conflict offers to reload, the edits stay until then. */
 import { useI18n } from '@opulonjs/admin'
 import { UAlert } from '@opulonjs/ui'
 import type { ActionResult } from './use-cms.ts'

@@ -34,7 +34,6 @@ export interface DocumentRow<D> {
   readonly publishedAt: Date | null
   readonly publishedRevisionId: string | null
   readonly updatedAt: Date
-  /** Bumped by every draft change; a save or publish names the version it was made from. */
   readonly version: number
 }
 

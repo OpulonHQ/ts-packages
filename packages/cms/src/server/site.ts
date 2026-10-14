@@ -27,8 +27,7 @@ import { cacheTags } from './cache.ts'
 import { checkFields, cleanData, linkProblem, localizeData, uuid } from './document.ts'
 import { type DocumentRow, documentState, makeDocuments } from './documents.ts'
 
-/** Menus and settings have no paths, so a restore cannot conflict. */
-const noConflict = <A, E, R>(effect: Effect.Effect<A, E | CmsConflict, R>) =>
+const dieOnConflict = <A, E, R>(effect: Effect.Effect<A, E | CmsConflict, R>) =>
   effect.pipe(Effect.catchTag('CmsConflict', Effect.die))
 
 /** Cache-Tag of the public site response (settings and menus). */
@@ -178,7 +177,7 @@ export class Settings extends Context.Service<
           restoreRevision: (revisionId) =>
             documents
               .restoreRevision(settingsKey, revisionId)
-              .pipe(noConflict, Effect.map(toSettings)),
+              .pipe(dieOnConflict, Effect.map(toSettings)),
           get: () => orDie(documents.get(settingsKey)).pipe(Effect.map(toSettings)),
           saveDraft: (version, draft) =>
             orDie(documents.saveDraft(settingsKey, version, draft)).pipe(Effect.map(toSettings)),
@@ -344,7 +343,7 @@ export class Menus extends Context.Service<
           restoreRevision: (key, revisionId) =>
             declared(key)
               .pipe(Effect.andThen(documents.restoreRevision(key, revisionId)))
-              .pipe(noConflict, Effect.map(toMenu)),
+              .pipe(dieOnConflict, Effect.map(toMenu)),
           list: () =>
             Effect.forEach(Object.keys(definitions.menus), (key) => documents.get(key)).pipe(
               Effect.catchTag('CmsNotFound', Effect.die),
