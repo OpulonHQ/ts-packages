@@ -1,4 +1,10 @@
-import { createAdmin, defineAdminModule } from '@opulonjs/admin'
+import {
+  type AdminOptions,
+  type AdminState,
+  createAdmin,
+  defineAdminModule,
+  useAdmin,
+} from '@opulonjs/admin'
 import { defineComponent, h } from 'vue'
 import { beforeAll, expect, onTestFinished, test, vi } from 'vitest'
 import { useTestDatabase } from '../../../test/postgres/index.ts'
@@ -239,14 +245,14 @@ test('a saved language applies even if reading /me again would fail', async () =
 
 const tick = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms))
 
-const heldCatalogs = () => {
+const heldCatalogs = (holding = true) => {
   const held = Promise.withResolvers<void>()
   onTestFinished(() => held.resolve())
   const loads: Array<Promise<unknown>> = []
   const hold =
     <T>(load: () => Promise<T>) =>
     async () => {
-      await held.promise
+      if (holding) await held.promise
       const loaded = load()
       loads.push(loaded)
       return loaded
@@ -256,6 +262,9 @@ const heldCatalogs = () => {
       ...m,
       messages: { en: hold(m.messages.en), sk: hold(m.messages.sk) },
     })),
+    hold: () => {
+      holding = true
+    },
     release: async () => {
       held.resolve()
       await tick()
@@ -266,19 +275,31 @@ const heldCatalogs = () => {
   }
 }
 
-const mountDisposable = (modules: typeof adminModules, session: string) => {
+const mountDisposable = (
+  modules: typeof adminModules,
+  session: string,
+  {
+    overrides = {},
+    onRequest = () => {},
+  }: {
+    overrides?: NonNullable<AdminOptions['overrides']>
+    onRequest?: (url: string) => Promise<void> | void
+  } = {},
+) => {
   let requested = false
+  history.replaceState(null, '', '/admin/')
   const app = createAdmin({
     brand,
     modules,
     buildId: 'b1',
+    overrides,
     fetch: async (input, init) => {
+      await onRequest(String(input instanceof Request ? input.url : input))
       const response = await hosts.b1.browserFetch({ cookie: session })(input, init)
       requested = true
       return response
     },
   })
-  history.replaceState(null, '', '/admin/')
   document.body.innerHTML = '<div id="app"></div>'
   app.mount('#app')
   let mounted = true
@@ -328,4 +349,92 @@ test('an unmounted admin does not redirect when its catalogs arrive late', async
   history.replaceState(null, '', '/elsewhere')
   await catalogs.release()
   expect(location.pathname).toBe('/elsewhere')
+})
+
+const capturedState = () => {
+  let captured: AdminState | undefined
+  return {
+    overrides: {
+      dashboard: async () => ({
+        default: defineComponent(() => {
+          captured = useAdmin()
+          return () => h('p', 'state captured')
+        }),
+      }),
+    },
+    state: () => {
+      if (!captured) throw new Error('the dashboard has not rendered')
+      return captured
+    },
+  }
+}
+
+const navigate = (path: string) => {
+  history.pushState(null, '', path)
+  window.dispatchEvent(new PopStateEvent('popstate'))
+}
+
+test('an unmounted admin does not roll back a navigation that resumes late', async () => {
+  const catalogs = heldCatalogs(false)
+  const dashboard = capturedState()
+  const admin = mountDisposable(catalogs.modules, cookie, { overrides: dashboard.overrides })
+  await expect.poll(() => document.body.textContent).toContain('state captured')
+  catalogs.hold()
+  const refreshed = dashboard.state().refresh()
+  navigate('/admin/nowhere')
+  await tick()
+  admin.unmount()
+  history.replaceState(null, '', '/elsewhere')
+  await catalogs.release()
+  await refreshed
+  await tick(50)
+  expect(location.pathname).toBe('/elsewhere')
+})
+
+test('an unmounted admin ignores a deploy check that answers late', async () => {
+  const dashboard = capturedState()
+  const held = Promise.withResolvers<void>()
+  onTestFinished(() => held.resolve())
+  let holding = false
+  let heldMe = false
+  const admin = mountDisposable(adminModules, cookie, {
+    overrides: dashboard.overrides,
+    onRequest: async (url) => {
+      if (!holding || !url.endsWith('/api/me')) return
+      heldMe = true
+      await held.promise
+    },
+  })
+  await expect.poll(() => document.body.textContent).toContain('state captured')
+  const before = dashboard.state().me.value
+  expect(before).toBeTruthy()
+  holding = true
+  navigate('/admin/nowhere')
+  await expect.poll(() => heldMe).toBe(true)
+  admin.unmount()
+  held.resolve()
+  await tick(50)
+  expect(dashboard.state().me.value).toBe(before)
+})
+
+test('an unmounted admin ignores a screen that fails to load late', async () => {
+  const failing = Promise.withResolvers<never>()
+  failing.promise.catch(() => {})
+  onTestFinished(() => failing.reject(new Error('late screen failure')))
+  let unmounted = false
+  let checksAfterUnmount = 0
+  const admin = mountDisposable(adminModules, cookie, {
+    overrides: { notFound: () => failing.promise },
+    onRequest: (url) => {
+      if (unmounted && url.endsWith('/api/me')) checksAfterUnmount++
+    },
+  })
+  await expect.poll(() => document.querySelector('nav')).toBeTruthy()
+  navigate('/admin/nowhere')
+  await tick(50)
+  admin.unmount()
+  unmounted = true
+  failing.reject(new Error('late screen failure'))
+  await tick(50)
+  expect(checksAfterUnmount).toBe(0)
 })

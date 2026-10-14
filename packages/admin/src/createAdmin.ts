@@ -364,7 +364,7 @@ export const createAdmin = (options: AdminOptions): App => {
   router.beforeEach(async (to) => {
     latest = to
     await ready
-    if (unmounted) return false
+    if (unmounted) return true
     const { module, access } = to.meta
     if (access?.public) return true
     if (status.value === 'signedOut') {
@@ -379,11 +379,11 @@ export const createAdmin = (options: AdminOptions): App => {
   // Re-check the build after each navigation, so an open tab learns about a deploy.
   let latestCheck = 0
   const checkForNewDeploy = () => {
-    if (!me.value) return
+    if (!me.value || unmounted) return
     const check = ++latestCheck
     getMe().then(
       (next) => {
-        if (check !== latestCheck || next === 'signedOut') return
+        if (unmounted || check !== latestCheck || next === 'signedOut') return
         me.value = { ...next, modules: me.value?.modules ?? next.modules }
       },
       // A failed re-check keeps the last known state; the next navigation retries.
@@ -392,6 +392,7 @@ export const createAdmin = (options: AdminOptions): App => {
   }
   const failedScreen = shallowRef<string>()
   router.onError((error: unknown, to) => {
+    if (unmounted) return
     console.error(error)
     if (to !== latest) return
     failedScreen.value = to.fullPath
