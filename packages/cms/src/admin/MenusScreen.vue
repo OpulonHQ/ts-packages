@@ -35,8 +35,7 @@ useFocusReturn(
   () => form.value,
 )
 
-const show = (next: Menu | undefined) => {
-  if (!next) return
+const show = (next: Menu) => {
   menu.value = next
   items.value = next.draft.items.map(function copy(item): EditedMenuItem {
     return { ...item, label: { ...item.label }, children: item.children.map(copy) }
@@ -48,7 +47,7 @@ watch(
     invalidate()
     menu.value = undefined
     status.value = undefined
-    if (key) show(await run(() => content.getMenu(key), ''))
+    if (key) await run(() => content.getMenu(key), '', show)
   },
   { immediate: true },
 )
@@ -56,16 +55,21 @@ watch(
 const document = () => Schema.decodeUnknownSync(MenuDocument)({ items: items.value })
 // The server validates links; the editor's working copy is sent as is.
 const saveDraft = () => content.saveMenu(current.value!, menu.value!.version, document())
-const save = async () => show(await run(saveDraft, t('cms.page.saved')))
-async function publish() {
-  const saved = await run(saveDraft, '')
-  if (!saved) return
-  menu.value = saved
-  show(await run(() => content.publishMenu(saved.key, saved.version), t('cms.page.published')))
-}
-const unpublish = async () =>
-  show(await run(() => content.unpublishMenu(current.value!), t('cms.site.unpublished')))
-const reload = async (done = '') => show(await run(() => content.getMenu(current.value!), done))
+const save = () => run(saveDraft, t('cms.page.saved'), show)
+const publish = () =>
+  run(
+    async (current) => {
+      const saved = await saveDraft()
+      if (!current()) return
+      menu.value = saved
+      return content.publishMenu(saved.key, saved.version)
+    },
+    t('cms.page.published'),
+    show,
+  )
+const unpublish = () =>
+  run(() => content.unpublishMenu(current.value!), t('cms.site.unpublished'), show)
+const reload = (done = '') => run(() => content.getMenu(current.value!), done, show)
 </script>
 
 <template>

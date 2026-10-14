@@ -27,24 +27,27 @@ useFocusReturn(
   () => form.value,
 )
 
-const show = (next: SiteSettings | undefined) => {
-  if (!next) return
+const show = (next: SiteSettings) => {
   settings.value = next
   data.value = structuredClone(next.draft.data)
 }
-onMounted(async () => show(await run(() => content.getSettings(), '')))
+onMounted(() => run(() => content.getSettings(), '', show))
 
 const saveDraft = () => content.saveSettings(settings.value!.version, { data: data.value })
-const save = async () => show(await run(saveDraft, t('cms.page.saved')))
-async function publish() {
-  const saved = await run(saveDraft, '')
-  if (!saved) return
-  settings.value = saved
-  show(await run(() => content.publishSettings(saved.version), t('cms.page.published')))
-}
-const unpublish = async () =>
-  show(await run(() => content.unpublishSettings(), t('cms.site.unpublished')))
-const reload = async (done = '') => show(await run(() => content.getSettings(), done))
+const save = () => run(saveDraft, t('cms.page.saved'), show)
+const publish = () =>
+  run(
+    async (current) => {
+      const saved = await saveDraft()
+      if (!current()) return
+      settings.value = saved
+      return content.publishSettings(saved.version)
+    },
+    t('cms.page.published'),
+    show,
+  )
+const unpublish = () => run(() => content.unpublishSettings(), t('cms.site.unpublished'), show)
+const reload = (done = '') => run(() => content.getSettings(), done, show)
 </script>
 
 <template>

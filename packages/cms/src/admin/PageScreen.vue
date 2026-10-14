@@ -16,14 +16,7 @@ import RevisionHistory from './RevisionHistory.vue'
 import FieldsForm from './FieldsForm.vue'
 import LocaleDetails from './LocaleDetails.vue'
 import ActionStatus from './ActionStatus.vue'
-import {
-  type ActionResult,
-  failureStatus,
-  pageTitle,
-  useCmsContext,
-  usePages,
-  useFocusReturn,
-} from './use-cms.ts'
+import { pageTitle, useAction, useCmsContext, usePages, useFocusReturn } from './use-cms.ts'
 
 /** The draft as edited: plain mutable copies of the document's parts. */
 interface Draft {
@@ -36,14 +29,13 @@ const pages = usePages()
 const { definitions } = useCmsContext()
 const route = useRoute()
 const router = useRouter()
+const { pending, status, run, invalidate } = useAction(() => t('cms.errors.failed'))
 
 const page = shallowRef<Page>()
 const draft = ref<Draft>()
 const missing = ref(false)
-const pending = ref(false)
 const confirming = ref(false)
 const revisionPending = ref(false)
-const status = ref<ActionResult>()
 const newType = ref<string | number | null>(null)
 
 const locales = computed(() => pages.contentLocales.value)
@@ -84,19 +76,15 @@ const show = (next: Page) => {
   draft.value = toDraft(next.draft)
 }
 
-let actionTicket = 0
 let loadTicket = 0
 onBeforeUnmount(() => {
   loadTicket++
-  actionTicket++
 })
 watch(
   () => String(route.params.id),
   async (id) => {
     const request = ++loadTicket
-    actionTicket++
-    pending.value = false
-    status.value = undefined
+    invalidate()
     page.value = undefined
     draft.value = undefined
     missing.value = false
@@ -110,37 +98,22 @@ watch(
   { immediate: true },
 )
 
-async function run(
-  action: () => Promise<Page | void>,
-  done: string,
-  apply: (next: Page) => void = show,
-) {
-  if (pending.value) return
-  const request = ++actionTicket
-  pending.value = true
-  status.value = undefined
-  try {
-    const next = await action()
-    if (request !== actionTicket) return
-    if (next) apply(next)
-    status.value = { kind: 'ok', message: done }
-    return next
-  } catch (error) {
-    if (request === actionTicket) status.value = failureStatus(error, t('cms.errors.failed'))
-  } finally {
-    if (request === actionTicket) pending.value = false
-  }
-}
-
 const saveDraft = () => pages.save(page.value!.id, page.value!.version, draft.value!)
-const save = () => run(saveDraft, t('cms.page.saved'))
+const save = () => run(saveDraft, t('cms.page.saved'), show)
 
-// Publishing publishes what is on screen: the draft is saved first.
-async function publish() {
-  const saved = await run(saveDraft, '', (next) => (page.value = next))
-  if (saved) await run(() => pages.publish(saved.id, saved.version), t('cms.page.published'))
-}
-const unpublish = () => run(() => pages.unpublish(page.value!.id), t('cms.page.unpublished'))
+// Publishing publishes what is on screen: the draft is saved first, under the same lock.
+const publish = () =>
+  run(
+    async (current) => {
+      const saved = await saveDraft()
+      if (!current()) return
+      page.value = saved
+      return pages.publish(saved.id, saved.version)
+    },
+    t('cms.page.published'),
+    show,
+  )
+const unpublish = () => run(() => pages.unpublish(page.value!.id), t('cms.page.unpublished'), show)
 async function remove() {
   confirming.value = false
   await run(() => pages.remove(page.value!.id), '')
@@ -157,7 +130,7 @@ function move(index: number, by: -1 | 1) {
   const [section] = sections.splice(index, 1)
   sections.splice(index + by, 0, section!)
 }
-const reload = async (done = '') => run(() => pages.get(page.value!.id), done)
+const reload = (done = '') => run(() => pages.get(page.value!.id), done, show)
 </script>
 
 <template>
