@@ -7,7 +7,7 @@ import { expect, test } from 'vitest'
 import { adminModules } from '../../admin/modules.ts'
 import { definitions } from '../../cms/definitions.ts'
 import { server } from '../../server/opulon.ts'
-import { useAdminLifetime } from '../admin-scope.ts'
+import { useAdminLifetime } from '../admin-lifetime.ts'
 import { useCmsHost } from './helpers.ts'
 
 const admin = useAdminLifetime()

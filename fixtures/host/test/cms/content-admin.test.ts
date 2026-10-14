@@ -19,7 +19,7 @@ import RevisionView from '../../../../packages/cms/src/admin/RevisionView.vue'
 import { cmsContextKey } from '../../../../packages/cms/src/admin/use-cms.ts'
 import type { RevisionSnapshot } from '../../../../packages/cms/src/admin/use-revisions.ts'
 import { files } from '../media/helpers.ts'
-import { useAdminLifetime } from '../admin-scope.ts'
+import { useAdminLifetime } from '../admin-lifetime.ts'
 import { page, section, useCmsHost } from './helpers.ts'
 
 // Runs in the `admin` vitest project (happy-dom); the admin's fetch goes into the test Worker.

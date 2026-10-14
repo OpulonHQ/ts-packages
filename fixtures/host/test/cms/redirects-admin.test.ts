@@ -1,6 +1,6 @@
 import type { Redirect } from '@opulonjs/cms/api'
 import { beforeEach, expect, test } from 'vitest'
-import { useAdminLifetime } from '../admin-scope.ts'
+import { useAdminLifetime } from '../admin-lifetime.ts'
 import { useCmsHost } from './helpers.ts'
 
 // Runs in the `admin` vitest project (happy-dom); the admin's fetch goes into the test Worker.

@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { useAdminLifetime } from './admin-scope.ts'
+import { useAdminLifetime } from './admin-lifetime.ts'
 
 const admin = useAdminLifetime()
 let served = 0
@@ -9,6 +9,7 @@ test('a test can end while its admin waits on a held request', () => {
   admin.mount('/admin/', {
     fetch: async () => {
       await gate.promise
+      await new Promise((resolve) => setTimeout(resolve, 50))
       served++
       return new Response('', { status: 401 })
     },

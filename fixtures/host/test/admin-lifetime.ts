@@ -36,7 +36,6 @@ export const useAdminLifetime = () => {
   beforeEach(({ signal, task }) => {
     if (previous?.signal.aborted) unfinished ??= previous.name
     previous = { signal, name: task.name }
-    current = { apps: [], gates: [], pending: new Set() }
     if (unfinished)
       throw new Error(
         `Not run: "${unfinished}" timed out or left requests pending and may still run`,
@@ -55,9 +54,12 @@ export const useAdminLifetime = () => {
     await Promise.race([drained, limit.promise])
     clearTimeout(timer)
     document.body.replaceChildren()
+    current = { apps: [], gates: [], pending: new Set() }
     if (pending.size > 0) {
       unfinished ??= task.name
-      throw new Error(`${pending.size} request(s) still pending 5s after the test finished`)
+      throw new Error(
+        `${pending.size} admin or host call(s) still pending 5s after the test finished`,
+      )
     }
   })
 
