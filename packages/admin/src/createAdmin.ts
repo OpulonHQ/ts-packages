@@ -15,10 +15,9 @@ import { createI18n } from 'vue-i18n'
 import {
   createRouter,
   createWebHistory,
-  isNavigationFailure,
-  NavigationFailureType,
   type RouteComponent,
   type RouteLocationNormalized,
+  type RouteLocationRaw,
   type RouteRecordSingleView,
 } from 'vue-router'
 import { apiContextKey } from './api-client.ts'
@@ -348,8 +347,9 @@ export const createAdmin = (options: AdminOptions): App => {
     ),
     { path: '/:rest(.*)*', name: 'notFound', component: NotFound },
   ]
+  const history = createWebHistory('/admin/')
   const router = createRouter({
-    history: createWebHistory('/admin/'),
+    history,
     routes: routes.map((route) => {
       const component = typeof route.name === 'string' ? options.overrides?.[route.name] : undefined
       return component
@@ -357,13 +357,26 @@ export const createAdmin = (options: AdminOptions): App => {
         : route
     }),
   })
-  // Only the latest navigation may show or clear a failed screen. A navigation whose leave guard
-  // fails never reaches beforeEach, so it is never superseded.
-  let latest: RouteLocationNormalized | undefined
-  const guarded = new WeakSet<RouteLocationNormalized>()
+  // Only the latest requested navigation (push, replace, back/forward, or a guard redirect of it)
+  // may show or clear a failed screen. Leave guards run before any global guard, so requests are
+  // recorded where navigations start.
+  let requested = router.resolve(history.location).fullPath
+  const request = (to: RouteLocationRaw) => {
+    requested = router.resolve(to).fullPath
+  }
+  const { push, replace } = router
+  router.push = (to) => {
+    request(to)
+    return push(to)
+  }
+  router.replace = (to) => {
+    request(to)
+    return replace(to)
+  }
+  history.listen((to) => request(to))
+  const isRequested = (to: RouteLocationNormalized) =>
+    to.fullPath === requested || to.redirectedFrom?.fullPath === requested
   router.beforeEach(async (to) => {
-    latest = to
-    guarded.add(to)
     await ready
     const { module, access } = to.meta
     if (access?.public) return true
@@ -390,14 +403,13 @@ export const createAdmin = (options: AdminOptions): App => {
   const failedScreen = shallowRef<string>()
   router.onError((error: unknown, to) => {
     console.error(error)
-    if (guarded.has(to) && to !== latest) return
+    if (!isRequested(to)) return
     failedScreen.value = to.fullPath
     // A screen chunk missing after a deploy surfaces as a failed load.
     recheckBuild()
   })
-  router.afterEach((to, from, failure) => {
-    if (isNavigationFailure(failure, NavigationFailureType.duplicated)) latest = to
-    if (to === latest) failedScreen.value = undefined
+  router.afterEach((to, from) => {
+    if (isRequested(to)) failedScreen.value = undefined
     if (from.matched.length > 0) recheckBuild()
   })
 

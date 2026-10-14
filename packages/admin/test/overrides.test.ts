@@ -335,3 +335,34 @@ test('retrying a failed screen at the current URL reloads the page', async () =>
   expect(reload).toHaveBeenCalled()
   expect(assign).not.toHaveBeenCalled()
 })
+
+test('a late leave guard rejection cannot hide a newer screen', async () => {
+  const old = deferred<boolean>()
+  let calls = 0
+  const leaving = defineComponent(() => {
+    onBeforeRouteLeave(() => (++calls === 1 ? old.promise : true))
+    return () => h('p', 'leaving screen')
+  })
+  const app = mount('/', { overrides: { dashboard: leaving } })
+  const router = app.config.globalProperties.$router
+  await expect.poll(() => document.body.textContent).toContain('leaving screen')
+  const navigation = router.push('/protected').catch((error: unknown) => error)
+  await expect.poll(() => calls).toBe(1)
+  await router.push('/sign-in')
+  await expect.poll(() => document.body.textContent).toContain('sign in')
+  old.reject(new Error('old leave guard failed'))
+  await navigation
+  await sleep()
+  expect(document.querySelector('[role="alert"]')).toBeNull()
+})
+
+test('a failure after a guard redirect belongs to the redirected navigation', async () => {
+  const app = mount('/', {
+    overrides: { 'auth.signIn': () => Promise.reject(new Error('sign-in chunk failed')) },
+  })
+  const router = app.config.globalProperties.$router
+  await router.isReady()
+  router.beforeEach((to) => (to.path === '/protected' ? '/sign-in' : true))
+  await expect(router.push('/protected')).rejects.toThrow('sign-in chunk failed')
+  await expect.poll(() => document.querySelector('[role="alert"]')).not.toBeNull()
+})
