@@ -15,7 +15,10 @@ import { createI18n } from 'vue-i18n'
 import {
   createRouter,
   createWebHistory,
+  isNavigationFailure,
+  NavigationFailureType,
   type RouteComponent,
+  type RouteLocationNormalized,
   type RouteRecordSingleView,
 } from 'vue-router'
 import { apiContextKey } from './api-client.ts'
@@ -345,9 +348,8 @@ export const createAdmin = (options: AdminOptions): App => {
     ),
     { path: '/:rest(.*)*', name: 'notFound', component: NotFound },
   ]
-  const history = createWebHistory('/admin/')
   const router = createRouter({
-    history,
+    history: createWebHistory('/admin/'),
     routes: routes.map((route) => {
       const component = typeof route.name === 'string' ? options.overrides?.[route.name] : undefined
       return component
@@ -355,7 +357,11 @@ export const createAdmin = (options: AdminOptions): App => {
         : route
     }),
   })
+  // Only the latest navigation may show or clear a failed screen. Leave guards run before
+  // beforeEach, so a host leave guard's error stays in the console, as before.
+  let latest: RouteLocationNormalized | undefined
   router.beforeEach(async (to) => {
+    latest = to
     await ready
     const { module, access } = to.meta
     if (access?.public) return true
@@ -380,50 +386,16 @@ export const createAdmin = (options: AdminOptions): App => {
     )
   }
   const failedScreen = shallowRef<string>()
-  const fail = (target: string) => {
-    failedScreen.value = target
-    // A screen chunk missing after a deploy surfaces as a failed load.
-    recheckBuild()
-  }
-  // Only the latest navigation may show or clear a failed screen. Leave guards run before any
-  // global guard, so each push or replace call owns its outcome; navigations without a caller
-  // (the first load, back and forward) settle through the router hooks.
-  let latestCall = 0
-  let called = false
-  const failedTargets = new WeakMap<object, string>()
-  const own =
-    (navigate: typeof router.push): typeof router.push =>
-    (to) => {
-      const call = ++latestCall
-      called = true
-      return navigate(to).then(
-        (result) => {
-          if (call === latestCall) failedScreen.value = undefined
-          return result
-        },
-        (error: unknown) => {
-          if (call === latestCall)
-            fail(
-              (typeof error === 'object' && error && failedTargets.get(error)) ||
-                router.resolve(to).fullPath,
-            )
-          throw error
-        },
-      )
-    }
-  router.push = own(router.push)
-  router.replace = own(router.replace)
-  history.listen(() => {
-    latestCall++
-    called = false
-  })
   router.onError((error: unknown, to) => {
     console.error(error)
-    if (typeof error === 'object' && error) failedTargets.set(error, to.fullPath)
-    if (!called) fail(to.fullPath)
+    if (to !== latest) return
+    failedScreen.value = to.fullPath
+    // A screen chunk missing after a deploy surfaces as a failed load.
+    recheckBuild()
   })
-  router.afterEach((_to, from, failure) => {
-    if (!called && !failure) failedScreen.value = undefined
+  router.afterEach((to, from, failure) => {
+    if (isNavigationFailure(failure, NavigationFailureType.duplicated)) latest = to
+    if (to === latest) failedScreen.value = undefined
     if (from.matched.length > 0) recheckBuild()
   })
 

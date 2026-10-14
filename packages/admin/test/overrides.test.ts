@@ -306,7 +306,7 @@ test.each(['abort', 'redirect'])('an %s guard is not a screen failure', async (k
   expect(document.querySelector('[role="alert"]')).toBeNull()
 })
 
-test('a failing leave guard shows the screen failure', async () => {
+test('a failing leave guard is not a screen failure', async () => {
   const leaving = defineComponent(() => {
     onBeforeRouteLeave(() => {
       throw new Error('leave guard failed')
@@ -317,7 +317,9 @@ test('a failing leave guard shows the screen failure', async () => {
   const router = app.config.globalProperties.$router
   await expect.poll(() => document.body.textContent).toContain('leaving screen')
   await expect(router.push('/protected')).rejects.toThrow('leave guard failed')
-  await expect.poll(() => document.querySelector('[role="alert"]')).not.toBeNull()
+  await sleep()
+  expect(document.querySelector('[role="alert"]')).toBeNull()
+  expect(document.body.textContent).toContain('leaving screen')
 })
 
 test('retrying a failed screen at the current URL reloads the page', async () => {
