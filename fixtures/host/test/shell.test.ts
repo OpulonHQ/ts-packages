@@ -1386,6 +1386,9 @@ test('a language pick waiting for one account does not hold back the language of
   expect(document.documentElement.lang).toBe('en')
   await answer.release()
   await Promise.allSettled([pick])
+  await tick(50)
+  expect(me.value?.user.id).toBe(nextId)
+  expect(document.documentElement.lang).toBe('en')
 })
 
 test('a deploy check that finds the session ended cancels an older refresh still loading', async () => {

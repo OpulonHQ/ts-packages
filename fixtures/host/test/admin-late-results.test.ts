@@ -219,9 +219,12 @@ test('a navigation while a language pick waits shows only the last pick', async 
   const jar = { cookie: await host.signIn(user.email, user.password) }
   const first = held(isLocaleSave, 'answer')
   let saved = 0
+  let reads = 0
   const counting: typeof globalThis.fetch = async (input, init) => {
     const response = await host.browserFetch(jar)(input, init)
-    if (isLocaleSave(new Request(input, init))) saved++
+    const request = new Request(input, init)
+    if (isLocaleSave(request)) saved++
+    if (request.method === 'GET' && new URL(request.url).pathname === '/api/me') reads++
     return response
   }
   const admin = mount('/admin/', first.wrap(counting))
@@ -231,7 +234,9 @@ test('a navigation while a language pick waits shows only the last pick', async 
   await pickLanguage('Používateľské menu', 'Jazyk', 'English')
   await expect.poll(async () => (await host.me(jar.cookie)).locale).toBe('en')
   await pickLanguage('Používateľské menu', 'Jazyk', 'Slovenčina')
+  const readsBefore = reads
   document.querySelector<HTMLAnchorElement>('nav a[href="/admin/"]')!.click()
+  await expect.poll(() => reads).toBeGreaterThan(readsBefore)
   await tick(100)
   first.release()
   await expect.poll(() => saved).toBe(2)
