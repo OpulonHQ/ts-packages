@@ -69,7 +69,7 @@ export default async (ctx) => {
     const final = await call('GET', path)
     check(JSON.stringify(final.published) === JSON.stringify(first.draft), `${journey.kind} reloaded editor publishes the restored draft`)
 
-    if (journey.input) {
+    if (journey.restored) {
       const field = page.locator(`input[name="${journey.input}"]`)
       await page.route(`**/api/cms${path}/draft?*`, async (route) => {
         await new Promise((resolve) => setTimeout(resolve, 1500))
