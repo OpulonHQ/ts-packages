@@ -796,6 +796,28 @@ test.each([
   expect(input(c.field)?.value).toBe(c.stored((await host.call<Document>('GET', path)).body))
 })
 
+test.each(editors)(
+  'a $kind publish that fails after its save keeps the saved version for the next save',
+  async (c) => {
+    const path = await c.open()
+    const fetch: typeof host.fetch = async (input, init) => {
+      const request = new Request(input, init)
+      if (request.method === 'POST' && new URL(request.url).pathname.endsWith('/publish'))
+        return new Response('{}', { status: 500, headers: { 'content-type': 'application/json' } })
+      return host.fetch(request)
+    }
+    const text = mountAdmin(`/admin/cms${path}`, fetch)
+    await expect.poll(() => input(c.field)).toBeTruthy()
+    type(c.field, '/published-failed')
+    button('Zverejniť')!.click()
+    await expect.poll(() => document.querySelector('[role="alert"]')).toBeTruthy()
+    type(c.field, '/saved-after')
+    button('Uložiť koncept')!.click()
+    await expect.poll(text).toContain('Koncept uložený.')
+    expect(c.stored((await host.call<Document>('GET', path)).body)).toBe('/saved-after')
+  },
+)
+
 test('rich text and reference pickers are locked while an item save is in flight', async () => {
   const name = `Locked ${crypto.randomUUID()}`
   await host.call('POST', '/collections/categories/items', {
