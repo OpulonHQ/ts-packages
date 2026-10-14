@@ -169,6 +169,23 @@ export const createAdmin = (options: AdminOptions): App => {
     !access || access.public || access.signedIn || can(access.permission)
 
   let unmounted = false
+  let epoch = 0
+  const begin = () => {
+    const turn = ++epoch
+    return () => !unmounted && turn === epoch
+  }
+  // The latest successful write, applied only when the read after it fails for the same user.
+  // Write order only stops an older write's late answer from re-arming it.
+  let lastWrite:
+    | { readonly userId: string; readonly apply: (live: () => boolean) => Promise<void> | void }
+    | undefined
+  let writeOrder = 0
+  let armedWriteOrder = 0
+  const showSignedOut = () => {
+    lastWrite = undefined
+    me.value = undefined
+    status.value = 'signedOut'
+  }
   const getMe = async (): Promise<Me | 'signedOut'> => {
     const response = await fetch(new URL(`${apiPrefix}/me`, location.origin), {
       credentials: 'same-origin',
@@ -178,35 +195,42 @@ export const createAdmin = (options: AdminOptions): App => {
     return Schema.decodeUnknownSync(MeSchema)(await response.json())
   }
 
-  const loadMessages = (locale: string, modules: ReadonlyArray<AdminModule>) =>
+  const loadMessages = (locale: string, modules: ReadonlyArray<AdminModule>, live: () => boolean) =>
     Promise.all(
       modules.map(async (m) => {
         const load = m.messages[locale as 'en' | 'sk'] ?? m.messages.en
         const { default: messages } = await load()
-        i18n.global.mergeLocaleMessage(locale, toI18n(messages, m.id))
+        if (live()) i18n.global.mergeLocaleMessage(locale, toI18n(messages, m.id))
       }),
     )
 
   /** Loads the modules' catalogs for a user's locale (en as the fallback) and switches to it. */
-  const applyLocale = async (requested: string | null, modules: ReadonlyArray<AdminModule>) => {
+  const applyLocale = async (
+    requested: string | null,
+    modules: ReadonlyArray<AdminModule>,
+    live: () => boolean,
+  ) => {
     const locale = requested && requested in catalogs ? requested : defaultLocale
     await Promise.all([
-      loadMessages(locale, modules),
-      locale === 'en' ? undefined : loadMessages('en', modules),
+      loadMessages(locale, modules, live),
+      locale === 'en' ? undefined : loadMessages('en', modules, live),
     ])
-    if (unmounted) return
+    if (!live()) return
     i18n.global.locale.value = locale
     document.documentElement.lang = locale
   }
 
   // The auth provider's messages are needed before sign-in, too.
-  const load = () =>
-    getMe().then(
+  let reading: Promise<void> | undefined
+  const load = () => {
+    const live = begin()
+    const loading = getMe().then(
       async (first) => {
-        if (unmounted) return
         if (first === 'signedOut') {
-          await loadMessages(defaultLocale, [auth])
-          if (!unmounted) status.value = 'signedOut'
+          await loadMessages(defaultLocale, [auth], live).catch((error: unknown) =>
+            console.error(error),
+          )
+          if (live()) showSignedOut()
           return
         }
         for (const m of options.modules) {
@@ -219,17 +243,58 @@ export const createAdmin = (options: AdminOptions): App => {
         await applyLocale(
           first.locale,
           options.modules.filter((m) => first.modules.includes(m.id)),
+          live,
         )
-        if (unmounted) return
+        if (!live()) return
+        lastWrite = undefined
         me.value = first
         status.value = 'ready'
       },
       (error: unknown) => {
         console.error(error)
-        if (!unmounted) status.value = 'failed'
+        if (!live()) return
+        if (status.value !== 'ready') status.value = 'failed'
+        else if (lastWrite && lastWrite.userId === me.value?.user.id) {
+          Promise.resolve(lastWrite.apply(live)).catch((error: unknown) => console.error(error))
+        }
       },
     )
+    reading = loading
+    const settle = () => {
+      if (reading === loading) reading = undefined
+    }
+    void loading.then(settle, settle)
+    return loading
+  }
   let ready = load()
+  const toSignIn = async () => {
+    const route = router.currentRoute.value
+    if (unmounted || status.value !== 'signedOut' || route.meta.access?.public) return
+    if (route.matched.length > 0) await router.push({ name: auth.auth!.signInRoute })
+  }
+  const read = async () => {
+    ready = load()
+    await ready
+    await toSignIn()
+  }
+  // A write's own answer may belong to an ended session or be older than another write, so the
+  // shell shows what the server holds after it, read fresh.
+  const afterWrite = async (
+    write: Promise<void>,
+    apply: NonNullable<typeof lastWrite>['apply'],
+  ) => {
+    const userId = me.value?.user.id
+    const order = ++writeOrder
+    try {
+      await write
+      if (userId && order > armedWriteOrder) {
+        armedWriteOrder = order
+        lastWrite = { userId, apply }
+      }
+    } finally {
+      await read()
+    }
+  }
 
   const nav = computed<ReadonlyArray<ShellNavGroup>>(() => {
     const routes = new Map<string, Access>([
@@ -285,6 +350,14 @@ export const createAdmin = (options: AdminOptions): App => {
   const providerSignOut = auth.auth?.signOut
   const providerSetLocale = auth.auth?.setLocale
   const accountRoute = auth.auth?.accountRoute
+  const saveLocale = async (locale: string | null, save: (userId: string) => Promise<void>) => {
+    const userId = me.value?.user.id
+    if (!userId) return
+    await afterWrite(save(userId), async (live) => {
+      await applyLocale(locale, enabled.value, live)
+      if (me.value && live()) me.value = { ...me.value, locale }
+    })
+  }
   const state: AdminState = {
     brand: options.brand,
     me,
@@ -295,31 +368,18 @@ export const createAdmin = (options: AdminOptions): App => {
     nav,
     widgets,
     can,
-    refresh: () => (ready = load()),
+    refresh: read,
     ...(providerSignOut
       ? {
-          signOut: async () => {
-            await providerSignOut({ apiPrefix, fetch })
-            if (unmounted) return
-            me.value = undefined
-            status.value = 'signedOut'
-            await router.push({ name: auth.auth!.signInRoute })
-          },
+          signOut: () => afterWrite(providerSignOut({ apiPrefix, fetch }), showSignedOut),
         }
       : {}),
     ...(accountRoute ? { accountRoute } : {}),
+    saveLocale,
     ...(providerSetLocale
       ? {
-          setLocale: async (locale: string | null) => {
-            const userId = me.value?.user.id
-            if (!userId) return
-            await providerSetLocale({ apiPrefix, fetch, userId, locale })
-            if (unmounted) return
-            // Applied here rather than by reading /me again, which on failure would take the
-            // whole shell down for a saved language.
-            await applyLocale(locale, enabled.value)
-            if (me.value && !unmounted) me.value = { ...me.value, locale }
-          },
+          setLocale: (locale: string | null) =>
+            saveLocale(locale, (userId) => providerSetLocale({ apiPrefix, fetch, userId, locale })),
         }
       : {}),
   }
@@ -384,11 +444,21 @@ export const createAdmin = (options: AdminOptions): App => {
   let latestCheck = 0
   const checkForNewDeploy = () => {
     if (!me.value || unmounted) return
+    const turn = epoch
     const check = ++latestCheck
     getMe().then(
       (next) => {
-        if (unmounted || check !== latestCheck || next === 'signedOut') return
-        me.value = { ...next, modules: me.value?.modules ?? next.modules }
+        if (unmounted || turn !== epoch || check !== latestCheck) return
+        if (next === 'signedOut') {
+          epoch++
+          showSignedOut()
+          return toSignIn().catch((error: unknown) => console.warn(error))
+        }
+        if (reading || next.user.id !== me.value?.user.id || next.locale !== me.value.locale) {
+          return void read().catch((error: unknown) => console.warn(error))
+        }
+        lastWrite = undefined
+        me.value = { ...next, modules: me.value.modules }
       },
       // A failed re-check keeps the last known state; the next navigation retries.
       (error: unknown) => console.warn(error),
