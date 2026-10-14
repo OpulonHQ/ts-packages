@@ -1,5 +1,8 @@
+import { createAdmin } from '@opulonjs/admin'
 import { expect, onTestFinished, test } from 'vitest'
 import { useTestDatabase } from '../../../test/postgres/index.ts'
+import { brand } from '../admin/brand.ts'
+import { adminModules } from '../admin/modules.ts'
 import { useAdminLifetime } from './admin-lifetime.ts'
 import { makeHost, seedUser } from './support/users.ts'
 
@@ -55,8 +58,13 @@ const menuItem = (name: string) =>
     el.textContent?.includes(name),
   )
 
-async function pickLanguage(menu: string, language: string, name: string) {
-  document
+async function pickLanguage(
+  menu: string,
+  language: string,
+  name: string,
+  admin: ParentNode = document,
+) {
+  admin
     .querySelector<HTMLElement>(`[aria-label="${menu}"]`)!
     .dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
   await expect.poll(() => menuItem(language)).toBeDefined()
@@ -473,4 +481,60 @@ test('a language save that answers after a sign-out does not keep the user signe
   await tick(100)
   expect(location.pathname).toBe('/admin/sign-in')
   expect((await host.request('GET', '/me', { cookie: session })).status).toBe(401)
+})
+
+test('two admins mounted on one page save languages without waiting for each other', async () => {
+  const user = await seedUser(db.url, { name: 'Two Admins', locale: 'sk' })
+  const jar = { cookie: await host.signIn(user.email, user.password) }
+  const stuck = held(isLocaleSave)
+  const first = mount('/admin/', stuck.wrap(host.browserFetch(jar)))
+  await expect.poll(first.text).toContain('Prehľad')
+  await pickLanguage('Používateľské menu', 'Jazyk', 'English')
+  await expect.poll(stuck.reached).toBe(true)
+
+  let saved = 0
+  const counting: typeof globalThis.fetch = async (input, init) => {
+    const response = await host.browserFetch(jar)(input, init)
+    if (isLocaleSave(new Request(input, init))) saved++
+    return response
+  }
+  const root = document.body.appendChild(document.createElement('div'))
+  const second = createAdmin({ brand, modules: adminModules, buildId: 'b1', fetch: counting })
+  second.mount(root)
+  onTestFinished(() => second.unmount())
+  await expect.poll(() => root.textContent).toContain('Prehľad')
+  await pickLanguage('Používateľské menu', 'Jazyk', 'English', root)
+
+  await expect.poll(() => saved).toBe(1)
+  expect((await host.me(jar.cookie)).locale).toBe('en')
+  await expect.poll(() => root.textContent).toContain('Dashboard')
+})
+
+test('a language save still held when its test ends is left to the lifetime cleanup', async () => {
+  const user = await seedUser(db.url, { name: 'Held At Test End', locale: 'sk' })
+  const jar = { cookie: await host.signIn(user.email, user.password) }
+  const save = held(isLocaleSave)
+  const admin = mount('/admin/', save.wrap(host.browserFetch(jar)))
+  await expect.poll(admin.text).toContain('Prehľad')
+  await pickLanguage('Používateľské menu', 'Jazyk', 'English')
+  await expect.poll(save.reached).toBe(true)
+  admin.unmount()
+})
+
+test('a language save in the next test is sent at once after one held when its test ended', async () => {
+  const user = await seedUser(db.url, { name: 'Next Test Saves', locale: 'sk' })
+  const jar = { cookie: await host.signIn(user.email, user.password) }
+  let saved = 0
+  const counting: typeof globalThis.fetch = async (input, init) => {
+    const response = await host.browserFetch(jar)(input, init)
+    if (isLocaleSave(new Request(input, init))) saved++
+    return response
+  }
+  const admin = mount('/admin/', counting)
+  await expect.poll(admin.text).toContain('Prehľad')
+  await pickLanguage('Používateľské menu', 'Jazyk', 'English')
+
+  await expect.poll(() => saved, { timeout: 1000 }).toBe(1)
+  await expect.poll(admin.text).toContain('Dashboard')
+  expect((await host.me(jar.cookie)).locale).toBe('en')
 })
