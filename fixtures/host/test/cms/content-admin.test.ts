@@ -844,6 +844,45 @@ test('rich text and reference pickers are locked while an item save is in flight
   await expect.poll(() => document.querySelector(`[aria-label="Odstrániť ${name}"]`)).toBeTruthy()
 })
 
+test('no button in the page editor form can change the draft while a save is in flight', async () => {
+  const created = (
+    await host.create(
+      page({ en: `/lock-buttons-${crypto.randomUUID()}` }, [
+        section('hero', { title: { en: 'First' } }),
+        section('hero', { title: { en: 'Second' } }),
+      ]),
+    )
+  ).body
+  const held = admin.gate()
+  let holding = false
+  const fetch: typeof host.fetch = async (input, init) => {
+    const request = new Request(input, init)
+    const response = await host.fetch(request)
+    if (request.method === 'PUT' && new URL(request.url).pathname.endsWith('/draft') && !holding) {
+      holding = true
+      await held.promise
+    }
+    return response
+  }
+  const text = mountAdmin(`/admin/cms/pages/${created.id}`, fetch)
+  const formButtons = () => [...document.querySelectorAll<HTMLButtonElement>('form button')]
+  const usable = () =>
+    formButtons()
+      .filter((b) => !b.disabled && b.closest('fieldset[disabled]') === null)
+      .map((b) => b.getAttribute('aria-label') ?? b.textContent?.trim())
+  await expect
+    .poll(() => formButtons().some((b) => b.getAttribute('aria-label') === 'Odstrániť sekciu'))
+    .toBe(true)
+
+  button('Uložiť koncept')!.click()
+  await expect.poll(() => holding).toBe(true)
+  expect(usable()).toEqual([])
+
+  held.resolve()
+  await expect.poll(text).toContain('Koncept uložený.')
+  expect(usable()).toContain('Odstrániť sekciu')
+})
+
 test('editors build a menu from entries with labels per locale and links', async () => {
   const text = mountAdmin('/admin/cms/menus/main')
   await expect.poll(() => button('Pridať položku')).toBeTruthy()
