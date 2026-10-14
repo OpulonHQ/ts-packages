@@ -17,7 +17,16 @@ const failedEditors = () =>
   [...document.querySelectorAll('[role="alert"]')].filter((alert) =>
     alert.textContent?.includes('Editor sa nepodarilo načítať.'),
   )
-const buttons = () => [...document.querySelectorAll('button')].map((b) => b.textContent?.trim())
+const reloadsOnClick = () => {
+  const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => undefined)
+  const button = [...failedEditors()[0]!.querySelectorAll('button')].find(
+    (b) => b.textContent?.trim() === 'Obnoviť stránku',
+  )
+  button?.click()
+  const reloaded = reload.mock.calls.length
+  reload.mockRestore()
+  return reloaded
+}
 
 test('a rich text editor that fails to load says so and offers a reload; the rest of the form stays', async () => {
   const created = (
@@ -27,7 +36,7 @@ test('a rich text editor that fails to load says so and offers a reload; the res
   ).body
   admin.mount(`/admin/cms/items/${created.id}`, { fetch: host.fetch })
   await expect.poll(() => failedEditors().length).toBeGreaterThan(0)
-  expect(buttons()).toContain('Skúsiť znova')
+  expect(reloadsOnClick()).toBe(1)
   expect(document.querySelector<HTMLInputElement>('[name="data.title.en"]')?.value).toBe(
     'Unreachable editor',
   )
@@ -38,7 +47,7 @@ test('a registered cms widget that fails to load says so and offers a reload', a
     .body
   admin.mount(`/admin/cms/pages/${created.id}`, { fetch: host.fetch })
   await expect.poll(() => failedEditors().length).toBeGreaterThan(0)
-  expect(buttons()).toContain('Skúsiť znova')
+  expect(reloadsOnClick()).toBe(1)
   expect(document.querySelector('[name="sections.0.title.en"]')).toBeTruthy()
   expect(document.querySelector('input[type="color"]')).toBeNull()
 })

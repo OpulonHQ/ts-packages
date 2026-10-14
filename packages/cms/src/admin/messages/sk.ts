@@ -141,7 +141,7 @@ export default {
     failed: 'Akcia zlyhala. Skúste to znova.',
     notFound: 'Táto stránka neexistuje.',
     editor: 'Editor sa nepodarilo načítať. Obnovením stránky prídete o neuložené zmeny.',
-    retry: 'Skúsiť znova',
+    reload: 'Obnoviť stránku',
   },
   permissions: {
     'cms.pages.view': 'Zobraziť stránky',

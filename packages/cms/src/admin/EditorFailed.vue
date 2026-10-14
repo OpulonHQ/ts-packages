@@ -14,7 +14,7 @@ const reload = () => location.reload()
     icon="i-lucide-circle-alert"
     :title="t('cms.errors.editor')"
     :actions="[
-      { label: t('cms.errors.retry'), color: 'neutral', variant: 'subtle', onClick: reload },
+      { label: t('cms.errors.reload'), color: 'neutral', variant: 'subtle', onClick: reload },
     ]"
   />
 </template>

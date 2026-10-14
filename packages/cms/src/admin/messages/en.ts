@@ -140,7 +140,7 @@ export default {
     failed: 'The action failed. Try again.',
     notFound: 'This page does not exist.',
     editor: 'The editor could not be loaded. Reloading the page discards unsaved changes.',
-    retry: 'Try again',
+    reload: 'Reload page',
   },
   permissions: {
     'cms.pages.view': 'View pages',
