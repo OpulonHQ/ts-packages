@@ -66,8 +66,25 @@ const rejecting = admin.track({
 })
 test('a tracked call the test expects to reject does not fail it', async () => {
   await expect(rejecting.fail()).rejects.toThrow('expected failure')
+  await expect(rejecting.fail().then(() => {})).rejects.toThrow('expected failure')
   const caught = await rejecting.fail().catch((error: unknown) => error)
   expect(caught).toBeInstanceOf(Error)
+})
+
+const derived = admin.track({
+  value: async () => 'actual',
+  fail: async () => {
+    throw new Error('chained failure')
+  },
+})
+test.fails('an assertion that fails in work chained on a tracked call fails its test', () => {
+  void derived.value().then((value) => {
+    expect(value).toBe('expected')
+  })
+})
+
+test.fails('a tracked rejection passed on through a chained call fails its test', () => {
+  void derived.fail().then(() => {})
 })
 
 let startedOnFailure = 0

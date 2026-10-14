@@ -3,20 +3,30 @@ import { beforeEach } from 'vitest'
 import { brand } from '../admin/brand.ts'
 import { adminModules } from '../admin/modules.ts'
 
+type Calls = {
+  readonly pending: Array<Promise<unknown>>
+  readonly rejected: Array<{ readonly call: Watched<unknown>; readonly error: unknown }>
+}
+
 // `await` adopts a plain Promise without calling `then`, so only a subclass sees every consumer.
 class Watched<T> extends Promise<T> {
   observed = false
-  pending: Array<Promise<unknown>> | undefined
+  calls: Calls | undefined
+  watch(calls: Calls) {
+    this.calls = calls
+    calls.pending.push(this)
+    Promise.prototype.then.call(this, undefined, (error: unknown) =>
+      calls.rejected.push({ call: this, error }),
+    )
+    return this
+  }
   override then<A = T, B = never>(
     onFulfilled?: ((value: T) => A | PromiseLike<A>) | null,
     onRejected?: ((reason: unknown) => B | PromiseLike<B>) | null,
   ): Promise<A | B> {
     this.observed = true
     const next = super.then(onFulfilled, onRejected)
-    if (this.pending && next instanceof Watched) {
-      next.pending = this.pending
-      this.pending.push(next)
-    }
+    if (this.calls && next instanceof Watched) next.watch(this.calls)
     return next
   }
 }
@@ -32,13 +42,11 @@ class Watched<T> extends Promise<T> {
  * body cannot reach another test's DOM, URL or data.
  */
 export const useAdminLifetime = () => {
-  type Lifetime = {
+  type Lifetime = Calls & {
     readonly name: string
     readonly unmounts: Array<() => void>
     unmountFailed: boolean
     readonly gates: Array<() => void>
-    readonly pending: Array<Promise<unknown>>
-    readonly rejected: Array<{ readonly call: Watched<unknown>; readonly error: unknown }>
   }
   const fresh = (name: string): Lifetime => ({
     name,
@@ -55,18 +63,10 @@ export const useAdminLifetime = () => {
     (fn: Parameters<typeof Reflect.apply>[0], self: unknown) =>
     (...args: unknown[]): unknown => {
       const result: unknown = Reflect.apply(fn, self, args)
-      if (result instanceof Promise) {
-        const { pending, rejected } = current
-        pending.push(result)
-        const call = new Watched((resolve, reject) => {
+      if (result instanceof Promise)
+        return new Watched((resolve, reject) => {
           result.then(resolve, reject)
-        })
-        call.pending = pending
-        Promise.prototype.then.call(call, undefined, (error: unknown) =>
-          rejected.push({ call, error }),
-        )
-        return call
-      }
+        }).watch(current)
       return typeof result === 'function' ? tracked(result, undefined) : result
     }
 
