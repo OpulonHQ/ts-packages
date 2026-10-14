@@ -17,6 +17,7 @@ const adminTests = [
   'fixtures/host/test/{shell,packages,email-log,email-templates,users-admin,audit-admin,admin-lifetime,admin-lifetime-drain,admin-lifetime-unmount,admin-lifetime-late-mount}.test.ts',
   'packages/{ui,admin}/test/**/*.test.ts',
   'fixtures/host/test/media/admin.test.ts',
+  'fixtures/host/test/admin-late-results.test.ts',
   'fixtures/host/test/cms/admin.test.ts',
   'fixtures/host/test/cms/redirects-admin.test.ts',
   'fixtures/host/test/cms/content-admin.test.ts',
