@@ -107,6 +107,8 @@ const toI18n = (catalog: Messages, namespace?: string): Messages => {
  * server does not run (missing from `/me`) are hidden, with a dev warning.
  * Mount the returned app: `createAdmin({...}).mount('#app')`.
  */
+let pageLocaleSaves: Promise<void> = Promise.resolve()
+
 export const createAdmin = (options: AdminOptions): App => {
   const routeNames = new Set([
     'dashboard',
@@ -261,8 +263,10 @@ export const createAdmin = (options: AdminOptions): App => {
         console.error(error)
         if (!live()) return
         if (status.value !== 'ready') status.value = 'failed'
-        else if (lastWrite && waitingPicks === 0 && lastWrite.userId === me.value?.user.id) {
-          Promise.resolve(lastWrite.apply(live)).catch((error: unknown) => console.error(error))
+        else if (lastWrite && lastWrite.userId === me.value?.user.id) {
+          const { userId, apply } = lastWrite
+          const shows = () => live() && !waitsForPick(userId)
+          Promise.resolve(apply(shows)).catch((error: unknown) => console.error(error))
         }
       },
     )
@@ -357,17 +361,16 @@ export const createAdmin = (options: AdminOptions): App => {
   const providerSignOut = auth.auth?.signOut
   const providerSetLocale = auth.auth?.setLocale
   const accountRoute = auth.auth?.accountRoute
-  let lastLocaleSave: Promise<void> = Promise.resolve()
   const saveLocale = async (locale: string | null, save: (userId: string) => Promise<void>) => {
     const userId = me.value?.user.id
     if (!userId) return
     waitingPicks++
-    const write = lastLocaleSave.then(() => {
+    const write = pageLocaleSaves.then(() => {
       if (unmounted) throw new Error('the admin unmounted before this language was saved')
       return save(userId)
     })
     const picked = () => void waitingPicks--
-    lastLocaleSave = write.then(picked, picked)
+    pageLocaleSaves = write.then(picked, picked)
     await afterWrite(write, async (live) => {
       await applyLocale(locale, enabled.value, live)
       if (me.value && live()) me.value = { ...me.value, locale }
