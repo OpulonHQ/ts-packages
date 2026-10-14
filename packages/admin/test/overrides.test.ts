@@ -418,3 +418,53 @@ test('back and forward navigations show and clear a screen failure', async () =>
   await expect.poll(() => router.currentRoute.value.path).toBe('/sign-in')
   await expect.poll(() => document.querySelector('[role="alert"]')).toBeNull()
 })
+
+test('retrying a failure that differs from the current address only by fragment reloads', async () => {
+  const app = mount('/protected#old', { overrides: { 'demo.protected': screen('protected') } })
+  const router = app.config.globalProperties.$router
+  await router.isReady()
+  router.beforeEach((to) => {
+    if (to.hash === '#new') throw new Error('new hash guard failed')
+  })
+  await expect(router.push('/protected#new')).rejects.toThrow('new hash guard failed')
+  await expect.poll(() => document.querySelector('[role="alert"] button')).not.toBeNull()
+  const assign = vi.spyOn(location, 'assign').mockImplementation(() => {})
+  const reload = vi.spyOn(location, 'reload').mockImplementation(() => {})
+  onTestFinished(() => {
+    assign.mockRestore()
+    reload.mockRestore()
+  })
+  document.querySelector<HTMLButtonElement>('[role="alert"] button')?.click()
+  expect(reload).toHaveBeenCalled()
+  expect(assign).not.toHaveBeenCalled()
+  expect(location.hash).toBe('#new')
+})
+
+test('an older build check cannot erase a deploy notice found by a newer one', async () => {
+  const old = deferred<Response>()
+  let calls = 0
+  const response = (buildId: string) =>
+    Response.json({
+      permissions: ['demo.view'],
+      modules: ['auth', 'demo', 'core'],
+      buildId,
+      user: { id: 'staff', name: 'Staff', email: 'staff@example.com' },
+      locale: 'en',
+      permissionCatalog: ['demo.view'],
+      contentLocales: ['en'],
+    })
+  const app = mount('/', {
+    buildId: 'test',
+    overrides: { 'demo.protected': () => Promise.reject(new Error('deleted deploy chunk')) },
+    fetch: async () => (++calls === 2 ? old.promise : response(calls >= 3 ? 'next' : 'test')),
+  })
+  const router = app.config.globalProperties.$router
+  await router.isReady()
+  await router.push('/sign-in')
+  await expect.poll(() => calls).toBe(2)
+  await expect(router.push('/protected')).rejects.toThrow('deleted deploy chunk')
+  await expect.poll(() => document.body.textContent).toContain('A new admin version is available.')
+  old.resolve(response('test'))
+  await sleep()
+  expect(document.body.textContent).toContain('A new admin version is available.')
+})
