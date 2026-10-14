@@ -65,3 +65,15 @@ test('follows a runtime import a plugin adds to a stylesheet module', async () =
   )
   expect((await packagesLoadedTwice(vite, '/main.ts')).twice).toEqual(['@probe/dual'])
 })
+
+test('does not count a prebundled package stylesheet as a second instance', async () => {
+  const vite = await devServer('dual', "import 'dual/style.css'", {
+    'node_modules/dual/package.json': JSON.stringify({
+      name: 'dual',
+      type: 'module',
+      exports: { '.': './index.js', './sub': './sub.js', './style.css': './style.css' },
+    }),
+    'node_modules/dual/style.css': ':root { color: black }',
+  })
+  expect((await packagesLoadedTwice(vite, '/main.ts')).twice).toEqual([])
+})
