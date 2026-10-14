@@ -97,7 +97,7 @@ export const useAdminLifetime = () => {
       const settled = await settle(lifetime)
       document.body.replaceChildren()
       if (!settled)
-        throw new Error(`admin or host calls from "${lifetime.name}" still pending 5s after it`)
+        throw new Error(`admin or host calls from ${lifetime.name} still pending after 5s`)
       clean = failures.length === 0
     } finally {
       if (!clean) unfinished ??= lifetime.name
@@ -106,15 +106,15 @@ export const useAdminLifetime = () => {
     if (failures.length > 0)
       throw new AggregateError(
         failures,
-        `an unmount or an unhandled tracked call from "${lifetime.name}" failed`,
+        `an unmount or an unhandled tracked call from ${lifetime.name} failed`,
       )
   }
 
   beforeEach(async ({ signal, task, onTestFinished }) => {
     if (previous?.signal.aborted) unfinished ??= previous.name
-    previous = { signal, name: task.name }
+    previous = { signal, name: `"${task.name}"` }
     const between = current
-    const lifetime = fresh(task.name)
+    const lifetime = fresh(`"${task.name}"`)
     current = lifetime
     onTestFinished(async () => {
       try {
@@ -124,7 +124,7 @@ export const useAdminLifetime = () => {
       }
     })
     if (unfinished)
-      throw new Error(`Not run: "${unfinished}" timed out or left calls pending and may still run`)
+      throw new Error(`Not run: ${unfinished} timed out or left calls pending and may still run`)
     await close(between)
   })
 
