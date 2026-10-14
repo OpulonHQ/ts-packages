@@ -174,6 +174,11 @@ export const createAdmin = (options: AdminOptions): App => {
     const turn = ++epoch
     return () => !unmounted && turn === epoch
   }
+  let session = 0
+  type Pick = { readonly userId: string; readonly session: number }
+  const waitingPicks: Array<Pick> = []
+  const waitsForPick = (userId: string) =>
+    waitingPicks.some((pick) => pick.userId === userId && pick.session === session)
   // The latest successful write, applied only when the read after it fails for the same user.
   // Write order only stops an older write's late answer from re-arming it.
   let lastWrite:
@@ -182,6 +187,7 @@ export const createAdmin = (options: AdminOptions): App => {
   let writeOrder = 0
   let armedWriteOrder = 0
   const showSignedOut = () => {
+    session++
     lastWrite = undefined
     me.value = undefined
     status.value = 'signedOut'
@@ -240,12 +246,18 @@ export const createAdmin = (options: AdminOptions): App => {
             )
           }
         }
+        const shows = () => live() && !waitsForPick(first.user.id)
         await applyLocale(
           first.locale,
           options.modules.filter((m) => first.modules.includes(m.id)),
-          live,
+          shows,
         )
         if (!live()) return
+        if (me.value && waitsForPick(first.user.id)) {
+          me.value = { ...first, locale: me.value.locale }
+          return
+        }
+        if (me.value && me.value.user.id !== first.user.id) session++
         lastWrite = undefined
         me.value = first
         status.value = 'ready'
@@ -255,7 +267,9 @@ export const createAdmin = (options: AdminOptions): App => {
         if (!live()) return
         if (status.value !== 'ready') status.value = 'failed'
         else if (lastWrite && lastWrite.userId === me.value?.user.id) {
-          Promise.resolve(lastWrite.apply(live)).catch((error: unknown) => console.error(error))
+          const { userId, apply } = lastWrite
+          const shows = () => live() && !waitsForPick(userId)
+          Promise.resolve(apply(shows)).catch((error: unknown) => console.error(error))
         }
       },
     )
@@ -350,12 +364,26 @@ export const createAdmin = (options: AdminOptions): App => {
   const providerSignOut = auth.auth?.signOut
   const providerSetLocale = auth.auth?.setLocale
   const accountRoute = auth.auth?.accountRoute
+  let lastLocaleSave: Promise<void> = Promise.resolve()
   const saveLocale = async (locale: string | null, save: (userId: string) => Promise<void>) => {
     const userId = me.value?.user.id
     if (!userId) return
-    await afterWrite(save(userId), async (live) => {
-      await applyLocale(locale, enabled.value, live)
-      if (me.value && live()) me.value = { ...me.value, locale }
+    const pick: Pick = { userId, session }
+    waitingPicks.push(pick)
+    const write = lastLocaleSave.then(() => {
+      if (unmounted) throw new Error('the admin unmounted before this language was saved')
+      if (session !== pick.session)
+        throw new Error(
+          'another user is shown or a sign-out was seen, so this language was not saved',
+        )
+      return save(userId)
+    })
+    const picked = () => void waitingPicks.splice(waitingPicks.indexOf(pick), 1)
+    lastLocaleSave = write.then(picked, picked)
+    await afterWrite(write, async (live) => {
+      const shows = () => live() && session === pick.session
+      await applyLocale(locale, enabled.value, shows)
+      if (me.value && shows()) me.value = { ...me.value, locale }
     })
   }
   const state: AdminState = {
@@ -440,6 +468,7 @@ export const createAdmin = (options: AdminOptions): App => {
     if (!allowed(access)) return { name: 'dashboard' }
     return true
   })
+  router.beforeResolve(() => !unmounted)
   // Re-check the build after each navigation, so an open tab learns about a deploy.
   let latestCheck = 0
   const checkForNewDeploy = () => {

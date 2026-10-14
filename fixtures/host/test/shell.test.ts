@@ -5,7 +5,7 @@ import {
   defineAdminModule,
   useAdmin,
 } from '@opulonjs/admin'
-import { defineComponent, h } from 'vue'
+import { defineComponent, h, watch } from 'vue'
 import { beforeAll, expect, onTestFinished, test, vi } from 'vitest'
 import { useTestDatabase } from '../../../test/postgres/index.ts'
 import { brand } from '../admin/brand.ts'
@@ -773,9 +773,9 @@ test('the later of two language changes wins in the shell', async () => {
   answer.hold()
   const first = setLocale('en')
   await expect.poll(answer.answered).toBe(true)
-  await setLocale('sk')
+  const second = setLocale('sk')
   await answer.release()
-  await first
+  await Promise.all([first, second])
   expect(me.value?.locale).toBe('sk')
   expect(document.documentElement.lang).toBe('sk')
 })
@@ -1015,9 +1015,9 @@ test('an older language save applies when a newer one fails', async () => {
   answer.hold()
   const first = setLocale('sk')
   await expect.poll(answer.answered).toBe(true)
-  await expect(setLocale('en')).rejects.toThrow('second save failed')
+  const second = expect(setLocale('en')).rejects.toThrow('second save failed')
   await answer.release()
-  await first
+  await Promise.all([first, second])
   expect(me.value?.locale).toBe('sk')
   expect(document.documentElement.lang).toBe('sk')
 })
@@ -1233,7 +1233,7 @@ test('a sign-in whose read fails shows the failure instead of the sign-in form',
   expect(admin.state().status.value).toBe('failed')
 })
 
-test('an older language save that answers late does not bring its language back when a read fails', async () => {
+test('the last language picked stays when the reads after both saves fail', async () => {
   const user = await seedUser(db.url, { name: 'Older Save Answers Late', locale: 'sk' })
   const own = await hosts.b1.signIn(user.email, user.password)
   const dashboard = capturedState()
@@ -1251,19 +1251,144 @@ test('an older language save that answers late does not bring its language back 
   await expect.poll(() => document.body.textContent).toContain('state captured')
   const { setLocale, me } = dashboard.state()
   if (!setLocale) throw new Error('the auth provider offers no language change')
+  const shown: Array<string | null | undefined> = []
+  onTestFinished(
+    watch(
+      () => me.value?.locale,
+      (locale) => void shown.push(locale),
+      { flush: 'sync' },
+    ),
+  )
   answer.hold()
   const first = setLocale('en')
   await expect.poll(answer.answered).toBe(true)
-  await setLocale('sk')
-  expect(me.value?.locale).toBe('sk')
-  expect((await hosts.b1.me(own)).locale).toBe('sk')
+  const second = setLocale('sk')
   failing = true
   await answer.release()
-  await first
-  await tick(100)
+  await Promise.all([first, second])
+  await lifetime.settled()
   expect((await hosts.b1.me(own)).locale).toBe('sk')
   expect(me.value?.locale).toBe('sk')
   expect(document.documentElement.lang).toBe('sk')
+  expect(shown).not.toContain('en')
+})
+
+test('a language picked while the last save still loads its catalogs shows only the last pick', async () => {
+  const user = await seedUser(db.url, { name: 'Pick While Loading', locale: 'sk' })
+  const own = await hosts.b1.signIn(user.email, user.password)
+  const dashboard = capturedState()
+  const catalogs = heldCatalogs(false)
+  const answer = heldAnswer('/locale')
+  mountDisposable(catalogs.modules, own, {
+    overrides: dashboard.overrides,
+    onResponse: answer.onResponse,
+  })
+  await expect.poll(() => document.body.textContent).toContain('state captured')
+  const { setLocale, me } = dashboard.state()
+  if (!setLocale) throw new Error('the auth provider offers no language change')
+  const shown: Array<string | null | undefined> = []
+  onTestFinished(
+    watch(
+      () => me.value?.locale,
+      (locale) => void shown.push(locale),
+      { flush: 'sync' },
+    ),
+  )
+  catalogs.hold()
+  const first = setLocale('en')
+  await expect.poll(catalogs.asked).toBe(true)
+  answer.hold()
+  const second = setLocale('sk')
+  await expect.poll(answer.answered).toBe(true)
+  await catalogs.release()
+  await answer.release()
+  await Promise.all([first, second])
+  expect((await hosts.b1.me(own)).locale).toBe('sk')
+  expect(me.value?.locale).toBe('sk')
+  expect(document.documentElement.lang).toBe('sk')
+  expect(shown).not.toContain('en')
+})
+
+test('a language picked while the fallback after a failed read loads its catalogs shows only the last pick', async () => {
+  const user = await seedUser(db.url, { name: 'Fallback Catalog Race', locale: 'sk' })
+  const own = await hosts.b1.signIn(user.email, user.password)
+  const dashboard = capturedState()
+  const catalogs = heldCatalogs(false)
+  const answer = heldAnswer('/locale')
+  let failing = false
+  mountDisposable(catalogs.modules, own, {
+    overrides: dashboard.overrides,
+    onResponse: answer.onResponse,
+    rewrite: (url, response) =>
+      failing && url.endsWith('/api/me') ? new Response('down', { status: 503 }) : response,
+  })
+  await expect.poll(() => document.body.textContent).toContain('state captured')
+  const { setLocale, me } = dashboard.state()
+  if (!setLocale) throw new Error('the auth provider offers no language change')
+  const shown: Array<string | null | undefined> = []
+  onTestFinished(
+    watch(
+      () => me.value?.locale,
+      (locale) => void shown.push(locale),
+      { flush: 'sync' },
+    ),
+  )
+  catalogs.hold()
+  failing = true
+  await setLocale('en')
+  await expect.poll(catalogs.asked).toBe(true)
+  answer.hold()
+  const second = setLocale('sk')
+  await expect.poll(answer.answered).toBe(true)
+  await catalogs.release()
+  expect(me.value?.locale).toBe('sk')
+  expect(document.documentElement.lang).toBe('sk')
+  await answer.release()
+  await second
+  await lifetime.settled()
+  expect((await hosts.b1.me(own)).locale).toBe('sk')
+  expect(shown).not.toContain('en')
+})
+
+test('a language pick waiting for one user does not hold back the language of the next user shown', async () => {
+  const waiting = await seedUser(db.url, { name: 'Waiting Account', locale: 'en' })
+  const next = await seedUser(db.url, { name: 'Next Account', locale: 'sk' })
+  let session = await hosts.b1.signIn(waiting.email, waiting.password)
+  const nextSession = await hosts.b1.signIn(next.email, next.password)
+  const nextId = (await hosts.b1.me(nextSession)).user.id
+  const dashboard = capturedState()
+  const answer = heldAnswer('/locale')
+  mountDisposable(adminModules, () => session, {
+    overrides: dashboard.overrides,
+    onResponse: answer.onResponse,
+  })
+  await expect.poll(() => document.body.textContent).toContain('state captured')
+  const { setLocale, refresh, me } = dashboard.state()
+  if (!setLocale) throw new Error('the auth provider offers no language change')
+  answer.hold()
+  const pick = setLocale('sk')
+  await expect.poll(answer.answered).toBe(true)
+  session = nextSession
+  await refresh()
+  expect(me.value?.user.id).toBe(nextId)
+  expect(me.value?.locale).toBe('sk')
+  expect(document.documentElement.lang).toBe('sk')
+  expect(
+    (
+      await hosts.b1.request('PUT', `/users/users/${nextId}/locale`, {
+        cookie: nextSession,
+        body: { locale: 'en' },
+      })
+    ).status,
+  ).toBe(204)
+  await refresh()
+  expect(me.value?.locale).toBe('en')
+  expect(document.documentElement.lang).toBe('en')
+  await answer.release()
+  await pick.catch(() => {})
+  await lifetime.settled()
+  expect(me.value?.user.id).toBe(nextId)
+  expect(document.documentElement.lang).toBe('en')
 })
 
 test('a deploy check that finds the session ended cancels an older refresh still loading', async () => {

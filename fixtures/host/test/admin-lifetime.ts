@@ -5,7 +5,17 @@ import { adminModules } from '../admin/modules.ts'
 
 type Calls = {
   readonly pending: Array<Promise<unknown>>
+  readonly busy: Set<Promise<unknown>>
+  parked: number
+  wake: () => void
   readonly rejected: Array<{ readonly call: Watched<unknown>; readonly error: unknown }>
+}
+
+const follow = (calls: Calls, call: Promise<unknown>) => {
+  calls.pending.push(call)
+  calls.busy.add(call)
+  const done = () => void calls.busy.delete(call)
+  Promise.prototype.then.call(call, done, done)
 }
 
 // `await` adopts a plain Promise without calling `then`, so only a subclass sees every consumer.
@@ -15,7 +25,7 @@ class Watched<T> extends Promise<T> {
   watch(current: () => Calls) {
     this.current = current
     const calls = current()
-    calls.pending.push(this)
+    follow(calls, this)
     Promise.prototype.then.call(this, undefined, (error: unknown) =>
       calls.rejected.push({ call: this, error }),
     )
@@ -55,6 +65,9 @@ export const useAdminLifetime = () => {
     unmountFailed: false,
     gates: [],
     pending: [],
+    busy: new Set(),
+    parked: 0,
+    wake: () => {},
     rejected: [],
   })
   let current = fresh('before the first test')
@@ -153,26 +166,79 @@ export const useAdminLifetime = () => {
           return typeof value === 'function' ? tracked(value, target) : value
         },
       }),
+    /** Waits until every call the test started has settled or is parked at a gate. */
+    settled: async () => {
+      const calls = current
+      const deadline = Date.now() + 5000
+      for (;;) {
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        if (calls.busy.size <= calls.parked) return
+        if (Date.now() > deadline)
+          throw new Error(`admin or host calls from ${calls.name} still pending after 5s`)
+        await Promise.race([
+          ...[...calls.busy].map((call) => Promise.prototype.then.call(call, null, () => {})),
+          new Promise((resolve) => setTimeout(resolve, Math.max(0, deadline - Date.now()))),
+          new Promise<void>((resolve) => (calls.wake = resolve)),
+        ])
+      }
+    },
     gate: () => {
+      const calls = current
       const gate = Promise.withResolvers<void>()
-      current.gates.push(gate.resolve)
-      return gate
+      calls.gates.push(gate.resolve)
+      const park = async () => {
+        calls.parked++
+        calls.wake()
+        try {
+          await gate.promise
+        } finally {
+          calls.parked--
+        }
+      }
+      return { ...gate, park }
     },
     mount: (
       path: string,
-      { fetch, ...options }: Partial<AdminOptions> & { readonly fetch: typeof globalThis.fetch },
+      {
+        fetch,
+        modules = adminModules,
+        ...options
+      }: Partial<AdminOptions> & { readonly fetch: typeof globalThis.fetch },
     ) => {
       const lifetime = current
+      const pending =
+        <T>(load: () => Promise<T>) =>
+        () => {
+          const loading = load()
+          follow(lifetime, loading)
+          return loading
+        }
+      const readBody = (answer: Response) => {
+        for (const read of ['json', 'text', 'arrayBuffer', 'blob'] as const) {
+          const original = answer[read].bind(answer)
+          Object.defineProperty(answer, read, {
+            value: () => {
+              const reading = original()
+              follow(lifetime, reading)
+              return reading
+            },
+          })
+        }
+      }
       history.replaceState(null, '', path)
       document.body.innerHTML = '<div id="app"></div>'
       const app = createAdmin({
         brand,
-        modules: adminModules,
         buildId: 'build-1',
         ...options,
+        modules: modules.map((m) => ({
+          ...m,
+          messages: { en: pending(m.messages.en), sk: pending(m.messages.sk) },
+        })),
         fetch: (input, init) => {
           const response = fetch(input, init)
-          if (!(response instanceof Watched)) lifetime.pending.push(response)
+          if (!(response instanceof Watched)) follow(lifetime, response)
+          Promise.prototype.then.call(response, readBody, () => {})
           return response
         },
       })

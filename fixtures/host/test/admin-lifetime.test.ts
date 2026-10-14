@@ -145,6 +145,40 @@ describe('after a call between tests rejected', () => {
 })
 
 let ranAfterTimeout = false
+test('settled waits for the calls a test started', async () => {
+  let finished = false
+  void admin
+    .track({
+      run: async () => {
+        await later()
+        finished = true
+      },
+    })
+    .run()
+  await admin.settled()
+  expect(finished).toBe(true)
+})
+
+test('settled returns as soon as the only call left parks at a gate', async () => {
+  const gate = admin.gate()
+  let parked = false
+  const call = admin
+    .track({
+      run: async () => {
+        await later()
+        parked = true
+        await gate.park()
+      },
+    })
+    .run()
+  const started = Date.now()
+  await admin.settled()
+  expect(parked).toBe(true)
+  expect(Date.now() - started).toBeLessThan(1000)
+  gate.resolve()
+  await call
+})
+
 test.fails('a test that times out', { timeout: 50 }, () => new Promise(() => {}))
 test.fails('a later test is not run while the timed-out body may still run', () => {
   ranAfterTimeout = true
