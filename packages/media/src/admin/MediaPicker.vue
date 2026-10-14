@@ -16,7 +16,11 @@ const props = defineProps<{
   label?: string
   /** Only images or only PDFs; default both. */
   accept?: 'image' | 'pdf'
-  /** An upload that finishes while disabled is picked once enabled again. */
+  /**
+   * An upload that finishes while disabled is picked once enabled again, so an instance belongs
+   * to one field: to point the picker at another field, key it by that field (`:key`) so the
+   * old instance unmounts and drops what it holds.
+   */
   disabled?: boolean
 }>()
 
