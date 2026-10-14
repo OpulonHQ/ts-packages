@@ -1,7 +1,6 @@
 import { readFileSync } from 'node:fs'
-import type { ViteDevServer } from 'vite'
+import { isCSSRequest, type ViteDevServer } from 'vite'
 
-const stylesheet = /\.(?:css|less|sass|scss|styl|stylus|pcss|postcss|sss)(?:$|\?)/
 const packageOf = (path: string) =>
   /node_modules\/(?:\.pnpm\/[^/]+\/node_modules\/)?((?:@[^/]+\/)?[^/]+)\//.exec(path)?.[1]
 
@@ -19,14 +18,14 @@ export const packagesLoadedTwice = async (vite: ViteDevServer, entry: string) =>
         const code = (await vite.transformRequest(url))?.code ?? ''
         const edges = [...((await graph.getModuleByUrl(url))?.importedModules ?? [])]
         // A stylesheet's other edges are Tailwind's content sources, not modules the page loads.
-        return stylesheet.test(url) ? edges.filter((edge) => code.includes(edge.url)) : edges
+        return isCSSRequest(url) ? edges.filter((edge) => code.includes(edge.url)) : edges
       }),
     )
     frontier = []
     for (const { url, file } of imported.flat()) {
       if (seen.has(url) || url.includes('/.vite/deps/')) continue
       seen.add(url)
-      const name = file && !stylesheet.test(file) ? packageOf(file) : undefined
+      const name = file && !isCSSRequest(file) ? packageOf(file) : undefined
       if (name) raw.add(name)
       frontier.push(url)
     }
