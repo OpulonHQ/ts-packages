@@ -1,12 +1,11 @@
-import { createAdmin } from '@opulonjs/admin'
 import { expect, onTestFinished, test } from 'vitest'
 import { useTestDatabase } from '../../../test/postgres/index.ts'
-import { brand } from '../admin/brand.ts'
-import { adminModules } from '../admin/modules.ts'
+import { useAdminLifetime } from './admin-lifetime.ts'
 import { makeHost, seedUser, sqlQuery } from './support/users.ts'
 
+const lifetime = useAdminLifetime()
 const db = useTestDatabase()
-const host = makeHost(() => db.url, { buildId: 'b1' })
+const host = lifetime.track(makeHost(() => db.url, { buildId: 'b1' }))
 
 function mount(
   path: string,
@@ -17,16 +16,12 @@ function mount(
     firstAudit?: Promise<Response>
   } = {},
 ) {
-  history.replaceState(null, '', path)
-  document.body.innerHTML = '<div id="app"></div>'
   const requests: string[] = []
   const fetch = host.browserFetch({ cookie })
   const prefix = options.apiPrefix ?? '/api'
   let failAudit = options.failAudit ?? false
   let firstAudit = options.firstAudit
-  const app = createAdmin({
-    brand,
-    modules: adminModules,
+  const text = lifetime.mount(path, {
     buildId: 'b1',
     apiPrefix: prefix,
     fetch: (input, init) => {
@@ -46,9 +41,7 @@ function mount(
       return fetch(new Request(url, request))
     },
   })
-  app.mount('#app')
-  onTestFinished(() => app.unmount())
-  return { text: () => document.body.textContent ?? '', requests }
+  return { text, requests }
 }
 
 test('Settings exposes the audit log with localized actions and user snapshot changes', async () => {

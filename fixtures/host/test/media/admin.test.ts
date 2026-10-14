@@ -1,14 +1,15 @@
-import { createAdmin, defineAdminModule } from '@opulonjs/admin'
+import { defineAdminModule } from '@opulonjs/admin'
 import type { MediaItem } from '@opulonjs/media/api'
 import { MediaPicker } from '@opulonjs/media/admin'
 import { defineComponent, h, ref } from 'vue'
-import { expect, onTestFinished, test } from 'vitest'
-import { brand } from '../../admin/brand.ts'
+import { expect, test } from 'vitest'
 import { adminModules } from '../../admin/modules.ts'
+import { useAdminLifetime } from '../admin-lifetime.ts'
 import { files, useHost } from './helpers.ts'
 
 // Runs in the `admin` vitest project (happy-dom); the admin's fetch goes into the fixture Worker.
-const host = useHost()
+const admin = useAdminLifetime()
+const host = admin.track(useHost())
 
 // A screen hosting the picker, as a cms form would. `core` is composed, so /me enables it.
 const pickerScreen = defineAdminModule({
@@ -37,19 +38,8 @@ const pickerScreen = defineAdminModule({
   messages: { en: async () => ({ default: {} }), sk: async () => ({ default: {} }) },
 })
 
-function mountAdmin(path: string) {
-  history.replaceState(null, '', path)
-  document.body.innerHTML = '<div id="app"></div>'
-  const app = createAdmin({
-    brand,
-    modules: [...adminModules, pickerScreen],
-    buildId: 'build-1',
-    fetch: host.fetch,
-  })
-  app.mount('#app')
-  onTestFinished(() => app.unmount())
-  return () => document.body.textContent ?? ''
-}
+const mountAdmin = (path: string) =>
+  admin.mount(path, { fetch: host.fetch, modules: [...adminModules, pickerScreen] })
 
 const button = (label: string) =>
   [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === label)

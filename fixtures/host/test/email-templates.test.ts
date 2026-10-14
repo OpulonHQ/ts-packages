@@ -1,16 +1,17 @@
-import { createAdmin, defineAdminModule } from '@opulonjs/admin'
+import { defineAdminModule } from '@opulonjs/admin'
 import { EmailTemplateList } from '@opulonjs/emails/api'
 import { emailsAdmin } from '@opulonjs/emails/admin'
 import { Schema } from 'effect'
-import { expect, onTestFinished, test } from 'vitest'
+import { expect, test } from 'vitest'
 import { useTestDatabase } from '../../../test/postgres/index.ts'
-import { brand } from '../admin/brand.ts'
+import { useAdminLifetime } from './admin-lifetime.ts'
 import { makeShop } from './support/shop.ts'
 
 // Runs in the `admin` vitest project: the email template screens mounted in happy-dom, their
 // fetch routed into the shop worker (signed in as Eva, admin locale sk). No mocked API.
+const admin = useAdminLifetime()
 const db = useTestDatabase()
-const shop = makeShop(() => db.url)
+const shop = admin.track(makeShop(() => db.url))
 const order = 'shop.order_confirmed'
 
 const hostFetch: typeof fetch = async (input, init) => {
@@ -36,18 +37,8 @@ const shopAdmin = defineAdminModule({
   messages: { en: async () => ({ default: {} }), sk: async () => ({ default: {} }) },
 })
 
-function mount(path: string) {
-  history.replaceState(null, '', path)
-  document.body.innerHTML = '<div id="app"></div>'
-  const app = createAdmin({
-    brand,
-    modules: [shopAdmin, emailsAdmin()],
-    buildId: 'test',
-    fetch: hostFetch,
-  })
-  app.mount('#app')
-  onTestFinished(() => app.unmount())
-}
+const mount = (path: string) =>
+  admin.mount(path, { fetch: hostFetch, modules: [shopAdmin, emailsAdmin()], buildId: 'test' })
 
 const text = () => document.body.textContent ?? ''
 const button = (label: string) =>

@@ -59,6 +59,33 @@ test.fails('a tracked call that rejects unawaited fails its test', () => {
   void failing.fail()
 })
 
+const rejecting = admin.track({
+  fail: async () => {
+    throw new Error('expected failure')
+  },
+})
+test('a tracked call the test expects to reject does not fail it', async () => {
+  await expect(rejecting.fail()).rejects.toThrow('expected failure')
+  const caught = await rejecting.fail().catch((error: unknown) => error)
+  expect(caught).toBeInstanceOf(Error)
+})
+
+let startedOnFailure = 0
+const onFailure = admin.track({
+  run: async () => {
+    await later()
+    startedOnFailure++
+  },
+})
+test.fails('a failing test that starts a tracked call from onTestFailed', ({ onTestFailed }) => {
+  onTestFailed(() => void onFailure.run())
+  expect('failed').toBe('passed')
+})
+
+test('the next test starts after the call from onTestFailed settled', () => {
+  expect(startedOnFailure).toBe(1)
+})
+
 let ranAfterTimeout = false
 test.fails('a test that times out', { timeout: 50 }, () => new Promise(() => {}))
 test.fails('a later test is not run while the timed-out body may still run', () => {
