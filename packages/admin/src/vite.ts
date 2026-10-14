@@ -92,8 +92,8 @@ export const opulonAdmin = (options: OpulonAdminOptions = {}): Array<PluginOptio
     }),
     {
       name: '@opulonjs/admin',
-      // Served unbundled like the kit, as one Effect instance: a prebundled Effect next to raw
-      // packages importing it loads twice.
+      // Unbundled like the kit, since module screens import Nuxt UI too; Effect as well, or the
+      // raw packages and the prebundled ones load two Effect instances.
       config: (user) => ({
         base: '/admin/',
         optimizeDeps: {

@@ -194,7 +194,6 @@ const bundled = new Set([...js.matchAll(/[{,](?:"([a-z0-9-]+)"|([a-z0-9]+)):\\{(
 const missingIcons = [...used].filter((name) => !bundled.has(name))
 if (missingIcons.length > 0) throw new Error('icons missing from the admin bundle: ' + missingIcons.join(', '))
 console.log('ok admin bundles all', used.size, 'icons its screens use')
-// Dev from the tarballs, with the host's component overrides and with the stock preset.
 const devServer = async (plugins) => {
   const vite = await createServer({
     ...config,
