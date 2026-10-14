@@ -11,7 +11,7 @@ import LocalePicker from './LocalePicker.vue'
 import { failureKey, useUsersClient } from './client.ts'
 
 const { t } = useI18n()
-const { me, refresh } = useAdmin()
+const { me, setLocale: saveLocale } = useAdmin()
 const id = String(useRoute().params.id)
 const users = useUsersClient()
 const user = shallowRef<UserInfo>()
@@ -80,10 +80,13 @@ const setActive = (active: boolean) =>
   )
 
 const setLocale = (locale: string | null) =>
-  run(async () => {
-    await users((c) => c.setLocale({ params: { id }, payload: { locale } }))
-    if (id === me.value?.user.id) await refresh()
-  }, 'users.user.localeSaved')
+  run(
+    () =>
+      id === me.value?.user.id && saveLocale
+        ? saveLocale(locale)
+        : users((c) => c.setLocale({ params: { id }, payload: { locale } })),
+    'users.user.localeSaved',
+  )
 </script>
 
 <template>

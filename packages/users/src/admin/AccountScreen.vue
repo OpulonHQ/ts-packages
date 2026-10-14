@@ -5,23 +5,18 @@ import { UCard } from '@opulonjs/ui'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
 import { ref } from 'vue'
 import LocalePicker from './LocalePicker.vue'
-import { useUsersClient } from './client.ts'
 
 const { t } = useI18n()
-const { me, refresh } = useAdmin()
-const users = useUsersClient()
+const { me, setLocale: saveLocale } = useAdmin()
 const busy = ref(false)
 const failed = ref(false)
 
 async function setLocale(locale: string | null) {
-  const id = me.value?.user.id
-  if (!id) return
+  if (!saveLocale) return
   busy.value = true
   failed.value = false
   try {
-    await users((c) => c.setLocale({ params: { id }, payload: { locale } }))
-    // The shell applies the new locale when it reads /me again.
-    await refresh()
+    await saveLocale(locale)
   } catch {
     failed.value = true
   } finally {

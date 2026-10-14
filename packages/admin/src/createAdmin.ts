@@ -175,9 +175,12 @@ export const createAdmin = (options: AdminOptions): App => {
     return () => !unmounted && turn === epoch
   }
   // The latest successful write, applied only when the read after it fails for the same user.
+  // Write order only stops an older write's late answer from re-arming it.
   let lastWrite:
     | { readonly userId: string; readonly apply: (live: () => boolean) => Promise<void> | void }
     | undefined
+  let writeOrder = 0
+  let armedWriteOrder = 0
   const showSignedOut = () => {
     lastWrite = undefined
     me.value = undefined
@@ -223,7 +226,9 @@ export const createAdmin = (options: AdminOptions): App => {
     return getMe().then(
       async (first) => {
         if (first === 'signedOut') {
-          await loadMessages(defaultLocale, [auth], live)
+          await loadMessages(defaultLocale, [auth], live).catch((error: unknown) =>
+            console.error(error),
+          )
           if (live()) showSignedOut()
           return
         }
@@ -247,7 +252,7 @@ export const createAdmin = (options: AdminOptions): App => {
       (error: unknown) => {
         console.error(error)
         if (!live()) return
-        if (status.value === 'loading') status.value = 'failed'
+        if (status.value !== 'ready') status.value = 'failed'
         else if (lastWrite && lastWrite.userId === me.value?.user.id) void lastWrite.apply(live)
       },
     )
@@ -270,9 +275,13 @@ export const createAdmin = (options: AdminOptions): App => {
     apply: NonNullable<typeof lastWrite>['apply'],
   ) => {
     const userId = me.value?.user.id
+    const order = ++writeOrder
     try {
       await write
-      if (userId) lastWrite = { userId, apply }
+      if (userId && order > armedWriteOrder) {
+        armedWriteOrder = order
+        lastWrite = { userId, apply }
+      }
     } finally {
       await read()
     }
@@ -432,6 +441,7 @@ export const createAdmin = (options: AdminOptions): App => {
     getMe().then(
       (next) => {
         if (unmounted || turn !== epoch || check !== latestCheck) return
+        epoch++
         if (next === 'signedOut') {
           showSignedOut()
           return toSignIn()

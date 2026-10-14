@@ -1213,3 +1213,147 @@ test('a language save whose answer is lost still shows the language the server s
   expect(me.value?.locale).toBe('sk')
   expect(document.documentElement.lang).toBe('sk')
 })
+
+test('a sign-in whose read fails shows the failure instead of the sign-in form', async () => {
+  const user = await seedUser(db.url, { name: 'Sign-in Read Fails', locale: 'en' })
+  let session = ''
+  let failing = false
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+  onTestFinished(() => error.mockRestore())
+  const admin = mountDisposable(adminModules, () => session, {
+    onRequest: (url) => {
+      if (failing && url.endsWith('/api/me')) throw new Error('read failed')
+    },
+  })
+  await expect.poll(() => admin.state().status.value).toBe('signedOut')
+  session = await hosts.b1.signIn(user.email, user.password)
+  failing = true
+  await admin.state().refresh()
+  expect(admin.state().status.value).toBe('failed')
+})
+
+test('an older language save that answers late does not bring its language back when a read fails', async () => {
+  const user = await seedUser(db.url, { name: 'Older Save Answers Late', locale: 'sk' })
+  const own = await hosts.b1.signIn(user.email, user.password)
+  const dashboard = capturedState()
+  const answer = heldAnswer('/locale')
+  let failing = false
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+  onTestFinished(() => error.mockRestore())
+  mountDisposable(adminModules, own, {
+    overrides: dashboard.overrides,
+    onResponse: answer.onResponse,
+    onRequest: (url) => {
+      if (failing && url.endsWith('/api/me')) throw new Error('read failed')
+    },
+  })
+  await expect.poll(() => document.body.textContent).toContain('state captured')
+  const { setLocale, me } = dashboard.state()
+  if (!setLocale) throw new Error('the auth provider offers no language change')
+  answer.hold()
+  const first = setLocale('en')
+  await expect.poll(answer.answered).toBe(true)
+  await setLocale('sk')
+  expect(me.value?.locale).toBe('sk')
+  expect((await hosts.b1.me(own)).locale).toBe('sk')
+  failing = true
+  await answer.release()
+  await first
+  await tick(100)
+  expect((await hosts.b1.me(own)).locale).toBe('sk')
+  expect(me.value?.locale).toBe('sk')
+  expect(document.documentElement.lang).toBe('sk')
+})
+
+test('a deploy check that finds the session ended cancels an older refresh still loading', async () => {
+  const user = await seedUser(db.url, { name: 'Ended During Catalogs', locale: 'en' })
+  const own = await hosts.b1.signIn(user.email, user.password)
+  const dashboard = capturedState()
+  const catalogs = heldCatalogs(false)
+  const screenGate = Promise.withResolvers<Awaited<ReturnType<ReturnType<typeof screen>>>>()
+  onTestFinished(() => screenGate.resolve(screen('slow screen')()))
+  let screenAsked = false
+  mountDisposable(catalogs.modules, own, {
+    overrides: {
+      ...dashboard.overrides,
+      'users.signIn': () => {
+        screenAsked = true
+        return screenGate.promise
+      },
+    },
+  })
+  await expect.poll(() => document.body.textContent).toContain('state captured')
+  const { refresh, me, status } = dashboard.state()
+  navigate('/admin/sign-in')
+  await expect.poll(() => screenAsked).toBe(true)
+  catalogs.hold()
+  const refreshing = refresh()
+  await expect.poll(catalogs.asked).toBe(true)
+  expect(
+    (await hosts.b1.request('POST', '/users/auth/sign-out', { cookie: own })).status,
+  ).toBeLessThan(300)
+  screenGate.resolve(await screen('slow screen')())
+  await expect.poll(() => status.value).toBe('signedOut')
+  expect(me.value).toBeUndefined()
+  await catalogs.release()
+  await refreshing
+  await tick(100)
+  expect((await hosts.b1.request('GET', '/me', { cookie: own })).status).toBe(401)
+  expect(status.value).toBe('signedOut')
+  expect(me.value).toBeUndefined()
+})
+
+test('a sign-out sticks when the read after it fails', async () => {
+  const user = await seedUser(db.url, { name: 'Sign-out Then Failed Read', locale: 'en' })
+  const own = await hosts.b1.signIn(user.email, user.password)
+  const dashboard = capturedState()
+  let failing = false
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+  onTestFinished(() => error.mockRestore())
+  mountDisposable(adminModules, own, {
+    overrides: dashboard.overrides,
+    onRequest: (url) => {
+      if (failing && url.endsWith('/api/me')) throw new Error('read failed')
+    },
+  })
+  await expect.poll(() => document.body.textContent).toContain('state captured')
+  const { signOut, me, status } = dashboard.state()
+  if (!signOut) throw new Error('the auth provider offers no sign-out')
+  failing = true
+  await signOut()
+  expect(status.value).toBe('signedOut')
+  expect(me.value).toBeUndefined()
+  await expect.poll(() => location.pathname).toBe('/admin/sign-in')
+})
+
+test('a confirmed sign-out applies even if the sign-in messages fail to load', async () => {
+  const user = await seedUser(db.url, { name: 'Catalog Failure Sign-out', locale: 'en' })
+  const own = await hosts.b1.signIn(user.email, user.password)
+  const dashboard = capturedState()
+  let failing = false
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+  onTestFinished(() => error.mockRestore())
+  const modules = adminModules.map((m) =>
+    m.auth
+      ? {
+          ...m,
+          messages: {
+            ...m.messages,
+            en: async () => {
+              if (failing) throw new Error('auth catalog unavailable')
+              return m.messages.en()
+            },
+          },
+        }
+      : m,
+  )
+  mountDisposable(modules, own, { overrides: dashboard.overrides })
+  await expect.poll(() => document.body.textContent).toContain('state captured')
+  const { signOut, me, status } = dashboard.state()
+  if (!signOut) throw new Error('the auth provider offers no sign-out')
+  failing = true
+  await signOut()
+  expect(status.value).toBe('signedOut')
+  expect(me.value).toBeUndefined()
+  await expect.poll(() => location.pathname).toBe('/admin/sign-in')
+})

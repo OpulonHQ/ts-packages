@@ -1,5 +1,5 @@
 import { createAdmin } from '@opulonjs/admin'
-import { expect, onTestFinished, test } from 'vitest'
+import { expect, onTestFinished, test, vi } from 'vitest'
 import { useTestDatabase } from '../../../test/postgres/index.ts'
 import { brand } from '../admin/brand.ts'
 import { adminModules } from '../admin/modules.ts'
@@ -193,4 +193,31 @@ test('users pick their admin language on their account screen', async () => {
   button('Slovenčina')!.click()
   await expect.poll(admin.text).toContain('Jazyk administrácie')
   expect((await host.me(jar.cookie)).locale).toBe('sk')
+})
+
+test('a language saved on the account screen shows even if reading /me again fails', async () => {
+  const user = await seedUser(db.url, { permissions: [] })
+  const jar = { cookie: await host.signIn(user.email, user.password) }
+  const send = host.browserFetch(jar)
+  let reads = 0
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+  onTestFinished(() => error.mockRestore())
+  mounted?.unmount()
+  history.replaceState(null, '', '/admin/account')
+  document.body.innerHTML = '<div id="app"></div>'
+  const app = createAdmin({
+    brand,
+    modules: adminModules,
+    buildId: 'b1',
+    fetch: async (input, init) =>
+      String(input instanceof Request ? input.url : input).endsWith('/api/me') && ++reads > 1
+        ? new Response('down', { status: 503 })
+        : send(input, init),
+  })
+  app.mount('#app')
+  onTestFinished(() => app.unmount())
+  await expect.poll(() => button('Slovenčina')).toBeDefined()
+  button('Slovenčina')!.click()
+  await expect.poll(() => document.documentElement.lang).toBe('sk')
+  expect(document.body.textContent).toContain('Jazyk administrácie')
 })
