@@ -98,5 +98,25 @@ export default async (ctx) => {
   evidence.push({ kind: 'page sections', before, during })
   check(during === before, `Remove section does nothing while the save is in flight (${before} -> ${during})`)
 
+  await page.goto(`${base}/admin/cms/pages/${page_.id}`)
+  let restores = 0
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && request.url().includes('/restore')) restores++
+  })
+  await page.getByRole('button', { name: 'View revision', exact: true }).first().click()
+  await page.getByRole('button', { name: 'Restore to draft', exact: true }).click()
+  const confirm = page.getByRole('dialog').getByRole('button', { name: 'Restore to draft', exact: true })
+  await confirm.focus()
+  const restored = page.waitForResponse((r) => r.url().includes('/restore') && r.request().method() === 'POST')
+  await page.keyboard.press('Enter')
+  await restored
+  await page.waitForResponse((r) => r.url().endsWith(`/pages/${page_.id}`) && r.request().method() === 'GET')
+  const inDialog = await page.evaluate(() => Boolean(document.activeElement?.closest('[role="dialog"]')))
+  await page.keyboard.press('Enter')
+  await page.waitForTimeout(1000)
+  evidence.push({ kind: 'restore', restores, inDialog })
+  check(!inDialog, 'focus does not return into the closing restore dialog')
+  check(restores === 1, `a keyboard-confirmed restore runs once; Enter afterwards does not restore again (${restores})`)
+
   await writeFile(`${process.env.EVIDENCE_DIR}/editor-lock.json`, JSON.stringify(evidence, null, 2))
 }
