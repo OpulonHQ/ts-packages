@@ -6,19 +6,25 @@ import { adminModules } from '../admin/modules.ts'
 // `await` adopts a plain Promise without calling `then`, so only a subclass sees every consumer.
 class Watched<T> extends Promise<T> {
   observed = false
+  pending: Array<Promise<unknown>> | undefined
   override then<A = T, B = never>(
     onFulfilled?: ((value: T) => A | PromiseLike<A>) | null,
     onRejected?: ((reason: unknown) => B | PromiseLike<B>) | null,
   ): Promise<A | B> {
     this.observed = true
-    return super.then(onFulfilled, onRejected)
+    const next = super.then(onFulfilled, onRejected)
+    if (this.pending && next instanceof Watched) {
+      next.pending = this.pending
+      this.pending.push(next)
+    }
+    return next
   }
 }
 
 /**
  * Admin journeys for one test file. When a test finishes, after its own cleanup callbacks, the
  * mounted admins unmount, the test's gates open and every call the admins or a `track`ed host
- * started settles, including calls chained within one timer tick (failing after 5s). A tracked
+ * started settles, including work chained on a tracked call (failing after 5s). A tracked
  * call that rejected while nothing awaited or caught it fails the test that started it. Calls
  * started between tests (`beforeAll`, `onTestFailed`) settle before the next test starts.
  * Vitest does not cancel a timed-out test body or hook, so once a test or its hooks time out,
@@ -55,6 +61,7 @@ export const useAdminLifetime = () => {
         const call = new Watched((resolve, reject) => {
           result.then(resolve, reject)
         })
+        call.pending = pending
         Promise.prototype.then.call(call, undefined, (error: unknown) =>
           rejected.push({ call, error }),
         )
@@ -69,7 +76,8 @@ export const useAdminLifetime = () => {
       let seen = 0
       do {
         for (; seen < pending.length; seen++)
-          await pending[seen]?.then(
+          await Promise.prototype.then.call(
+            pending[seen],
             () => {},
             () => {},
           )

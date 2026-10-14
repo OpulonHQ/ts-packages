@@ -78,7 +78,13 @@ const onFailure = admin.track({
   },
 })
 test.fails('a failing test that chains tracked calls from onTestFailed', ({ onTestFailed }) => {
-  onTestFailed(() => void onFailure.run().then(() => onFailure.run()))
+  onTestFailed(
+    () =>
+      void onFailure.run().then(async () => {
+        await later()
+        await onFailure.run()
+      }),
+  )
   expect('failed').toBe('passed')
 })
 
