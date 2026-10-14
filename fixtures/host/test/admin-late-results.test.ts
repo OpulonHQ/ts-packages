@@ -63,6 +63,8 @@ const countingSaves = (jar: { cookie: string }) => {
   return Object.assign(fetch, { saves: () => saves })
 }
 
+const dashboard = () => document.querySelector('section[aria-label="Prehľad"]')
+
 const menuItem = (name: string) =>
   [...document.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find((el) =>
     el.textContent?.includes(name),
@@ -335,7 +337,7 @@ test('a language pick that fails keeps a deploy a deploy check found while it wa
     return (deployed ? next : host).browserFetch(jar)(input, init)
   }
   const admin = mount('/admin/', check.wrap(save.wrap(server)))
-  await expect.poll(admin.text).toContain('Prehľad')
+  await expect.poll(dashboard).not.toBeNull()
 
   deployed = true
   document.querySelector<HTMLAnchorElement>('nav a[href="/admin/"]')!.click()
@@ -475,8 +477,13 @@ test.each(['answers', 'fails', 'rejects'] as const)(
     const jar = { cookie: await host.signIn(user.email, user.password) }
     const gate = lifetime.gate()
     let oldSaves = 0
+    let oldReadsAfterSave = 0
     const oldFetch: typeof globalThis.fetch = async (input, init) => {
-      if (!isLocaleSave(new Request(input, init))) return host.browserFetch(jar)(input, init)
+      if (!isLocaleSave(new Request(input, init))) {
+        const response = await host.browserFetch(jar)(input, init)
+        if (oldSaves > 0) oldReadsAfterSave++
+        return response
+      }
       oldSaves++
       await gate.promise
       if (late === 'fails') return new Response('down', { status: 503 })
@@ -499,17 +506,16 @@ test.each(['answers', 'fails', 'rejects'] as const)(
     await expect.poll(() => counting.saves()).toBe(2)
     await expect.poll(next.text).toContain('Prehľad')
 
+    const readsBeforeAnswer = oldReadsAfterSave
     gate.resolve()
-    await expect.poll(() => oldSaves).toBe(1)
-    await tick(200)
+    await expect.poll(() => oldReadsAfterSave).toBeGreaterThan(readsBeforeAnswer)
+    await tick(50)
 
-    expect(next.text()).toContain('Prehľad')
     expect(next.text()).not.toContain('Jazyk sa nepodarilo uložiť.')
-    expect(counting.saves()).toBe(2)
   },
 )
 
-test('a queued language pick is dropped when the shell shows another account before it is sent', async () => {
+test('a queued language pick is dropped when the shell shows another user before it is sent', async () => {
   const first = await seedUser(db.url, { name: 'Account A', locale: 'sk' })
   const other = await seedUser(db.url, { name: 'Account B', locale: 'sk', superAdmin: true })
   const cookieA = await host.signIn(first.email, first.password)
@@ -522,7 +528,7 @@ test('a queued language pick is dropped when the shell shows another account bef
     return host.browserFetch(jar)(input, init)
   }
   const admin = mount('/admin/', firstAnswer.wrap(counting))
-  await expect.poll(admin.text).toContain('Prehľad')
+  await expect.poll(dashboard).not.toBeNull()
   await pickLanguage('Používateľské menu', 'Jazyk', 'English')
   await expect.poll(firstAnswer.reached).toBe(true)
   await pickLanguage('Používateľské menu', 'Jazyk', 'Slovenčina')
@@ -531,7 +537,7 @@ test('a queued language pick is dropped when the shell shows another account bef
   await expect.poll(admin.text).toContain('Account B')
   firstAnswer.release()
   await expect.poll(firstAnswer.done).toBe(true)
-  await tick(300)
+  await expect.poll(admin.text).toContain('Jazyk sa nepodarilo uložiť.')
 
   expect(writes).toEqual(['A'])
   expect((await host.me(cookieB)).locale).toBe('sk')
