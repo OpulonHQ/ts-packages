@@ -136,6 +136,8 @@ const css = (brand: Brand | undefined, sources: ReadonlyArray<string>): string =
  * overrides, the self-hosted Inter font and an offline Lucide icon bundle. Add `@vitejs/plugin-vue`
  * next to it; `@opulonjs/admin/vite` does both.
  */
+const chunkingKeys = ['codeSplitting', 'manualChunks', 'advancedChunks']
+
 export const opulonUi = (options: UiPresetOptions = {}): Array<PluginOption> => {
   // Resolved with the Vite root (configResolved runs before any load).
   let sources: ReadonlyArray<string> = [kitDir]
@@ -171,17 +173,22 @@ export const opulonUi = (options: UiPresetOptions = {}): Array<PluginOption> => 
   // Nuxt UI's editor puts tiptap and ProseMirror in one chunk above Vite's 500 kB warning.
   const editorChunks: Plugin = {
     name: '@opulonjs/ui:editor-chunks',
-    config: () => ({
-      build: {
-        rolldownOptions: {
-          output: {
-            codeSplitting: {
-              groups: [{ name: 'prosemirror', test: /[\\/]prosemirror-[a-z-]+[\\/]/ }],
+    config: ({ build }) =>
+      [build?.rolldownOptions?.output, build?.rollupOptions?.output]
+        .flat()
+        .some((output) => output && chunkingKeys.some((key) => key in output))
+        ? undefined
+        : {
+            build: {
+              rolldownOptions: {
+                output: {
+                  codeSplitting: {
+                    groups: [{ name: 'prosemirror', test: /[\\/]prosemirror-[a-z-]+[\\/]/ }],
+                  },
+                },
+              },
             },
           },
-        },
-      },
-    }),
   }
   return [
     styles,
