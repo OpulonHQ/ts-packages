@@ -312,6 +312,7 @@ test('a restore over a draft another editor changed is refused and offers to rel
 
   button('Načítať koncept')!.click()
   await expect.poll(() => input('locales.en.path')?.value).toBe('/admin-restore-stale-theirs')
+  await expect.poll(text).not.toContain('Tento koncept medzitým zmenil niekto iný.')
 })
 
 test('view-only editors can inspect revisions and cannot restore', async () => {
