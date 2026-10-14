@@ -176,8 +176,8 @@ export const createAdmin = (options: AdminOptions): App => {
     const turn = ++epoch
     return () => !unmounted && turn === epoch
   }
-  let waitingPicks = 0
-  const waitsForPick = (userId: string) => waitingPicks > 0 && userId === me.value?.user.id
+  const waitingPicks: Array<string> = []
+  const waitsForPick = (userId: string) => waitingPicks.includes(userId)
   // The latest successful write, applied only when the read after it fails for the same user.
   // Write order only stops an older write's late answer from re-arming it.
   let lastWrite:
@@ -364,12 +364,12 @@ export const createAdmin = (options: AdminOptions): App => {
   const saveLocale = async (locale: string | null, save: (userId: string) => Promise<void>) => {
     const userId = me.value?.user.id
     if (!userId) return
-    waitingPicks++
+    waitingPicks.push(userId)
     const write = pageLocaleSaves.then(() => {
       if (unmounted) throw new Error('the admin unmounted before this language was saved')
       return save(userId)
     })
-    const picked = () => void waitingPicks--
+    const picked = () => void waitingPicks.splice(waitingPicks.indexOf(userId), 1)
     pageLocaleSaves = write.then(picked, picked)
     await afterWrite(write, async (live) => {
       await applyLocale(locale, enabled.value, live)
