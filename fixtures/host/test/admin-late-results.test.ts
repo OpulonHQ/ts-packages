@@ -415,6 +415,27 @@ test('a language save still on its way when the admin unmounts does not overwrit
   expect(document.documentElement.lang).toBe('sk')
 })
 
+test('the next admin shows the language an unmounted admin saved after it mounted', async () => {
+  const user = await seedUser(db.url, { name: 'Remount Converges', locale: 'sk' })
+  const jar = { cookie: await host.signIn(user.email, user.password) }
+  const save = held(isLocaleSave)
+  const old = mount('/admin/', save.wrap(host.browserFetch(jar)))
+  await expect.poll(old.text).toContain('Prehľad')
+  await pickLanguage('Používateľské menu', 'Jazyk', 'English')
+  await expect.poll(save.reached).toBe(true)
+  old.unmount()
+
+  const next = mount('/admin/', host.browserFetch(jar))
+  await expect.poll(next.text).toContain('Prehľad')
+  save.release()
+  await expect.poll(save.done).toBe(true)
+  await tick(200)
+
+  expect((await host.me(jar.cookie)).locale).toBe('en')
+  expect(document.documentElement.lang).toBe('en')
+  expect(next.text()).toContain('Dashboard')
+})
+
 test('a language save that answers after a sign-out does not keep the user signed in when reads fail', async () => {
   const user = await seedUser(db.url, { name: 'Save Then Sign-out', locale: 'sk' })
   const jar = { cookie: await host.signIn(user.email, user.password) }
