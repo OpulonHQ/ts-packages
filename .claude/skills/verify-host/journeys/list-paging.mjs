@@ -235,7 +235,12 @@ export default async (ctx) => {
   })
   const search = picker.getByRole('textbox', { name: 'Search items…', exact: true })
   await search.fill('Paging 001')
-  await oldStarted
+  await Promise.race([
+    oldStarted,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('the picker never searched for "Paging 001"')), 15_000),
+    ),
+  ])
   const newerSearch = page.waitForResponse(
     (response) => new URL(response.url()).searchParams.get('search') === 'Paging 045',
   )

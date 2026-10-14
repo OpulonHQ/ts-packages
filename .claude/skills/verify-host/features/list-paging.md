@@ -4,8 +4,8 @@ What it proves: the users list, the collection items list and the reference pick
 
 ## Run
 
-1. Baseline preconditions from [README.md](README.md), and `VERIFY_DATABASE_URL` from `env.sh` (the journey reads invitation mail from the database and creates its seed rows only once, recorded in `.verify/paging-data.json`).
-2. `EVIDENCE_DIR=.verify/paging $V/ui.sh journeys/list-paging.mjs`
+1. Baseline preconditions from [README.md](README.md). The journey reads invitation mail from the verify database and records its seed rows once in `.verify/paging-data.json`.
+2. `VERIFY_DATABASE_URL="$(. $V/env.sh && echo "$db_url")" EVIDENCE_DIR=.verify/paging $V/ui.sh .claude/skills/verify-host/journeys/list-paging.mjs` from the repository root.
 3. Expect every `check` line to pass in `ui.log`, with screenshots of users pages one and two, item title sorting, the picker search and selection (desktop and phone), the single link beyond page one and the missing reference.
 
 The journey removes its temporary invitation-mail trigger when it ends.
