@@ -77,3 +77,19 @@ test('does not count a prebundled package stylesheet as a second instance', asyn
   })
   expect((await packagesLoadedTwice(vite, '/main.ts')).twice).toEqual([])
 })
+
+test.each([
+  ["import icon from 'dual/icon.svg'; console.log(icon)"],
+  ["import text from 'dual/sub.js?raw'; console.log(text)"],
+  ["import url from 'dual/sub.js?url'; console.log(url)"],
+])('does not count a prebundled package asset as a second instance: %s', async (main) => {
+  const vite = await devServer('dual', main, {
+    'node_modules/dual/package.json': JSON.stringify({
+      name: 'dual',
+      type: 'module',
+      exports: { '.': './index.js', './sub.js': './sub.js', './icon.svg': './icon.svg' },
+    }),
+    'node_modules/dual/icon.svg': '<svg xmlns="http://www.w3.org/2000/svg"/>',
+  })
+  expect((await packagesLoadedTwice(vite, '/main.ts')).twice).toEqual([])
+})

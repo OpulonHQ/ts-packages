@@ -1,6 +1,10 @@
 import { readFileSync } from 'node:fs'
 import { isCSSRequest, type ViteDevServer } from 'vite'
 
+const assetQuery = /[?&](?:url|raw|inline|worker|sharedworker)\b/
+// Only script modules hold package state; stylesheets and asset imports (?url, ?raw) do not.
+const isScript = (url: string, file: string) =>
+  /\.(?:[cm]?[jt]sx?|vue)$/.test(file) && !assetQuery.test(url)
 const packageOf = (path: string) =>
   /node_modules\/(?:\.pnpm\/[^/]+\/node_modules\/)?((?:@[^/]+\/)?[^/]+)\//.exec(path)?.[1]
 
@@ -17,15 +21,18 @@ export const packagesLoadedTwice = async (vite: ViteDevServer, entry: string) =>
       frontier.map(async (url) => {
         const code = (await vite.transformRequest(url))?.code ?? ''
         const edges = [...((await graph.getModuleByUrl(url))?.importedModules ?? [])]
-        // A stylesheet's other edges are Tailwind's content sources, not modules the page loads.
-        return isCSSRequest(url) ? edges.filter((edge) => code.includes(edge.url)) : edges
+        // A stylesheet's or asset's other edges are watched source files (Tailwind content, the
+        // raw file), not modules the page loads.
+        return isCSSRequest(url) || assetQuery.test(url)
+          ? edges.filter((edge) => code.includes(edge.url))
+          : edges
       }),
     )
     frontier = []
     for (const { url, file } of imported.flat()) {
       if (seen.has(url) || url.includes('/.vite/deps/')) continue
       seen.add(url)
-      const name = file && !isCSSRequest(file) ? packageOf(file) : undefined
+      const name = file && isScript(url, file) ? packageOf(file) : undefined
       if (name) raw.add(name)
       frontier.push(url)
     }
