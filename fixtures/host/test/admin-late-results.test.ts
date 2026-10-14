@@ -573,3 +573,96 @@ test('a language save in the next test is sent at once after one held when its t
   await expect.poll(admin.text).toContain('Dashboard')
   expect((await host.me(jar.cookie)).locale).toBe('en')
 })
+
+test.each(['answers', 'fails', 'rejects'] as const)(
+  'a language save from an unmounted admin that %s late neither holds back nor undoes the next admin pick',
+  async (late) => {
+    const user = await seedUser(db.url, { name: `Late Old Save ${late}`, locale: 'sk' })
+    const jar = { cookie: await host.signIn(user.email, user.password) }
+    const gate = lifetime.gate()
+    let oldSaves = 0
+    const oldFetch: typeof globalThis.fetch = async (input, init) => {
+      if (!isLocaleSave(new Request(input, init))) return host.browserFetch(jar)(input, init)
+      oldSaves++
+      await gate.promise
+      if (late === 'fails') return new Response('down', { status: 503 })
+      if (late === 'rejects') throw new TypeError('the network went away')
+      return host.browserFetch(jar)(input, init)
+    }
+    const old = mount('/admin/', oldFetch)
+    await expect.poll(old.text).toContain('Prehľad')
+    await pickLanguage('Používateľské menu', 'Jazyk', 'English')
+    await expect.poll(() => oldSaves).toBe(1)
+    old.unmount()
+
+    let saved = 0
+    const counting: typeof globalThis.fetch = async (input, init) => {
+      const response = await host.browserFetch(jar)(input, init)
+      if (isLocaleSave(new Request(input, init))) saved++
+      return response
+    }
+    const next = mount('/admin/', counting)
+    await expect.poll(next.text).toContain('Prehľad')
+    await pickLanguage('Používateľské menu', 'Jazyk', 'English')
+    await expect.poll(() => saved).toBe(1)
+    await expect.poll(next.text).toContain('Dashboard')
+    await pickLanguage('User menu', 'Language', 'Slovenčina')
+    await expect.poll(() => saved).toBe(2)
+    await expect.poll(next.text).toContain('Prehľad')
+
+    gate.resolve()
+    await expect.poll(async () => (await host.me(jar.cookie)).locale).toBe('sk')
+    await tick(200)
+
+    expect((await host.me(jar.cookie)).locale).toBe('sk')
+    expect(document.documentElement.lang).toBe('sk')
+    expect(next.text()).toContain('Prehľad')
+    expect(saved).toBe(late === 'answers' ? 3 : 2)
+  },
+)
+
+test('a pick is not saved again for another account shown when an unmounted admin save answers', async () => {
+  const first = await seedUser(db.url, { name: 'Picking Account', locale: 'sk' })
+  const other = await seedUser(db.url, { name: 'Other Account Shown', locale: 'sk' })
+  const jar = { cookie: await host.signIn(first.email, first.password) }
+  const otherCookie = await host.signIn(other.email, other.password)
+  const oldJar = { cookie: jar.cookie }
+  const gate = lifetime.gate()
+  let oldSaves = 0
+  const oldFetch: typeof globalThis.fetch = async (input, init) => {
+    if (isLocaleSave(new Request(input, init))) {
+      oldSaves++
+      await gate.promise
+    }
+    return host.browserFetch(oldJar)(input, init)
+  }
+  const old = mount('/admin/', oldFetch)
+  await expect.poll(old.text).toContain('Prehľad')
+  await pickLanguage('Používateľské menu', 'Jazyk', 'English')
+  await expect.poll(() => oldSaves).toBe(1)
+  old.unmount()
+
+  let saved = 0
+  const counting: typeof globalThis.fetch = async (input, init) => {
+    const response = await host.browserFetch(jar)(input, init)
+    if (isLocaleSave(new Request(input, init))) saved++
+    return response
+  }
+  const next = mount('/admin/', counting)
+  await expect.poll(next.text).toContain('Prehľad')
+  await pickLanguage('Používateľské menu', 'Jazyk', 'English')
+  await expect.poll(() => saved).toBe(1)
+  await expect.poll(next.text).toContain('Dashboard')
+  jar.cookie = otherCookie
+  document.querySelector<HTMLAnchorElement>('nav a[href="/admin/"]')!.click()
+  await expect.poll(next.text).toContain('Other Account Shown')
+
+  gate.resolve()
+  await expect.poll(() => oldSaves).toBe(1)
+  await tick(200)
+
+  expect((await host.me(oldJar.cookie)).locale).toBe('en')
+  expect(saved).toBe(1)
+  expect((await host.me(otherCookie)).locale).toBe('sk')
+  expect(document.documentElement.lang).toBe('sk')
+})
