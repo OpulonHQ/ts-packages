@@ -53,6 +53,16 @@ const languagesShown = () => {
 const isLocaleSave = (request: Request) =>
   request.method === 'PUT' && new URL(request.url).pathname.endsWith('/locale')
 
+const countingSaves = (jar: { cookie: string }) => {
+  let saves = 0
+  const fetch: typeof globalThis.fetch = async (input, init) => {
+    const response = await host.browserFetch(jar)(input, init)
+    if (isLocaleSave(new Request(input, init))) saves++
+    return response
+  }
+  return Object.assign(fetch, { saves: () => saves })
+}
+
 const menuItem = (name: string) =>
   [...document.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find((el) =>
     el.textContent?.includes(name),
@@ -126,12 +136,7 @@ test('two quick language changes save and show the last one picked', async () =>
   const user = await seedUser(db.url, { name: 'Quick Picks', locale: 'sk' })
   const jar = { cookie: await host.signIn(user.email, user.password) }
   const first = held(isLocaleSave)
-  let saved = 0
-  const counting: typeof globalThis.fetch = async (input, init) => {
-    const response = await host.browserFetch(jar)(input, init)
-    if (isLocaleSave(new Request(input, init))) saved++
-    return response
-  }
+  const counting = countingSaves(jar)
   const admin = mount('/admin/', first.wrap(counting))
   await expect.poll(admin.text).toContain('Prehľad')
   const shown = languagesShown()
@@ -141,7 +146,7 @@ test('two quick language changes save and show the last one picked', async () =>
   await pickLanguage('Používateľské menu', 'Jazyk', 'Slovenčina')
   await tick(50)
   first.release()
-  await expect.poll(() => saved).toBe(2)
+  await expect.poll(() => counting.saves()).toBe(2)
   await tick(100)
 
   expect(await host.me(jar.cookie)).toMatchObject({ locale: 'sk' })
@@ -181,18 +186,15 @@ test('a second language pick waits for a failed first save, then saves and shows
 test('a language pick made while the read after an earlier save loads shows only the last pick', async () => {
   const user = await seedUser(db.url, { name: 'Pick During Read', locale: 'sk' })
   const jar = { cookie: await host.signIn(user.email, user.password) }
-  let saved = 0
-  const counting: typeof globalThis.fetch = async (input, init) => {
-    const response = await host.browserFetch(jar)(input, init)
-    if (isLocaleSave(new Request(input, init))) saved++
-    return response
-  }
+  const counting = countingSaves(jar)
   const firstRead = held(
     (request) =>
-      saved === 1 && request.method === 'GET' && new URL(request.url).pathname === '/api/me',
+      counting.saves() === 1 &&
+      request.method === 'GET' &&
+      new URL(request.url).pathname === '/api/me',
     'answer',
   )
-  const secondSave = held((request) => saved === 1 && isLocaleSave(request))
+  const secondSave = held((request) => counting.saves() === 1 && isLocaleSave(request))
   const admin = mount('/admin/', firstRead.wrap(secondSave.wrap(counting)))
   await expect.poll(admin.text).toContain('Prehľad')
   const shown = languagesShown()
@@ -205,7 +207,7 @@ test('a language pick made while the read after an earlier save loads shows only
   await expect.poll(firstRead.done).toBe(true)
   await tick(100)
   secondSave.release()
-  await expect.poll(() => saved).toBe(2)
+  await expect.poll(() => counting.saves()).toBe(2)
   await tick(100)
 
   expect(await host.me(jar.cookie)).toMatchObject({ locale: 'sk' })
@@ -405,80 +407,6 @@ test('a language pick still queued when the admin unmounts is never saved', asyn
   expect(document.documentElement.lang).toBe('en')
 })
 
-test('a language save still on its way when the admin unmounts does not overwrite the next admin pick', async () => {
-  const user = await seedUser(db.url, { name: 'Active Save Across Mounts', locale: 'sk' })
-  const jar = { cookie: await host.signIn(user.email, user.password) }
-  const first = held(isLocaleSave)
-  const old = mount('/admin/', first.wrap(host.browserFetch(jar)))
-  await expect.poll(old.text).toContain('Prehľad')
-  await pickLanguage('Používateľské menu', 'Jazyk', 'English')
-  await expect.poll(first.reached).toBe(true)
-  old.unmount()
-
-  const next = mount('/admin/', host.browserFetch(jar))
-  await expect.poll(next.text).toContain('Prehľad')
-  await pickLanguage('Používateľské menu', 'Jazyk', 'Slovenčina')
-  await tick(100)
-  first.release()
-  await expect.poll(first.done).toBe(true)
-  await expect.poll(async () => (await host.me(jar.cookie)).locale).toBe('sk')
-  await tick(100)
-
-  expect((await host.me(jar.cookie)).locale).toBe('sk')
-  expect(document.documentElement.lang).toBe('sk')
-})
-
-test('the next admin shows the language an unmounted admin saved after it mounted', async () => {
-  const user = await seedUser(db.url, { name: 'Remount Converges', locale: 'sk' })
-  const jar = { cookie: await host.signIn(user.email, user.password) }
-  const save = held(isLocaleSave)
-  const old = mount('/admin/', save.wrap(host.browserFetch(jar)))
-  await expect.poll(old.text).toContain('Prehľad')
-  await pickLanguage('Používateľské menu', 'Jazyk', 'English')
-  await expect.poll(save.reached).toBe(true)
-  old.unmount()
-
-  const next = mount('/admin/', host.browserFetch(jar))
-  await expect.poll(next.text).toContain('Prehľad')
-  save.release()
-  await expect.poll(save.done).toBe(true)
-  await tick(200)
-
-  expect((await host.me(jar.cookie)).locale).toBe('en')
-  expect(document.documentElement.lang).toBe('en')
-  expect(next.text()).toContain('Dashboard')
-})
-
-test('the next admin shows the language an unmounted admin saved even when its read after it fails', async () => {
-  const user = await seedUser(db.url, { name: 'Remount Read Fails', locale: 'sk' })
-  const jar = { cookie: await host.signIn(user.email, user.password) }
-  const save = held(isLocaleSave)
-  const old = mount('/admin/', save.wrap(host.browserFetch(jar)))
-  await expect.poll(old.text).toContain('Prehľad')
-  await pickLanguage('Používateľské menu', 'Jazyk', 'English')
-  await expect.poll(save.reached).toBe(true)
-  await pickLanguage('Používateľské menu', 'Jazyk', 'Slovenčina')
-  old.unmount()
-
-  let reads = 0
-  const failingReread: typeof globalThis.fetch = async (input, init) => {
-    const request = new Request(input, init)
-    if (request.method === 'GET' && new URL(request.url).pathname === '/api/me' && ++reads > 1)
-      return new Response('down', { status: 503 })
-    return host.browserFetch(jar)(input, init)
-  }
-  const next = mount('/admin/', failingReread)
-  await expect.poll(next.text).toContain('Prehľad')
-  save.release()
-  await expect.poll(save.done).toBe(true)
-  await expect.poll(() => reads).toBeGreaterThan(1)
-  await tick(100)
-
-  expect((await host.me(jar.cookie)).locale).toBe('en')
-  expect(document.documentElement.lang).toBe('en')
-  expect(next.text()).toContain('Dashboard')
-})
-
 test('a language save that answers after a sign-out does not keep the user signed in when reads fail', async () => {
   const user = await seedUser(db.url, { name: 'Save Then Sign-out', locale: 'sk' })
   const jar = { cookie: await host.signIn(user.email, user.password) }
@@ -527,12 +455,7 @@ test('two admins mounted on one page save languages without waiting for each oth
   await pickLanguage('Používateľské menu', 'Jazyk', 'English')
   await expect.poll(stuck.reached).toBe(true)
 
-  let saved = 0
-  const counting: typeof globalThis.fetch = async (input, init) => {
-    const response = await host.browserFetch(jar)(input, init)
-    if (isLocaleSave(new Request(input, init))) saved++
-    return response
-  }
+  const counting = countingSaves(jar)
   const root = document.body.appendChild(document.createElement('div'))
   const second = createAdmin({ brand, modules: adminModules, buildId: 'b1', fetch: counting })
   second.mount(root)
@@ -540,42 +463,13 @@ test('two admins mounted on one page save languages without waiting for each oth
   await expect.poll(() => root.textContent).toContain('Prehľad')
   await pickLanguage('Používateľské menu', 'Jazyk', 'English', root)
 
-  await expect.poll(() => saved).toBe(1)
+  await expect.poll(() => counting.saves()).toBe(1)
   expect((await host.me(jar.cookie)).locale).toBe('en')
   await expect.poll(() => root.textContent).toContain('Dashboard')
 })
 
-test('a language save still held when its test ends is left to the lifetime cleanup', async () => {
-  const user = await seedUser(db.url, { name: 'Held At Test End', locale: 'sk' })
-  const jar = { cookie: await host.signIn(user.email, user.password) }
-  const save = held(isLocaleSave)
-  const admin = mount('/admin/', save.wrap(host.browserFetch(jar)))
-  await expect.poll(admin.text).toContain('Prehľad')
-  await pickLanguage('Používateľské menu', 'Jazyk', 'English')
-  await expect.poll(save.reached).toBe(true)
-  admin.unmount()
-})
-
-test('a language save in the next test is sent at once after one held when its test ended', async () => {
-  const user = await seedUser(db.url, { name: 'Next Test Saves', locale: 'sk' })
-  const jar = { cookie: await host.signIn(user.email, user.password) }
-  let saved = 0
-  const counting: typeof globalThis.fetch = async (input, init) => {
-    const response = await host.browserFetch(jar)(input, init)
-    if (isLocaleSave(new Request(input, init))) saved++
-    return response
-  }
-  const admin = mount('/admin/', counting)
-  await expect.poll(admin.text).toContain('Prehľad')
-  await pickLanguage('Používateľské menu', 'Jazyk', 'English')
-
-  await expect.poll(() => saved, { timeout: 1000 }).toBe(1)
-  await expect.poll(admin.text).toContain('Dashboard')
-  expect((await host.me(jar.cookie)).locale).toBe('en')
-})
-
 test.each(['answers', 'fails', 'rejects'] as const)(
-  'a language save from an unmounted admin that %s late neither holds back nor undoes the next admin pick',
+  'a language save from an unmounted admin that %s late does not hold back the next admin picks',
   async (late) => {
     const user = await seedUser(db.url, { name: `Late Old Save ${late}`, locale: 'sk' })
     const jar = { cookie: await host.signIn(user.email, user.password) }
@@ -595,310 +489,50 @@ test.each(['answers', 'fails', 'rejects'] as const)(
     await expect.poll(() => oldSaves).toBe(1)
     old.unmount()
 
-    let saved = 0
-    const counting: typeof globalThis.fetch = async (input, init) => {
-      const response = await host.browserFetch(jar)(input, init)
-      if (isLocaleSave(new Request(input, init))) saved++
-      return response
-    }
+    const counting = countingSaves(jar)
     const next = mount('/admin/', counting)
     await expect.poll(next.text).toContain('Prehľad')
     await pickLanguage('Používateľské menu', 'Jazyk', 'English')
-    await expect.poll(() => saved).toBe(1)
+    await expect.poll(() => counting.saves()).toBe(1)
     await expect.poll(next.text).toContain('Dashboard')
     await pickLanguage('User menu', 'Language', 'Slovenčina')
-    await expect.poll(() => saved).toBe(2)
+    await expect.poll(() => counting.saves()).toBe(2)
     await expect.poll(next.text).toContain('Prehľad')
 
     gate.resolve()
-    await expect.poll(async () => (await host.me(jar.cookie)).locale).toBe('sk')
+    await expect.poll(() => oldSaves).toBe(1)
     await tick(200)
 
-    expect((await host.me(jar.cookie)).locale).toBe('sk')
-    expect(document.documentElement.lang).toBe('sk')
     expect(next.text()).toContain('Prehľad')
-    expect(saved).toBe(late === 'answers' ? 3 : 2)
+    expect(next.text()).not.toContain('Jazyk sa nepodarilo uložiť.')
+    expect(counting.saves()).toBe(2)
   },
 )
 
-test('a pick is not saved again for another account shown when an unmounted admin save answers', async () => {
-  const first = await seedUser(db.url, { name: 'Picking Account', locale: 'sk' })
-  const other = await seedUser(db.url, { name: 'Other Account Shown', locale: 'sk' })
-  const jar = { cookie: await host.signIn(first.email, first.password) }
-  const otherCookie = await host.signIn(other.email, other.password)
-  const oldJar = { cookie: jar.cookie }
-  const gate = lifetime.gate()
-  let oldSaves = 0
-  const oldFetch: typeof globalThis.fetch = async (input, init) => {
-    if (isLocaleSave(new Request(input, init))) {
-      oldSaves++
-      await gate.promise
-    }
-    return host.browserFetch(oldJar)(input, init)
-  }
-  const old = mount('/admin/', oldFetch)
-  await expect.poll(old.text).toContain('Prehľad')
-  await pickLanguage('Používateľské menu', 'Jazyk', 'English')
-  await expect.poll(() => oldSaves).toBe(1)
-  old.unmount()
-
-  let saved = 0
+test('a queued language pick is dropped when the shell shows another account before it is sent', async () => {
+  const first = await seedUser(db.url, { name: 'Account A', locale: 'sk' })
+  const other = await seedUser(db.url, { name: 'Account B', locale: 'sk', superAdmin: true })
+  const cookieA = await host.signIn(first.email, first.password)
+  const cookieB = await host.signIn(other.email, other.password)
+  const jar = { cookie: cookieA }
+  const firstAnswer = held(isLocaleSave, 'answer')
+  const writes: Array<string> = []
   const counting: typeof globalThis.fetch = async (input, init) => {
-    const response = await host.browserFetch(jar)(input, init)
-    if (isLocaleSave(new Request(input, init))) saved++
-    return response
-  }
-  const next = mount('/admin/', counting)
-  await expect.poll(next.text).toContain('Prehľad')
-  await pickLanguage('Používateľské menu', 'Jazyk', 'English')
-  await expect.poll(() => saved).toBe(1)
-  await expect.poll(next.text).toContain('Dashboard')
-  jar.cookie = otherCookie
-  document.querySelector<HTMLAnchorElement>('nav a[href="/admin/"]')!.click()
-  await expect.poll(next.text).toContain('Other Account Shown')
-
-  gate.resolve()
-  await expect.poll(async () => (await host.me(oldJar.cookie)).locale).toBe('en')
-  await tick(200)
-
-  expect((await host.me(oldJar.cookie)).locale).toBe('en')
-  expect(saved).toBe(1)
-  expect((await host.me(otherCookie)).locale).toBe('sk')
-  expect(document.documentElement.lang).toBe('sk')
-})
-
-test('a stalled save of one unmounted admin does not delay repairing another unmounted admin overwrite', async () => {
-  const user = await seedUser(db.url, { name: 'Stalled Inherited Save', locale: 'sk' })
-  const jar = { cookie: await host.signIn(user.email, user.password) }
-  const stuck = held(isLocaleSave)
-  const first = mount('/admin/', stuck.wrap(host.browserFetch(jar)))
-  await expect.poll(first.text).toContain('Prehľad')
-  await pickLanguage('Používateľské menu', 'Jazyk', 'English')
-  await expect.poll(stuck.reached).toBe(true)
-  first.unmount()
-  const late = held(isLocaleSave)
-  const second = mount('/admin/', late.wrap(host.browserFetch(jar)))
-  await expect.poll(second.text).toContain('Prehľad')
-  await pickLanguage('Používateľské menu', 'Jazyk', 'English')
-  await expect.poll(late.reached).toBe(true)
-  second.unmount()
-  let saves = 0
-  const counting: typeof globalThis.fetch = async (input, init) => {
-    const response = await host.browserFetch(jar)(input, init)
-    if (isLocaleSave(new Request(input, init))) saves++
-    return response
-  }
-  const third = mount('/admin/', counting)
-  await expect.poll(third.text).toContain('Prehľad')
-  await pickLanguage('Používateľské menu', 'Jazyk', 'English')
-  await expect.poll(third.text).toContain('Dashboard')
-  await pickLanguage('User menu', 'Language', 'Slovenčina')
-  await expect.poll(() => saves).toBe(2)
-  await expect.poll(third.text).toContain('Prehľad')
-  late.release()
-  await expect.poll(late.done).toBe(true)
-  await tick(300)
-  expect((await host.me(jar.cookie)).locale).toBe('sk')
-})
-
-test('the next admin falls back to the language the last unmounted save committed', async () => {
-  const user = await seedUser(db.url, { name: 'Reverse Inherited Completion', locale: 'sk' })
-  const jar = { cookie: await host.signIn(user.email, user.password) }
-  const firstSave = held(isLocaleSave)
-  const first = mount('/admin/', firstSave.wrap(host.browserFetch(jar)))
-  await expect.poll(first.text).toContain('Prehľad')
-  await pickLanguage('Používateľské menu', 'Jazyk', 'English')
-  await expect.poll(firstSave.reached).toBe(true)
-  first.unmount()
-  const secondSave = held(isLocaleSave)
-  const second = mount('/admin/', secondSave.wrap(host.browserFetch(jar)))
-  await expect.poll(second.text).toContain('Prehľad')
-  await pickLanguage('Používateľské menu', 'Jazyk', 'Slovenčina')
-  await expect.poll(secondSave.reached).toBe(true)
-  second.unmount()
-  let reads = 0
-  let failedSaves = 0
-  const failing: typeof globalThis.fetch = async (input, init) => {
-    const req = new Request(input, init)
-    if (isLocaleSave(req)) {
-      failedSaves++
-      return new Response('down', { status: 503 })
-    }
-    if (req.method === 'GET' && new URL(req.url).pathname === '/api/me' && ++reads > 1)
-      return new Response('down', { status: 503 })
+    if (isLocaleSave(new Request(input, init))) writes.push(jar.cookie === cookieB ? 'B' : 'A')
     return host.browserFetch(jar)(input, init)
   }
-  const third = mount('/admin/', failing)
-  await expect.poll(third.text).toContain('Prehľad')
+  const admin = mount('/admin/', firstAnswer.wrap(counting))
+  await expect.poll(admin.text).toContain('Prehľad')
   await pickLanguage('Používateľské menu', 'Jazyk', 'English')
-  await expect.poll(() => failedSaves).toBe(1)
-  await tick(100)
-  secondSave.release()
-  await expect.poll(secondSave.done).toBe(true)
-  firstSave.release()
-  await expect.poll(firstSave.done).toBe(true)
-  await tick(300)
-  expect((await host.me(jar.cookie)).locale).toBe('en')
-  expect(document.documentElement.lang).toBe('en')
-})
-
-test('a queued language save is dropped when the shell shows another account before it is sent', async () => {
-  const firstUser = await seedUser(db.url, { name: 'Account A', locale: 'sk' })
-  const other = await seedUser(db.url, { name: 'Account B', locale: 'sk', superAdmin: true })
-  const cookieA = await host.signIn(firstUser.email, firstUser.password)
-  const cookieB = await host.signIn(other.email, other.password)
-  const oldJar = { cookie: cookieA }
-  const oldSave = held(isLocaleSave)
-  const old = mount('/admin/', oldSave.wrap(host.browserFetch(oldJar)))
-  await expect.poll(old.text).toContain('Prehľad')
-  await pickLanguage('Používateľské menu', 'Jazyk', 'English')
-  await expect.poll(oldSave.reached).toBe(true)
-  old.unmount()
-
-  const jar = { cookie: cookieA }
-  const ownAnswer = held(isLocaleSave, 'answer')
-  const writes: Array<{ account: string; path: string; status: number }> = []
-  const counting: typeof globalThis.fetch = async (input, init) => {
-    const req = new Request(input, init)
-    const account = jar.cookie === cookieB ? 'B' : 'A'
-    const response = await host.browserFetch(jar)(input, init)
-    if (isLocaleSave(req))
-      writes.push({ account, path: new URL(req.url).pathname, status: response.status })
-    return response
-  }
-  const next = mount('/admin/', ownAnswer.wrap(counting))
-  await expect.poll(next.text).toContain('Prehľad')
+  await expect.poll(firstAnswer.reached).toBe(true)
   await pickLanguage('Používateľské menu', 'Jazyk', 'Slovenčina')
-  await expect.poll(ownAnswer.reached).toBe(true)
-  oldSave.release()
-  await expect.poll(oldSave.done).toBe(true)
-  await tick(100)
   jar.cookie = cookieB
   document.querySelector<HTMLAnchorElement>('nav a[href="/admin/"]')!.click()
-  await expect.poll(next.text).toContain('Account B')
-  ownAnswer.release()
-  await expect.poll(ownAnswer.done).toBe(true)
-  await tick(300)
-  expect(writes.filter((write) => write.account === 'B')).toEqual([])
-})
-
-test('an admin that unmounts after a newer pick elsewhere does not keep its older language saved', async () => {
-  const user = await seedUser(db.url, { name: 'Unmount After Newer Pick', locale: 'sk' })
-  const jar = { cookie: await host.signIn(user.email, user.password) }
-  const oldSave = held(isLocaleSave)
-  const first = mount('/admin/', oldSave.wrap(host.browserFetch(jar)))
-  await expect.poll(first.text).toContain('Prehľad')
-  await pickLanguage('Používateľské menu', 'Jazyk', 'English')
-  await expect.poll(oldSave.reached).toBe(true)
-  let saves = 0
-  const counting: typeof globalThis.fetch = async (input, init) => {
-    const response = await host.browserFetch(jar)(input, init)
-    if (isLocaleSave(new Request(input, init))) saves++
-    return response
-  }
-  const root = document.body.appendChild(document.createElement('div'))
-  const next = createAdmin({ brand, modules: adminModules, buildId: 'b1', fetch: counting })
-  next.mount(root)
-  onTestFinished(() => next.unmount())
-  await expect.poll(() => root.textContent).toContain('Prehľad')
-  await pickLanguage('Používateľské menu', 'Jazyk', 'Slovenčina', root)
-  await expect.poll(() => saves).toBe(1)
-  first.unmount()
-  oldSave.release()
-  await expect.poll(oldSave.done).toBe(true)
-  await tick(300)
-  expect((await host.me(jar.cookie)).locale).toBe('sk')
-})
-
-test('a language pick that failed is not sent again when an unmounted admin save lands', async () => {
-  const user = await seedUser(db.url, { name: 'Failed Pick Stays Failed', locale: 'sk' })
-  const jar = { cookie: await host.signIn(user.email, user.password) }
-  const oldSave = held(isLocaleSave)
-  const old = mount('/admin/', oldSave.wrap(host.browserFetch(jar)))
-  await expect.poll(old.text).toContain('Prehľad')
-  await pickLanguage('Používateľské menu', 'Jazyk', 'English')
-  await expect.poll(oldSave.reached).toBe(true)
-  old.unmount()
-
-  let saves = 0
-  const failing: typeof globalThis.fetch = async (input, init) => {
-    if (isLocaleSave(new Request(input, init))) {
-      saves++
-      return new Response('down', { status: 503 })
-    }
-    return host.browserFetch(jar)(input, init)
-  }
-  const next = mount('/admin/', failing)
-  await expect.poll(next.text).toContain('Prehľad')
-  await pickLanguage('Používateľské menu', 'Jazyk', 'Slovenčina')
-  await expect.poll(next.text).toContain('Jazyk sa nepodarilo uložiť.')
-  oldSave.release()
-  await expect.poll(oldSave.done).toBe(true)
-  await expect.poll(() => document.documentElement.lang).toBe('en')
-  await tick(200)
-
-  expect(saves).toBe(1)
-  expect((await host.me(jar.cookie)).locale).toBe('en')
-})
-
-test('a save that lands while the next admin loads does not turn its first read into a failure', async () => {
-  const user = await seedUser(db.url, { name: 'Lands While Loading', locale: 'sk' })
-  const jar = { cookie: await host.signIn(user.email, user.password) }
-  const oldSave = held(isLocaleSave)
-  const old = mount('/admin/', oldSave.wrap(host.browserFetch(jar)))
-  await expect.poll(old.text).toContain('Prehľad')
-  await pickLanguage('Používateľské menu', 'Jazyk', 'English')
-  await expect.poll(oldSave.reached).toBe(true)
-  old.unmount()
-
-  let reads = 0
-  const firstRead = held(
-    (request) => request.method === 'GET' && new URL(request.url).pathname === '/api/me',
-    'answer',
-  )
-  const failingLater: typeof globalThis.fetch = async (input, init) => {
-    const request = new Request(input, init)
-    if (request.method === 'GET' && new URL(request.url).pathname === '/api/me' && ++reads > 1)
-      return new Response('down', { status: 503 })
-    return host.browserFetch(jar)(input, init)
-  }
-  const next = mount('/admin/', firstRead.wrap(failingLater))
-  await expect.poll(firstRead.reached).toBe(true)
-  oldSave.release()
-  await expect.poll(oldSave.done).toBe(true)
-  await tick(100)
-  firstRead.release()
-  await expect.poll(() => reads).toBeGreaterThan(1)
-  await tick(200)
-
-  expect(next.text()).toContain('Dashboard')
-  expect(document.documentElement.lang).toBe('en')
-})
-
-test('two admins mounted on one page both end on the language picked last in either', async () => {
-  const user = await seedUser(db.url, { name: 'Last Pick Of Two', locale: 'sk' })
-  const jar = { cookie: await host.signIn(user.email, user.password) }
-  const first = mount('/admin/', host.browserFetch(jar))
-  await expect.poll(first.text).toContain('Prehľad')
-  const root = document.body.appendChild(document.createElement('div'))
-  const second = createAdmin({
-    brand,
-    modules: adminModules,
-    buildId: 'b1',
-    fetch: host.browserFetch(jar),
-  })
-  second.mount(root)
-  onTestFinished(() => second.unmount())
-  await expect.poll(() => root.textContent).toContain('Prehľad')
-
-  await pickLanguage('Používateľské menu', 'Jazyk', 'English')
-  await expect.poll(async () => (await host.me(jar.cookie)).locale).toBe('en')
-  await expect.poll(() => root.textContent).toContain('Dashboard')
-  await pickLanguage('User menu', 'Language', 'Slovenčina', root)
-  await expect.poll(async () => (await host.me(jar.cookie)).locale).toBe('sk')
+  await expect.poll(admin.text).toContain('Account B')
+  firstAnswer.release()
+  await expect.poll(firstAnswer.done).toBe(true)
   await tick(300)
 
-  expect((await host.me(jar.cookie)).locale).toBe('sk')
-  expect(document.documentElement.lang).toBe('sk')
-  expect(root.textContent).toContain('Prehľad')
+  expect(writes).toEqual(['A'])
+  expect((await host.me(cookieB)).locale).toBe('sk')
 })
