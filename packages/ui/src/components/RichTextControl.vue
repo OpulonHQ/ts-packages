@@ -25,10 +25,11 @@ const props = withDefaults(
 const text = useKitText()
 
 const editorRef = useTemplateRef<{ editor: Editor | undefined }>('editor')
-watch(
-  () => props.disabled,
-  (disabled) => editorRef.value?.editor?.setEditable(!disabled),
-)
+watch([() => props.disabled, () => editorRef.value?.editor], ([disabled, editor]) => {
+  if (!editor) return
+  editor.setEditable(!disabled)
+  editor.view.dom.setAttribute('aria-disabled', String(disabled))
+})
 defineExpose({
   /** Inserts HTML or text at the cursor, e.g. a `{{placeholder}}` token. */
   insert: (content: string) => {
