@@ -1389,8 +1389,7 @@ test('a deploy that lands while a refresh loads its catalogs still shows the rel
   await expect.poll(() => reads).toBe(before + 2)
   await catalogs.release()
   await refreshing
-  await tick(100)
-  expect(stale.value).toBe(true)
+  await expect.poll(() => stale.value).toBe(true)
 })
 
 test('a saved language stays when a deploy check answers during the read after it and that read fails', async () => {
@@ -1438,9 +1437,8 @@ test('a saved language stays when a deploy check answers during the read after i
   await expect.poll(() => reads).toBe(before + 2)
   readGate.resolve()
   await changed
-  await tick(100)
+  await expect.poll(() => document.documentElement.lang).toBe('sk')
   expect(me.value?.locale).toBe('sk')
-  expect(document.documentElement.lang).toBe('sk')
 })
 
 test('a deploy check with no read in flight reads /me once', async () => {
@@ -1733,8 +1731,10 @@ test('a deploy check keeps the modules of a read that applied after it started',
   await catalogs.release()
   await refreshing
   expect(me.value?.modules).not.toContain('emails')
+  const shown = me.value
+  withoutEmails = false
   checkGate.resolve()
-  await tick(100)
+  await expect.poll(() => me.value !== shown).toBe(true)
   expect(me.value?.modules).not.toContain('emails')
 })
 
