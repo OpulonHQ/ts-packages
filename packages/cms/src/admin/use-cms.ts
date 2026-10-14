@@ -115,7 +115,7 @@ export interface ActionResult {
 
 /**
  * Disabling the form while `locked` blurs the focused control to `<body>`; this gives focus back
- * when it ends, unless something else took focus meanwhile.
+ * when it ends, unless something else took focus meanwhile. Dialogs return focus to their opener.
  */
 export const useFocusReturn = (locked: () => boolean) => {
   let held: HTMLElement | undefined
@@ -124,7 +124,12 @@ export const useFocusReturn = (locked: () => boolean) => {
     (now) => {
       if (now) {
         const active = document.activeElement
-        if (active instanceof HTMLElement && active !== document.body) held = active
+        if (
+          active instanceof HTMLElement &&
+          active !== document.body &&
+          !active.closest('[role="dialog"]')
+        )
+          held = active
         return
       }
       void nextTick(() => {
