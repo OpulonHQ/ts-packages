@@ -28,14 +28,16 @@ class Watched<T> extends Promise<T> {
 export const useAdminLifetime = () => {
   type Lifetime = {
     readonly name: string
-    readonly apps: Array<{ unmount: () => void }>
+    readonly unmounts: Array<() => void>
+    unmountFailed: boolean
     readonly gates: Array<() => void>
     readonly pending: Array<Promise<unknown>>
     readonly rejected: Array<{ readonly call: Watched<unknown>; readonly error: unknown }>
   }
   const fresh = (name: string): Lifetime => ({
     name,
-    apps: [],
+    unmounts: [],
+    unmountFailed: false,
     gates: [],
     pending: [],
     rejected: [],
@@ -86,9 +88,9 @@ export const useAdminLifetime = () => {
     const failures: Array<unknown> = []
     let clean = false
     try {
-      for (const app of lifetime.apps) {
+      for (const unmount of lifetime.unmounts) {
         try {
-          app.unmount()
+          unmount()
         } catch (error) {
           failures.push(error)
         }
@@ -98,7 +100,7 @@ export const useAdminLifetime = () => {
       document.body.replaceChildren()
       if (!settled)
         throw new Error(`admin or host calls from ${lifetime.name} still pending after 5s`)
-      clean = failures.length === 0
+      clean = !lifetime.unmountFailed
     } finally {
       if (!clean) unfinished ??= lifetime.name
     }
@@ -115,7 +117,6 @@ export const useAdminLifetime = () => {
     previous = { signal, name: `"${task.name}"` }
     const between = current
     const lifetime = fresh(`"${task.name}"`)
-    current = lifetime
     onTestFinished(async () => {
       try {
         await close(lifetime)
@@ -126,6 +127,7 @@ export const useAdminLifetime = () => {
     if (unfinished)
       throw new Error(`Not run: ${unfinished} timed out or left calls pending and may still run`)
     await close(between)
+    current = lifetime
   })
 
   return {
@@ -145,7 +147,7 @@ export const useAdminLifetime = () => {
       path: string,
       { fetch, ...options }: Partial<AdminOptions> & { readonly fetch: typeof globalThis.fetch },
     ) => {
-      const { apps, pending } = current
+      const lifetime = current
       history.replaceState(null, '', path)
       document.body.innerHTML = '<div id="app"></div>'
       const app = createAdmin({
@@ -155,7 +157,7 @@ export const useAdminLifetime = () => {
         ...options,
         fetch: (input, init) => {
           const response = fetch(input, init)
-          if (!(response instanceof Watched)) pending.push(response)
+          if (!(response instanceof Watched)) lifetime.pending.push(response)
           return response
         },
       })
@@ -164,9 +166,14 @@ export const useAdminLifetime = () => {
       const unmount = () => {
         if (!mounted) return
         mounted = false
-        app.unmount()
+        try {
+          app.unmount()
+        } catch (error) {
+          lifetime.unmountFailed = true
+          throw error
+        }
       }
-      apps.push({ unmount })
+      lifetime.unmounts.push(unmount)
       return Object.assign(() => document.body.textContent ?? '', { app, unmount })
     },
   }

@@ -77,13 +77,13 @@ const onFailure = admin.track({
     startedOnFailure++
   },
 })
-test.fails('a failing test that starts a tracked call from onTestFailed', ({ onTestFailed }) => {
-  onTestFailed(() => void onFailure.run())
+test.fails('a failing test that chains tracked calls from onTestFailed', ({ onTestFailed }) => {
+  onTestFailed(() => void onFailure.run().then(() => onFailure.run()))
   expect('failed').toBe('passed')
 })
 
-test('the next test starts after the call from onTestFailed settled', () => {
-  expect(startedOnFailure).toBe(1)
+test('the next test starts after the calls from onTestFailed settled', () => {
+  expect(startedOnFailure).toBe(2)
 })
 
 let ranAfterTimeout = false
