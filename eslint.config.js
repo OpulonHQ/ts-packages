@@ -28,9 +28,6 @@ const ownTransactions = {
 const sleepMessage =
   'Wait for the state itself with expect.poll or vi.waitFor, or on a gate the test opens. A fixed sleep only proves something does not happen: disable this line with that reason.'
 
-// Reports every fixed sleep in a test: a `new Promise` resolved by `setTimeout`, written inline or
-// wrapped in a helper (`const tick = (ms) => new Promise(...)`), where each use is reported. A
-// timer that only rejects (a gate's deadline) is not a sleep.
 const resolvesByTimer = (promise, sourceCode) => {
   const resolve = promise.arguments[0]?.params?.[0]
   if (resolve?.type !== 'Identifier') return false
