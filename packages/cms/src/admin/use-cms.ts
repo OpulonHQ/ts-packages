@@ -82,7 +82,7 @@ export const useContent = () => {
   const cms = useApiClient(CmsGroup)
   const admin = useAdmin()
   return {
-    listItems: (collection: string, query: ItemQuery = {}) =>
+    listItems: (collection: string, query: ItemQuery) =>
       cms((client) => client.listItems({ params: { collection }, query })),
     getItem: (id: string) => cms((client) => client.getItem({ params: { id } })),
     createItem: (collection: string, draft: ItemDocument) =>
