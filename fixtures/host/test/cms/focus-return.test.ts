@@ -174,3 +174,17 @@ test('an editor closed right after its lock ends moves focus nowhere', async () 
   await rendered()
   expect(document.activeElement).toBe(document.body)
 })
+
+test('an editor closed between chained actions moves focus nowhere', async () => {
+  const { locked, reloadButton } = editor(() => [h('input', { name: 'title' })])
+  await rendered()
+  reloadButton.focus()
+  locked.value = true
+  reloadButton.blur()
+  locked.value = false
+  locked.value = true
+  locked.value = false
+  for (const done of unmount.splice(0)) done()
+  await rendered()
+  expect(document.activeElement).toBe(document.body)
+})
