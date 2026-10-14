@@ -350,10 +350,14 @@ export const createAdmin = (options: AdminOptions): App => {
   const providerSignOut = auth.auth?.signOut
   const providerSetLocale = auth.auth?.setLocale
   const accountRoute = auth.auth?.accountRoute
+  // One save at a time: the server keeps whichever save reaches it last.
+  let saving: Promise<unknown> = Promise.resolve()
   const saveLocale = async (locale: string | null, save: (userId: string) => Promise<void>) => {
     const userId = me.value?.user.id
     if (!userId) return
-    await afterWrite(save(userId), async (live) => {
+    const write = saving.then(() => save(userId))
+    saving = write.catch(() => {})
+    await afterWrite(write, async (live) => {
       await applyLocale(locale, enabled.value, live)
       if (me.value && live()) me.value = { ...me.value, locale }
     })
@@ -488,7 +492,9 @@ export const createAdmin = (options: AdminOptions): App => {
     .provide(failedScreenKey, failedScreen)
   app.onUnmount(() => {
     unmounted = true
-    router.options.history.destroy()
+    const history = router.options.history
+    history.destroy()
+    history.push = history.replace = () => {}
   })
   return app
 }

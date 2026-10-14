@@ -17,7 +17,7 @@ import {
   UNavigationMenu,
   useToast,
 } from '@opulonjs/ui'
-import { computed, inject } from 'vue'
+import { computed, inject, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { failedScreenKey, useAdmin } from '../state.ts'
@@ -53,10 +53,14 @@ const items = computed<NavigationMenuItem[][]>(() => [
       })),
     ]),
 ])
+// Toasts are shared across admin apps, so an unmounted shell must not add one.
+let mounted = true
+onUnmounted(() => (mounted = false))
 const chooseLocale = (code: string) =>
-  setLocale?.(code).catch(() =>
-    toast.add({ title: t('admin.languageFailed'), color: 'error', icon: 'i-lucide-circle-alert' }),
-  )
+  setLocale?.(code).catch(() => {
+    if (mounted)
+      toast.add({ title: t('admin.languageFailed'), color: 'error', icon: 'i-lucide-circle-alert' })
+  })
 const userMenu = computed<DropdownMenuItem[][]>(() => [
   [{ type: 'label', slot: 'identity' as const }],
   [
