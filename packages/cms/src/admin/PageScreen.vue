@@ -212,7 +212,13 @@ const reload = async (done = '') => run(() => pages.get(page.value!.id), done)
 
       <ActionStatus :status="status" @reload="reload()" />
 
-      <form ref="form" @submit.prevent="save">
+      <form
+        ref="form"
+        tabindex="-1"
+        :aria-label="title"
+        class="focus:outline-none"
+        @submit.prevent="save"
+      >
         <fieldset :disabled="pending || revisionPending" class="min-w-0 space-y-6">
           <UCard>
             <template #header>

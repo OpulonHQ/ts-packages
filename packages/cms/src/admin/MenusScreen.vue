@@ -96,7 +96,14 @@ const reload = async (done = '') => show(await run(() => content.getMenu(current
       />
     </nav>
     <ActionStatus :status="status" @reload="reload()" />
-    <form v-if="menu && current" ref="form" @submit.prevent="save">
+    <form
+      v-if="menu && current"
+      ref="form"
+      tabindex="-1"
+      :aria-label="t('cms.menus.title')"
+      class="focus:outline-none"
+      @submit.prevent="save"
+    >
       <fieldset :disabled="pending || revisionPending" class="min-w-0">
         <UCard>
           <p v-if="items.length === 0" class="mb-3 text-sm text-muted">

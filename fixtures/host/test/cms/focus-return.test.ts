@@ -17,10 +17,16 @@ const editor = (fields: () => VNode[]) => {
   document.body.append(root)
   const screen = defineComponent(() => {
     const form = useTemplateRef<HTMLFormElement>('form')
-    useFocusReturn(() => locked.value, () => form.value)
+    useFocusReturn(
+      () => locked.value,
+      () => form.value,
+    )
     return () => h('form', { ref: 'form', tabindex: -1, 'aria-label': 'Editor' }, fields())
   })
-  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { render: () => null } }] })
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/', component: { render: () => null } }],
+  })
   const app = createApp(() => h(UApp, null, { default: () => h(screen) }))
   app.use(uiPlugin).use(router).mount(root)
   unmount.push(() => app.unmount())
@@ -35,7 +41,12 @@ test('focus held by a control that disappeared goes to the form, not to a hidden
   const { locked, form, reloadButton } = editor(() => [
     h('div', { hidden: true }, [h('input', { name: 'locales.en.path' })]),
     h('select', { name: 'native' }, [h('option', { value: 'one' }, 'One')]),
-    h(FieldSelect, { name: 'choice', label: 'Choice', modelValue: 'one', items: [{ value: 'one', label: 'One' }] }),
+    h(FieldSelect, {
+      name: 'choice',
+      label: 'Choice',
+      modelValue: 'one',
+      items: [{ value: 'one', label: 'One' }],
+    }),
   ])
   await rendered()
   reloadButton.focus()
@@ -64,7 +75,9 @@ test('a lock that starts inside a dialog hands focus to the form once it ends', 
 
 test('a field the response replaces right after the lock ends hands focus to the form', async () => {
   const rows = ref(['old'])
-  const { locked, form } = editor(() => rows.value.map((id) => h('input', { key: id, name: `items.${id}` })))
+  const { locked, form } = editor(() =>
+    rows.value.map((id) => h('input', { key: id, name: `items.${id}` })),
+  )
   await rendered()
   const old = form().querySelector<HTMLInputElement>('input[name="items.old"]')!
   old.focus()
@@ -78,7 +91,10 @@ test('a field the response replaces right after the lock ends hands focus to the
 })
 
 test('the field that had focus gets it back, and focus taken elsewhere meanwhile stays put', async () => {
-  const { locked, form } = editor(() => [h('input', { name: 'title' }), h('textarea', { name: 'note' })])
+  const { locked, form } = editor(() => [
+    h('input', { name: 'title' }),
+    h('textarea', { name: 'note' }),
+  ])
   await rendered()
   const title = form().querySelector<HTMLInputElement>('input')!
   title.focus()

@@ -146,7 +146,13 @@ const reload = async (done = '') => show(await run(() => content.getItem(item.va
 
       <ActionStatus :status="status" @reload="reload()" />
 
-      <form ref="form" @submit.prevent="save">
+      <form
+        ref="form"
+        tabindex="-1"
+        :aria-label="item.title"
+        class="focus:outline-none"
+        @submit.prevent="save"
+      >
         <fieldset :disabled="pending || revisionPending" class="min-w-0 space-y-6">
           <UCard v-if="collection.routed">
             <template #header>

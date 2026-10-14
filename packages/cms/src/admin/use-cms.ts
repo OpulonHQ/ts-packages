@@ -1,5 +1,5 @@
 import { useAdmin, useApiClient } from '@opulonjs/admin'
-import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, inject, onBeforeUnmount, ref, watch } from 'vue'
 import { cmsContextKey } from './context.ts'
 import {
   CmsConflict,
@@ -114,37 +114,36 @@ export interface ActionResult {
 }
 
 /**
- * Disabling the form while `locked` blurs the focused control to `<body>`; this gives focus back
- * when it ends, unless something else took focus meanwhile. Dialogs return focus to their opener;
- * a control that disappeared (the conflict alert's Reload) hands focus to the form's first field.
+ * Disabling the form while `locked` blurs the focused control to `<body>`. Once the lock has ended
+ * and the response has rendered, focus goes back to that control, or to the form itself (a
+ * `tabindex="-1"` target) when the control is gone, hidden, or sat in a dialog. Focus that went
+ * anywhere but `<body>` meanwhile stays put.
  */
 export const useFocusReturn = (locked: () => boolean, form: () => HTMLElement | null) => {
-  let held: HTMLElement | undefined
+  let held: HTMLElement | 'form' | undefined
+  const lost = () => !document.activeElement || document.activeElement === document.body
   watch(
     locked,
     (now) => {
       if (now) {
         const active = document.activeElement
-        if (
-          active instanceof HTMLElement &&
-          active !== document.body &&
-          !active.closest('[role="dialog"]')
-        )
-          held = active
+        if (active instanceof HTMLElement && active !== document.body)
+          held = active.closest('[role="dialog"]') ? 'form' : active
         return
       }
-      void nextTick(() => {
+      setTimeout(() => {
         if (locked() || !held) return
-        const element = held
+        const target = held
         held = undefined
-        const active = document.activeElement
-        if (active && active !== document.body) return
-        const target = element.isConnected
-          ? element
-          : form()?.querySelector<HTMLElement>(
-              'input:not([type="hidden"]):not(:disabled), textarea:not(:disabled), [contenteditable="true"]',
-            )
-        target?.focus()
+        if (!lost()) return
+        if (
+          target !== 'form' &&
+          target.isConnected &&
+          target.checkVisibility() &&
+          !target.closest('[aria-hidden="true"]')
+        )
+          target.focus()
+        if (lost()) form()?.focus()
       })
     },
     { flush: 'sync' },

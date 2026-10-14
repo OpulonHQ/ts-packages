@@ -64,7 +64,14 @@ const reload = async (done = '') => show(await run(() => content.getSettings(), 
       </template>
     </PageHeader>
     <ActionStatus :status="status" @reload="reload()" />
-    <form v-if="settings" ref="form" @submit.prevent="save">
+    <form
+      v-if="settings"
+      ref="form"
+      tabindex="-1"
+      :aria-label="t('cms.settings.title')"
+      class="focus:outline-none"
+      @submit.prevent="save"
+    >
       <fieldset :disabled="pending || revisionPending" class="min-w-0">
         <UCard>
           <FieldsForm
