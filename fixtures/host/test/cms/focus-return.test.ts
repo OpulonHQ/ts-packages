@@ -115,3 +115,34 @@ test('the field that had focus gets it back, and focus taken elsewhere meanwhile
   await rendered()
   expect(document.activeElement?.getAttribute('name')).toBe('note')
 })
+
+test('a field still on the page but hidden meanwhile hands focus to the form', async () => {
+  const hidden = ref(false)
+  const { locked, form } = editor(() => [
+    h('div', { style: { display: hidden.value ? 'none' : undefined } }, [
+      h('input', { name: 'locales.en.path' }),
+    ]),
+  ])
+  await rendered()
+  const path = form().querySelector('input')!
+  path.focus()
+  locked.value = true
+  path.blur()
+  hidden.value = true
+  locked.value = false
+  await rendered()
+  expect(document.activeElement).toBe(form())
+})
+
+test('a browser without checkVisibility still gives the field its focus back', async () => {
+  const { locked, form } = editor(() => [h('input', { name: 'title' })])
+  await rendered()
+  const title = form().querySelector('input')!
+  Object.defineProperty(title, 'checkVisibility', { value: undefined })
+  title.focus()
+  locked.value = true
+  title.blur()
+  locked.value = false
+  await rendered()
+  expect(document.activeElement).toBe(title)
+})
