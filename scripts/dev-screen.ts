@@ -1,9 +1,6 @@
 import { Window } from 'happy-dom'
 import { register } from 'node:module'
 
-// Mounts the fixture admin from its dev server in happy-dom, signed in, on the cms Collections
-// screen, and exits 0 once the screen shows the decoded items response.
-// Usage: node scripts/dev-screen.ts <admin origin with base> <admin entry URL path>
 register('./http-module-hooks.ts', import.meta.url)
 const [origin, adminEntry] = process.argv.slice(2)
 if (!origin || !adminEntry) throw new Error('usage: dev-screen.ts <origin> <admin entry>')

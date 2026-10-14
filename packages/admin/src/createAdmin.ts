@@ -357,8 +357,7 @@ export const createAdmin = (options: AdminOptions): App => {
         : route
     }),
   })
-  // Only the latest navigation may show or clear a failed screen. Leave guards run before
-  // beforeEach, so a host leave guard's error stays in the console, as before.
+  // Leave guards run before beforeEach, so a host leave guard's error stays in the console.
   let latest: RouteLocationNormalized | undefined
   router.beforeEach(async (to) => {
     latest = to
@@ -375,14 +374,13 @@ export const createAdmin = (options: AdminOptions): App => {
     return true
   })
   // Re-check the build after each navigation, so an open tab learns about a deploy.
-  let rechecks = 0
-  const recheckBuild = () => {
+  let latestCheck = 0
+  const checkForNewDeploy = () => {
     if (!me.value) return
-    const recheck = ++rechecks
+    const check = ++latestCheck
     getMe().then(
       (next) => {
-        // An older check answering late must not undo what a newer one found.
-        if (recheck !== rechecks || next === 'signedOut') return
+        if (check !== latestCheck || next === 'signedOut') return
         me.value = { ...next, modules: me.value?.modules ?? next.modules }
       },
       // A failed re-check keeps the last known state; the next navigation retries.
@@ -394,13 +392,12 @@ export const createAdmin = (options: AdminOptions): App => {
     console.error(error)
     if (to !== latest) return
     failedScreen.value = to.fullPath
-    // A screen chunk missing after a deploy surfaces as a failed load.
-    recheckBuild()
+    checkForNewDeploy()
   })
   router.afterEach((to, from, failure) => {
     if (isNavigationFailure(failure, NavigationFailureType.duplicated)) latest = to
     if (to === latest) failedScreen.value = undefined
-    if (from.matched.length > 0) recheckBuild()
+    if (from.matched.length > 0) checkForNewDeploy()
   })
 
   document.title = options.brand.name

@@ -2,16 +2,11 @@ import { readFileSync } from 'node:fs'
 import { isCSSRequest, type ViteDevServer } from 'vite'
 
 const assetQuery = /[?&](?:url|raw|inline|worker|sharedworker)\b/
-// Only script modules hold package state; stylesheets and asset imports (?url, ?raw) do not.
 const isScript = (url: string, file: string) =>
   /\.(?:[cm]?[jt]sx?|vue)$/.test(file) && !assetQuery.test(url)
 const packageOf = (path: string) =>
   /node_modules\/(?:\.pnpm\/[^/]+\/node_modules\/)?((?:@[^/]+\/)?[^/]+)\//.exec(path)?.[1]
 
-/**
- * The packages a dev server serves from `entry` both prebundled and raw: each of them runs as two
- * instances that reject each other's values (Effect schemas, Vue injection keys).
- */
 export const packagesLoadedTwice = async (vite: ViteDevServer, entry: string) => {
   const graph = vite.environments.client.moduleGraph
   const raw = new Set<string>()
