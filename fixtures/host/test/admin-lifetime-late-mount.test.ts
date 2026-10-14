@@ -1,6 +1,6 @@
 import { defineAdminModule } from '@opulonjs/admin'
 import { defineComponent, h, nextTick, ref, watchEffect } from 'vue'
-import { beforeAll, describe, expect, test } from 'vitest'
+import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import { useAdminLifetime } from './admin-lifetime.ts'
 
 const later = () => new Promise((resolve) => setTimeout(resolve, 20))
@@ -71,3 +71,32 @@ describe.each(['its test', 'its onTestFailed', 'beforeAll'])(
     })
   },
 )
+
+describe.each(['its test', 'beforeAll'])('admins that keep mounting each other from %s', (from) => {
+  const admin = useAdminLifetime()
+  const host = admin.track({ wait: () => new Promise((resolve) => setTimeout(resolve, 1500)) })
+  let generations = 0
+  let stopped = false
+  let ranAfter = false
+  const mountNext = async () => {
+    if (stopped) return
+    const text = admin.mount('/admin/late', {
+      fetch: async () => new Response('', { status: 401 }),
+      modules: [late],
+    })
+    if (++generations < 5) text.app.onUnmount(() => void host.wait().then(mountNext))
+    await expect.poll(text).toContain('late screen')
+  }
+
+  if (from === 'beforeAll') beforeAll(() => void host.wait().then(mountNext))
+  test.fails('fail their test once cleanup takes 5s in total', async () => {
+    if (from === 'its test') await mountNext()
+  })
+  test.fails('keep later tests from running', () => {
+    ranAfter = true
+  })
+  afterAll(() => {
+    stopped = true
+    expect(ranAfter).toBe(false)
+  })
+})

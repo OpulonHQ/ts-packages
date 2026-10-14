@@ -71,7 +71,7 @@ export const useAdminLifetime = () => {
       return typeof result === 'function' ? tracked(result, undefined) : result
     }
 
-  const settle = async ({ pending }: Lifetime) => {
+  const settle = async ({ pending }: Lifetime, deadline: number) => {
     let settled = false
     const drained = (async () => {
       let seen = 0
@@ -87,7 +87,7 @@ export const useAdminLifetime = () => {
       settled = true
     })()
     const limit = Promise.withResolvers<void>()
-    const timer = setTimeout(limit.resolve, 5000)
+    const timer = setTimeout(limit.resolve, Math.max(0, deadline - Date.now()))
     await Promise.race([drained, limit.promise])
     clearTimeout(timer)
     return settled
@@ -97,6 +97,7 @@ export const useAdminLifetime = () => {
     const failures: Array<unknown> = []
     let clean = false
     try {
+      const deadline = Date.now() + 5000
       let unmounted = 0
       let settled: boolean
       do {
@@ -108,7 +109,7 @@ export const useAdminLifetime = () => {
           }
         }
         for (const release of lifetime.gates) release()
-        settled = await settle(lifetime)
+        settled = await settle(lifetime, deadline)
       } while (settled && unmounted < lifetime.unmounts.length)
       document.body.replaceChildren()
       if (!settled)
