@@ -41,6 +41,7 @@ const newType = ref<string | number | null>(null)
 
 const locales = computed(() => pages.contentLocales.value)
 const canEdit = computed(() => pages.can('cms.pages.edit'))
+const locked = computed(() => !canEdit.value || pending.value || revisionPending.value)
 const title = computed(() => (page.value ? pageTitle(definitions, page.value, locale.value) : ''))
 const typeLabel = (type: string) => labelText(definitions.sections[type]?.label, locale.value)
 const typeItems = computed(() =>
@@ -205,7 +206,7 @@ const reload = async (done = '') => run(() => pages.get(page.value!.id), done)
             <template #header>
               <h2 class="font-semibold text-highlighted">{{ t('cms.page.details') }}</h2>
             </template>
-            <LocaleDetails :value="draft.locales" :locales="locales" :disabled="!canEdit" />
+            <LocaleDetails :value="draft.locales" :locales="locales" :disabled="locked" />
           </UCard>
 
           <div class="space-y-4">
@@ -252,7 +253,7 @@ const reload = async (done = '') => run(() => pages.get(page.value!.id), done)
                 :group="definitions.sections[section.type]!"
                 :locales="locales"
                 :name="`sections.${index}`"
-                :disabled="!canEdit"
+                :disabled="locked"
               />
             </UCard>
             <div v-if="canEdit" class="flex items-end gap-2">

@@ -28,6 +28,7 @@ const menu = shallowRef<Menu>()
 const items = ref<EditedMenuItem[]>([])
 const revisionPending = ref(false)
 const canEdit = computed(() => content.can('cms.site.edit'))
+const locked = computed(() => !canEdit.value || pending.value || revisionPending.value)
 
 const show = (next: Menu | undefined) => {
   if (!next) return
@@ -102,7 +103,7 @@ const reload = async (done = '') => show(await run(() => content.getMenu(current
             :depth="definitions.menus[current]!.depth ?? 3"
             :locales="content.contentLocales.value"
             name="items"
-            :disabled="!canEdit"
+            :disabled="locked"
           />
         </UCard>
       </fieldset>

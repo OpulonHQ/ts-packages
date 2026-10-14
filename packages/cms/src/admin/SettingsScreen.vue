@@ -20,6 +20,7 @@ const settings = shallowRef<SiteSettings>()
 const data = ref<Record<string, unknown>>({})
 const revisionPending = ref(false)
 const canEdit = computed(() => content.can('cms.site.edit'))
+const locked = computed(() => !canEdit.value || pending.value || revisionPending.value)
 
 const show = (next: SiteSettings | undefined) => {
   if (!next) return
@@ -66,7 +67,7 @@ const reload = async (done = '') => show(await run(() => content.getSettings(), 
             :group="definitions.settings"
             :locales="content.contentLocales.value"
             name="data"
-            :disabled="!canEdit"
+            :disabled="locked"
           />
         </UCard>
       </fieldset>

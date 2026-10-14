@@ -37,6 +37,7 @@ const revisionPending = ref(false)
 
 const locales = computed(() => content.contentLocales.value)
 const canEdit = computed(() => content.can('cms.collections.edit'))
+const locked = computed(() => !canEdit.value || pending.value || revisionPending.value)
 const collection = computed(() =>
   item.value ? definitions.collections[item.value.collection] : undefined,
 )
@@ -146,7 +147,7 @@ const reload = async (done = '') => show(await run(() => content.getItem(item.va
             <template #header>
               <h2 class="font-semibold text-highlighted">{{ t('cms.item.details') }}</h2>
             </template>
-            <LocaleDetails :value="draft.locales" :locales="locales" :disabled="!canEdit" />
+            <LocaleDetails :value="draft.locales" :locales="locales" :disabled="locked" />
           </UCard>
           <UCard>
             <template #header>
@@ -157,7 +158,7 @@ const reload = async (done = '') => show(await run(() => content.getItem(item.va
               :group="collection"
               :locales="locales"
               name="data"
-              :disabled="!canEdit"
+              :disabled="locked"
             />
           </UCard>
         </fieldset>

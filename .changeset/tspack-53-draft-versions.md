@@ -1,8 +1,9 @@
 ---
 "@opulonjs/cms": minor
+"@opulonjs/ui": patch
 ---
 
-Two editors on the same page, item, site settings or menu no longer overwrite each other's draft. Every document now carries a `version` that every draft write (save, publish, revision restore) advances. Saving, publishing or restoring a revision names the version the editor loaded; when the draft changed meanwhile, the request answers 409 `CmsConflict` with reason `draft_changed` and changes nothing. The admin keeps the editor's unsaved input on screen, says the draft changed, and offers to reload it. While a save, publish or restore is in flight the editor form is locked, so nothing typed can be replaced by the response.
+Two editors on the same page, item, site settings or menu no longer overwrite each other's draft. Every document now carries a `version` that every draft write (save, publish, revision restore) advances. Saving, publishing or restoring a revision names the version the editor loaded; when the draft changed meanwhile, the request answers 409 `CmsConflict` with reason `draft_changed` and changes nothing. The admin keeps the editor's unsaved input on screen, says the draft changed, and offers to reload it. While a save, publish or restore is in flight the editor form is locked (fields, rich text and reference pickers), so nothing typed can be replaced by the response. `RichTextControl` now follows its `disabled` prop after mount.
 
 Breaking changes for API consumers:
 
