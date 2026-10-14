@@ -125,7 +125,7 @@ import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { build, createLogger, createServer } from 'vite'
-import { opulonAdmin } from '@opulonjs/admin/vite'
+import { editorChunkGroup, opulonAdmin } from '@opulonjs/admin/vite'
 import { packagesLoadedTwice } from '${pathToFileURL(join(import.meta.dirname, 'dev-packages.ts')).href}'
 import { firstRoute } from '${pathToFileURL(join(import.meta.dirname, 'first-route.ts')).href}'
 const { brand } = await import('./host/admin/brand.ts')
@@ -179,7 +179,7 @@ logger.warn = (message, options) => {
   warn(message, options)
 }
 const config = { root: 'host/admin', configFile: false, logLevel: 'warn', customLogger: logger, plugins: [...opulonAdmin({ brand, overrides: { components } }), checkOverrides, checkEagerCode] }
-await build({ ...config, build: { outDir: '../../admin-dist', emptyOutDir: true } })
+await build({ ...config, build: { outDir: '../../admin-dist', emptyOutDir: true, rolldownOptions: { output: { codeSplitting: { groups: [editorChunkGroup] } } } } })
 if (warnings.some((message) => message.includes('Some chunks are larger than'))) throw new Error('admin build warns about chunk size')
 console.log('ok admin build from the packed tarballs')
 // Every icon a screen names is in the offline bundle (as an icon or an alias): package screens
@@ -231,12 +231,13 @@ const routeChunks = new Set(fetched.filter((file) => built[file]?.type === 'chun
 const route = [...new Set([...fetched, ...routeChunks])]
 const routeEager = including(built, routeChunks, editorCode)
 if (routeEager.length > 0) throw new Error('admin first route fetches on-demand code: ' + routeEager.join(', '))
+const firstRouteBudget = 330_000
 const kB = (bytes) => (bytes / 1000).toFixed(1) + ' kB'
-const size = (ext) => {
-  const files = route.filter((file) => file.endsWith(ext)).map((file) => readFileSync('admin-dist/' + file))
-  return files.length + ' ' + ext.slice(1).toUpperCase() + ' files ' + kB(files.reduce((sum, file) => sum + file.length, 0)) + ' (' + kB(files.reduce((sum, file) => sum + gzipSync(file).length, 0)) + ' gzip)'
-}
-console.log('ok admin first route fetches', size('.js') + ',', size('.css') + ', no table or editor code')
+const files = (ext) => route.filter((file) => file.endsWith(ext)).map((file) => readFileSync('admin-dist/' + file))
+const size = (list) => ({ raw: list.reduce((sum, file) => sum + file.length, 0), gzip: list.reduce((sum, file) => sum + gzipSync(file).length, 0) })
+const routeJs = size(files('.js')), routeCss = size(files('.css'))
+if (routeJs.gzip + routeCss.gzip > firstRouteBudget) throw new Error('admin first route is ' + kB(routeJs.gzip + routeCss.gzip) + ' gzip JS + CSS, over its ' + kB(firstRouteBudget) + ' budget')
+console.log('ok admin first route fetches', files('.js').length, 'JS files', kB(routeJs.raw), '(' + kB(routeJs.gzip), 'gzip) and', kB(routeCss.raw), 'CSS (' + kB(routeCss.gzip), 'gzip), within', kB(firstRouteBudget), 'gzip, no table or editor code')
 const { server } = await import('./host/server/opulon.ts')
 const serverIds = new Set(server.modules.map((m) => m.id))
 const missing = adminModules.map((m) => m.id).filter((id) => !serverIds.has(id))
