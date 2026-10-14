@@ -174,6 +174,8 @@ export const createAdmin = (options: AdminOptions): App => {
     const turn = ++epoch
     return () => !unmounted && turn === epoch
   }
+  let waitingPicks = 0
+  const waitsForPick = (userId: string) => waitingPicks > 0 && userId === me.value?.user.id
   // The latest successful write, applied only when the read after it fails for the same user.
   // Write order only stops an older write's late answer from re-arming it.
   let lastWrite:
@@ -240,12 +242,17 @@ export const createAdmin = (options: AdminOptions): App => {
             )
           }
         }
+        const shows = () => live() && !waitsForPick(first.user.id)
         await applyLocale(
           first.locale,
           options.modules.filter((m) => first.modules.includes(m.id)),
-          live,
+          shows,
         )
         if (!live()) return
+        if (me.value && waitsForPick(first.user.id)) {
+          me.value = { ...first, locale: me.value.locale }
+          return
+        }
         lastWrite = undefined
         me.value = first
         status.value = 'ready'
@@ -254,7 +261,7 @@ export const createAdmin = (options: AdminOptions): App => {
         console.error(error)
         if (!live()) return
         if (status.value !== 'ready') status.value = 'failed'
-        else if (lastWrite && lastWrite.userId === me.value?.user.id) {
+        else if (lastWrite && waitingPicks === 0 && lastWrite.userId === me.value?.user.id) {
           Promise.resolve(lastWrite.apply(live)).catch((error: unknown) => console.error(error))
         }
       },
@@ -282,7 +289,6 @@ export const createAdmin = (options: AdminOptions): App => {
   const afterWrite = async (
     write: Promise<void>,
     apply: NonNullable<typeof lastWrite>['apply'],
-    superseded = () => false,
   ) => {
     const userId = me.value?.user.id
     const order = ++writeOrder
@@ -293,7 +299,7 @@ export const createAdmin = (options: AdminOptions): App => {
         lastWrite = { userId, apply }
       }
     } finally {
-      if (!superseded()) await read()
+      await read()
     }
   }
 
@@ -355,21 +361,17 @@ export const createAdmin = (options: AdminOptions): App => {
   const saveLocale = async (locale: string | null, save: (userId: string) => Promise<void>) => {
     const userId = me.value?.user.id
     if (!userId) return
-    epoch++
+    waitingPicks++
     const write = lastLocaleSave.then(() => {
       if (unmounted) throw new Error('the admin unmounted before this language was saved')
       return save(userId)
     })
-    const queued = write.catch(() => {})
-    lastLocaleSave = queued
-    await afterWrite(
-      write,
-      async (live) => {
-        await applyLocale(locale, enabled.value, live)
-        if (me.value && live()) me.value = { ...me.value, locale }
-      },
-      () => lastLocaleSave !== queued,
-    )
+    const picked = () => void waitingPicks--
+    lastLocaleSave = write.then(picked, picked)
+    await afterWrite(write, async (live) => {
+      await applyLocale(locale, enabled.value, live)
+      if (me.value && live()) me.value = { ...me.value, locale }
+    })
   }
   const state: AdminState = {
     brand: options.brand,
