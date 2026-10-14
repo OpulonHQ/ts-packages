@@ -2,9 +2,9 @@
 /** An editor action's outcome; a draft conflict offers to reload, the edits stay until then. */
 import { useI18n } from '@opulonjs/admin'
 import { UAlert } from '@opulonjs/ui'
-import type { ActionStatus } from './use-cms.ts'
+import type { ActionResult } from './use-cms.ts'
 
-defineProps<{ status: ActionStatus | undefined }>()
+defineProps<{ status: ActionResult | undefined }>()
 const emit = defineEmits<{ reload: [] }>()
 
 const { t } = useI18n()
@@ -29,7 +29,7 @@ const { t } = useI18n()
     />
   </div>
   <p
-    v-else-if="status && status.message"
+    v-else-if="status?.message"
     :role="status.kind === 'error' ? 'alert' : 'status'"
     :class="status.kind === 'error' ? 'text-error' : 'text-success'"
     class="mb-4 text-sm"

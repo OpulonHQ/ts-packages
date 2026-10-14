@@ -105,10 +105,7 @@ async function remove() {
   if (status.value?.kind === 'ok')
     await router.push({ name: 'cms.collections', params: { collection: collectionKey } })
 }
-async function restored() {
-  show(await run(() => content.getItem(item.value!.id), t('cms.revisions.restored')))
-}
-const reload = async () => show(await run(() => content.getItem(item.value!.id), ''))
+const reload = async (done = '') => show(await run(() => content.getItem(item.value!.id), done))
 </script>
 
 <template>
@@ -141,7 +138,7 @@ const reload = async () => show(await run(() => content.getItem(item.value!.id),
         </template>
       </PageHeader>
 
-      <ActionStatus :status="status" @reload="reload" />
+      <ActionStatus :status="status" @reload="reload()" />
 
       <form class="space-y-6" @submit.prevent="save">
         <UCard v-if="collection.routed">
@@ -172,7 +169,7 @@ const reload = async () => show(await run(() => content.getItem(item.value!.id),
         :can-restore="content.can('cms.collections.publish')"
         :disabled="pending"
         @busy="revisionPending = $event"
-        @restored="restored"
+        @restored="reload(t('cms.revisions.restored'))"
       />
 
       <ConfirmDialog

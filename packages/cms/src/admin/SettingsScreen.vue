@@ -37,10 +37,7 @@ async function publish() {
 }
 const unpublish = async () =>
   show(await run(() => content.unpublishSettings(), t('cms.site.unpublished')))
-async function restored() {
-  show(await run(() => content.getSettings(), t('cms.revisions.restored')))
-}
-const reload = async () => show(await run(() => content.getSettings(), ''))
+const reload = async (done = '') => show(await run(() => content.getSettings(), done))
 </script>
 
 <template>
@@ -59,7 +56,7 @@ const reload = async () => show(await run(() => content.getSettings(), ''))
         />
       </template>
     </PageHeader>
-    <ActionStatus :status="status" @reload="reload" />
+    <ActionStatus :status="status" @reload="reload()" />
     <form v-if="settings" @submit.prevent="save">
       <UCard>
         <FieldsForm
@@ -79,7 +76,7 @@ const reload = async () => show(await run(() => content.getSettings(), ''))
       :can-restore="content.can('cms.site.publish')"
       :disabled="pending"
       @busy="revisionPending = $event"
-      @restored="restored"
+      @restored="reload(t('cms.revisions.restored'))"
     />
   </section>
 </template>

@@ -16,13 +16,7 @@ import RevisionHistory from './RevisionHistory.vue'
 import FieldsForm from './FieldsForm.vue'
 import LocaleDetails from './LocaleDetails.vue'
 import ActionStatus from './ActionStatus.vue'
-import {
-  type ActionStatus as Status,
-  failureStatus,
-  pageTitle,
-  useCmsContext,
-  usePages,
-} from './use-cms.ts'
+import { type ActionResult, failureStatus, pageTitle, useCmsContext, usePages } from './use-cms.ts'
 
 /** The draft as edited: plain mutable copies of the document's parts. */
 interface Draft {
@@ -42,7 +36,7 @@ const missing = ref(false)
 const pending = ref(false)
 const confirming = ref(false)
 const revisionPending = ref(false)
-const status = ref<Status>()
+const status = ref<ActionResult>()
 const newType = ref<string | number | null>(null)
 
 const locales = computed(() => pages.contentLocales.value)
@@ -145,10 +139,7 @@ function move(index: number, by: -1 | 1) {
   const [section] = sections.splice(index, 1)
   sections.splice(index + by, 0, section!)
 }
-async function restored() {
-  await run(() => pages.get(page.value!.id), t('cms.revisions.restored'))
-}
-const reload = () => run(() => pages.get(page.value!.id), '')
+const reload = async (done = '') => run(() => pages.get(page.value!.id), done)
 </script>
 
 <template>
@@ -201,7 +192,7 @@ const reload = () => run(() => pages.get(page.value!.id), '')
       </PageHeader>
       <CachePurgeNotice :pending="pending || revisionPending" class="mb-4" />
 
-      <ActionStatus :status="status" @reload="reload" />
+      <ActionStatus :status="status" @reload="reload()" />
 
       <form class="space-y-6" @submit.prevent="save">
         <UCard>
@@ -285,7 +276,7 @@ const reload = () => run(() => pages.get(page.value!.id), '')
         :can-restore="pages.can('cms.pages.publish')"
         :disabled="pending"
         @busy="revisionPending = $event"
-        @restored="restored"
+        @restored="reload(t('cms.revisions.restored'))"
       />
 
       <ConfirmDialog

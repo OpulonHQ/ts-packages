@@ -95,6 +95,15 @@ export const PageStatus = Schema.Literals(['draft', 'published', 'changed'])
 /** `draft`: never published (or unpublished); `changed`: published, draft differs. */
 export type PageStatus = typeof PageStatus.Type
 
+/** Status and publish bookkeeping every editable document shares. */
+const documentState = {
+  status: PageStatus,
+  updatedAt: Schema.String,
+  publishedAt: Schema.NullOr(Schema.String),
+  /** The draft's version: saving or publishing sends the one it was loaded at. */
+  version: Schema.Number,
+}
+
 export const PageSummary = Schema.Struct({
   id: Schema.String,
   /** The system page key, or null for an editor's page. */
@@ -102,10 +111,7 @@ export const PageSummary = Schema.Struct({
   /** SEO title (else path) in the default content locale, from the draft. */
   title: Schema.String,
   path: Schema.String,
-  status: PageStatus,
-  updatedAt: Schema.String,
-  publishedAt: Schema.NullOr(Schema.String),
-  version: Schema.Number,
+  ...documentState,
 })
 export type PageSummary = typeof PageSummary.Type
 
@@ -127,15 +133,6 @@ export const PagePreview = Schema.Struct({
   sections: Schema.Array(Section),
 })
 export type PagePreview = typeof PagePreview.Type
-
-/** Status and publish bookkeeping every editable document shares. */
-const documentState = {
-  status: PageStatus,
-  updatedAt: Schema.String,
-  publishedAt: Schema.NullOr(Schema.String),
-  /** The draft's version: saving or publishing sends the one it was loaded at. */
-  version: Schema.Number,
-}
 
 /** An item's draft or published document. `locales` carries path, availability and SEO per
  *  content locale like a page's; items of collections that are not routed have no paths. */

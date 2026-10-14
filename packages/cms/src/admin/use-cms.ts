@@ -109,7 +109,7 @@ export const useContent = () => {
 }
 
 /** What an editor action ended with; `conflict`: another editor changed the draft meanwhile. */
-export interface ActionStatus {
+export interface ActionResult {
   kind: 'ok' | 'error' | 'conflict'
   message: string
 }
@@ -117,7 +117,7 @@ export interface ActionStatus {
 /** Runs an editor action: pending flag, then a success or failure message to show. */
 export const useAction = (failed: () => string) => {
   const pending = ref(false)
-  const status = ref<ActionStatus>()
+  const status = ref<ActionResult>()
   let ticket = 0
   const invalidate = () => {
     ticket++
@@ -158,7 +158,7 @@ export const pageTitle = (
 export const failureMessage = (error: unknown, fallback: string) =>
   error instanceof CmsInvalid || error instanceof CmsConflict ? error.message : fallback
 
-export const failureStatus = (error: unknown, fallback: string): ActionStatus => ({
+export const failureStatus = (error: unknown, fallback: string): ActionResult => ({
   kind: error instanceof CmsConflict && error.reason === 'draft_changed' ? 'conflict' : 'error',
   message: failureMessage(error, fallback),
 })

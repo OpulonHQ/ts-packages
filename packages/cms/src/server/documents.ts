@@ -182,6 +182,13 @@ export const makeDocuments = Effect.gen(function* () {
         return raw ? yield* toRow(raw) : yield* new CmsNotFound({ id: ref })
       })
     const lock = (forUpdate: boolean) => sql.literal(forUpdate ? 'for update' : '')
+    const writeDraft = (row: DocumentRow<D>, draft: D, ref: string) =>
+      one(
+        sql`update cms.document
+          set draft = ${JSON.stringify(draft)}::jsonb, updated_at = now(), version = version + 1
+          where id = ${row.id} returning ${sql.literal(columns)}`,
+        ref,
+      )
     const checkVersion = (row: DocumentRow<D>, version: number) =>
       row.version === version
         ? Effect.void
@@ -280,12 +287,7 @@ export const makeDocuments = Effect.gen(function* () {
               const snapshot = yield* revision(row.id, revisionId)
               const draft = yield* spec.normalize(row.key, snapshot.document)
               if (spec.routes) yield* checkPaths(row.id, spec.routes(draft))
-              const restored = yield* one(
-                sql`update cms.document
-              set draft = ${JSON.stringify(draft)}::jsonb, updated_at = now(), version = version + 1
-              where id = ${row.id} returning ${sql.literal(columns)}`,
-                ref,
-              )
+              const restored = yield* writeDraft(row, draft, ref)
               yield* Audit.record({
                 action: spec.actions.restored,
                 subject: spec.subject(restored),
@@ -352,13 +354,7 @@ export const makeDocuments = Effect.gen(function* () {
               yield* checkVersion(row, version)
               const draft = yield* spec.normalize(row.key, input)
               if (spec.routes) yield* checkPaths(row.id, spec.routes(draft))
-              return yield* one(
-                sql`update cms.document
-                  set draft = ${JSON.stringify(draft)}::jsonb, updated_at = now(),
-                    version = version + 1
-                  where id = ${row.id} returning ${sql.literal(columns)}`,
-                ref,
-              )
+              return yield* writeDraft(row, draft, ref)
             }),
           )
         },

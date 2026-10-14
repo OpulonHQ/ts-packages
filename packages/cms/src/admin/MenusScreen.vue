@@ -59,10 +59,7 @@ async function publish() {
 }
 const unpublish = async () =>
   show(await run(() => content.unpublishMenu(current.value!), t('cms.site.unpublished')))
-async function restored() {
-  show(await run(() => content.getMenu(current.value!), t('cms.revisions.restored')))
-}
-const reload = async () => show(await run(() => content.getMenu(current.value!), ''))
+const reload = async (done = '') => show(await run(() => content.getMenu(current.value!), done))
 </script>
 
 <template>
@@ -92,7 +89,7 @@ const reload = async () => show(await run(() => content.getMenu(current.value!),
         :aria-current="key === current ? 'page' : undefined"
       />
     </nav>
-    <ActionStatus :status="status" @reload="reload" />
+    <ActionStatus :status="status" @reload="reload()" />
     <form v-if="menu && current" @submit.prevent="save">
       <UCard>
         <p v-if="items.length === 0" class="mb-3 text-sm text-muted">{{ t('cms.menus.empty') }}</p>
@@ -114,7 +111,7 @@ const reload = async () => show(await run(() => content.getMenu(current.value!),
       :can-restore="content.can('cms.site.publish')"
       :disabled="pending"
       @busy="revisionPending = $event"
-      @restored="restored"
+      @restored="reload(t('cms.revisions.restored'))"
     />
   </section>
 </template>
