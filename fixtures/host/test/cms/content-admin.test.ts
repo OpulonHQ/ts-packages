@@ -883,6 +883,82 @@ test('no button in the page editor form can change the draft while a save is in 
   expect(usable()).toContain('Odstrániť sekciu')
 })
 
+test.each([
+  { action: 'Uložiť koncept', held: 'PUT /draft', done: 'Koncept uložený.' },
+  { action: 'Zverejniť', held: 'PUT /draft', done: 'Zverejnené.' },
+  { action: 'Zverejniť', held: 'POST /publish', done: 'Zverejnené.' },
+  {
+    action: 'Obnoviť do konceptu',
+    held: 'POST /restore',
+    done: 'Revízia bola obnovená do konceptu.',
+  },
+])('a cover upload that returns while "$action" waits on $held stays picked', async (c) => {
+  const post = (
+    await host.call<Item>('POST', '/collections/posts/items', {
+      body: { locales: {}, data: { title: { en: 'Cover race' } } },
+    })
+  ).body
+  await host.call('POST', `/items/${post.id}/publish?version=${post.version}`)
+  const filename = `cover-${crypto.randomUUID()}.png`
+  const uploadHeld = admin.gate()
+  const actionHeld = admin.gate()
+  let uploaded: string | undefined
+  let holding = false
+  const fetch: typeof host.fetch = async (input, init) => {
+    const request = new Request(input, init)
+    const response = await host.fetch(request)
+    const { pathname } = new URL(request.url)
+    if (request.method === 'POST' && pathname === '/api/media/items') {
+      uploaded = ((await response.clone().json()) as { id: string }).id
+      await uploadHeld.promise
+    } else if (`${request.method} /${pathname.split('/').pop()}` === c.held && !holding) {
+      holding = true
+      await actionHeld.promise
+    }
+    return response
+  }
+  const text = mountAdmin(`/admin/cms/items/${post.id}`, fetch)
+  await expect.poll(() => button('Vybrať médium')).toBeTruthy()
+  if (c.held === 'POST /restore') {
+    await expect.poll(() => button('Zobraziť revíziu')).toBeTruthy()
+    button('Zobraziť revíziu')!.click()
+    await expect.poll(() => button('Obnoviť do konceptu')).toBeTruthy()
+  }
+
+  button('Vybrať médium')!.click()
+  await expect.poll(() => document.querySelector('[role="dialog"] input[type="file"]')).toBeTruthy()
+  const picker = document.querySelector<HTMLInputElement>('[role="dialog"] input[type="file"]')!
+  Object.defineProperty(picker, 'files', {
+    value: [new File([files.png(40, 30).slice()], filename, { type: 'image/png' })],
+    configurable: true,
+  })
+  picker.dispatchEvent(new Event('change'))
+  await expect.poll(() => uploaded).toBeTruthy()
+  document.querySelector<HTMLButtonElement>('[role="dialog"] button[aria-label="Zatvoriť"]')!.click()
+  await expect.poll(() => document.querySelector('[role="dialog"]')).toBeNull()
+
+  button(c.action)!.click()
+  if (c.held === 'POST /restore') {
+    await expect.poll(() => document.querySelector('[role="dialog"]')).toBeTruthy()
+    ;[...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')]
+      .find((b) => b.textContent?.trim() === c.action)!
+      .click()
+  }
+  await expect.poll(() => holding).toBe(true)
+  uploadHeld.resolve()
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  actionHeld.resolve()
+  await expect.poll(text).toContain(c.done)
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  expect(text()).toContain(filename)
+  expect((await host.call<Item>('GET', `/items/${post.id}`)).body.draft.data.cover).toBeUndefined()
+
+  button('Uložiť koncept')!.click()
+  await expect
+    .poll(async () => (await host.call<Item>('GET', `/items/${post.id}`)).body.draft.data.cover)
+    .toBe(uploaded)
+})
+
 test('editors build a menu from entries with labels per locale and links', async () => {
   const text = mountAdmin('/admin/cms/menus/main')
   await expect.poll(() => button('Pridať položku')).toBeTruthy()
