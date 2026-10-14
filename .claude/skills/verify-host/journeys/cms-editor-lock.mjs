@@ -118,5 +118,22 @@ export default async (ctx) => {
   check(!inDialog, 'focus does not return into the closing restore dialog')
   check(restores === 1, `a keyboard-confirmed restore runs once; Enter afterwards does not restore again (${restores})`)
 
+  await page.goto(`${base}/admin/cms/settings`)
+  const siteName = page.locator('input[name="data.siteName.en"]')
+  await siteName.waitFor()
+  await siteName.fill('Mine')
+  const current = await call('GET', '/settings')
+  await call('PUT', `/settings/draft?version=${current.version}`, { data: { siteName: { en: 'Theirs' } } })
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click()
+  const reload = page.getByRole('button', { name: 'Reload draft', exact: true })
+  await reload.waitFor()
+  await reload.focus()
+  await page.keyboard.press('Enter')
+  await page.waitForFunction(() => document.querySelector('input[name="data.siteName.en"]')?.value === 'Theirs')
+  await page.waitForTimeout(200)
+  const afterReload = await page.evaluate(() => ({ inForm: Boolean(document.activeElement?.closest('form')), tag: document.activeElement?.tagName }))
+  evidence.push({ kind: 'reload focus', ...afterReload })
+  check(afterReload.inForm, `after Reload draft, keyboard focus is in the editor form (${afterReload.tag})`)
+
   await writeFile(`${process.env.EVIDENCE_DIR}/editor-lock.json`, JSON.stringify(evidence, null, 2))
 }
