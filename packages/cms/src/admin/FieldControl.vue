@@ -3,16 +3,17 @@
 import { useI18n } from '@opulonjs/admin'
 import { MediaPicker } from '@opulonjs/media/admin'
 import FieldNumber from '@opulonjs/ui/components/Field/Number'
-import FieldRichText from '@opulonjs/ui/components/Field/RichText'
 import FieldSelect from '@opulonjs/ui/components/Field/Select'
 import FieldText from '@opulonjs/ui/components/Field/Text'
 import FieldTextarea from '@opulonjs/ui/components/Field/Textarea'
 import FieldToggle from '@opulonjs/ui/components/Field/Toggle'
-import { computed } from 'vue'
+import { computed, defineAsyncComponent } from 'vue'
 import { type Field, labelText } from '../api.ts'
 import LinkControl from './LinkControl.vue'
 import ReferenceControl from './ReferenceControl.vue'
 import { useCmsContext } from './use-cms.ts'
+
+const FieldRichText = defineAsyncComponent(() => import('@opulonjs/ui/components/Field/RichText'))
 
 const model = defineModel<unknown>()
 const props = defineProps<{ field: Field; name: string; label: string; disabled?: boolean }>()

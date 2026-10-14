@@ -123,7 +123,8 @@ import { spawn } from 'node:child_process'
 import { readdirSync, readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
-import { build, createServer } from 'vite'
+import { gzipSync } from 'node:zlib'
+import { build, createLogger, createServer } from 'vite'
 import { opulonAdmin } from '@opulonjs/admin/vite'
 import { packagesLoadedTwice } from '${pathToFileURL(join(import.meta.dirname, 'dev-packages.ts')).href}'
 const { brand } = await import('./host/admin/brand.ts')
@@ -146,8 +147,36 @@ const checkOverrides = {
     console.log('ok dashboard chunks: host', dashboard.fileName, 'original', originalDashboard.fileName)
   },
 }
-const config = { root: 'host/admin', configFile: false, logLevel: 'warn', plugins: [...opulonAdmin({ brand, overrides: { components } }), checkOverrides] }
+const onDemand = ['/@tanstack/', '/@tiptap/', '/prosemirror-', '/effect/dist/http-api/HttpApiClient.']
+const checkFirstLoad = {
+  name: 'check-first-load',
+  writeBundle(_options, bundle) {
+    const firstLoad = new Set()
+    const addWithStaticImports = (name) => {
+      if (firstLoad.has(name)) return
+      firstLoad.add(name)
+      for (const next of bundle[name].imports) addWithStaticImports(next)
+    }
+    addWithStaticImports(Object.values(bundle).find((output) => output.type === 'chunk' && output.isEntry).fileName)
+    const chunks = [...firstLoad].map((name) => bundle[name])
+    const eager = chunks.flatMap((chunk) => chunk.moduleIds).filter((id) => onDemand.some((part) => id.includes(part)))
+    if (eager.length > 0) throw new Error('admin first load includes on-demand code: ' + eager.join(', '))
+    const kB = (bytes) => (bytes / 1000).toFixed(1) + ' kB'
+    const size = chunks.reduce((sum, chunk) => sum + chunk.code.length, 0)
+    const gzip = chunks.reduce((sum, chunk) => sum + gzipSync(chunk.code).length, 0)
+    console.log('ok admin first load:', chunks.length, 'chunks,', kB(size) + ',', kB(gzip), 'gzip, no table or editor code')
+  },
+}
+const logger = createLogger('warn')
+const warnings = []
+const warn = logger.warn
+logger.warn = (message, options) => {
+  warnings.push(message)
+  warn(message, options)
+}
+const config = { root: 'host/admin', configFile: false, logLevel: 'warn', customLogger: logger, plugins: [...opulonAdmin({ brand, overrides: { components } }), checkOverrides, checkFirstLoad] }
 await build({ ...config, build: { outDir: '../../admin-dist', emptyOutDir: true } })
+if (warnings.some((message) => message.includes('Some chunks are larger than'))) throw new Error('admin build warns about chunk size')
 console.log('ok admin build from the packed tarballs')
 // Every icon a screen names is in the offline bundle (as an icon or an alias): package screens
 // are found without sources.

@@ -55,5 +55,6 @@
   },
   "devDependencies": {
     "effect": "4.0.3"
-  }
+  },
+  "sideEffects": false
 }

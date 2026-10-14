@@ -1,8 +1,16 @@
 import { defineConfig } from 'tsdown'
 import vue from 'unplugin-vue/rolldown'
 
+const splitForFirstLoad = ['src/admin/MediaPicker.vue']
+
 export default defineConfig({
-  entry: ['src/index.ts', 'src/api.ts', 'src/server/index.ts', 'src/admin/index.ts'],
+  entry: [
+    'src/index.ts',
+    'src/api.ts',
+    'src/server/index.ts',
+    'src/admin/index.ts',
+    ...splitForFirstLoad,
+  ],
   format: 'esm',
   plugins: [vue({ isProduction: true })],
   dts: { vue: true },

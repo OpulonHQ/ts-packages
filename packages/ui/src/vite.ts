@@ -168,9 +168,25 @@ export const opulonUi = (options: UiPresetOptions = {}): Array<PluginOption> => 
       return `export default ${JSON.stringify(lucideSubset(names))}`
     },
   }
+  // Nuxt UI's editor puts tiptap and ProseMirror in one chunk above Vite's 500 kB warning.
+  const editorChunks: Plugin = {
+    name: '@opulonjs/ui:editor-chunks',
+    config: () => ({
+      build: {
+        rolldownOptions: {
+          output: {
+            codeSplitting: {
+              groups: [{ name: 'prosemirror', test: /[\\/]prosemirror-[a-z-]+[\\/]/ }],
+            },
+          },
+        },
+      },
+    }),
+  }
   return [
     styles,
     icons,
+    editorChunks,
     nuxtUi({
       dts: false,
       router: true,

@@ -21,13 +21,13 @@ import {
   type RouteLocationNormalized,
   type RouteRecordSingleView,
 } from 'vue-router'
-import { apiContextKey } from './api-client.ts'
 import { shellMessages } from './messages.ts'
 import type { Access, AdminModule, Messages } from './module.ts'
 import NotFound from './shell/NotFound.vue'
 import Shell from './shell/Shell.vue'
 import {
   adminStateKey,
+  apiContextKey,
   failedScreenKey,
   type AdminState,
   type Me,
