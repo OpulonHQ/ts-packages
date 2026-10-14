@@ -355,6 +355,7 @@ export const createAdmin = (options: AdminOptions): App => {
   const saveLocale = async (locale: string | null, save: (userId: string) => Promise<void>) => {
     const userId = me.value?.user.id
     if (!userId) return
+    epoch++
     const write = lastLocaleSave.then(() => save(userId))
     const queued = write.catch(() => {})
     lastLocaleSave = queued
