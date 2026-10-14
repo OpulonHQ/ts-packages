@@ -298,6 +298,7 @@ export const createAdmin = (options: AdminOptions): App => {
       ? {
           signOut: async () => {
             await providerSignOut({ apiPrefix, fetch })
+            if (unmounted) return
             me.value = undefined
             status.value = 'signedOut'
             await router.push({ name: auth.auth!.signInRoute })
@@ -311,6 +312,7 @@ export const createAdmin = (options: AdminOptions): App => {
             const userId = me.value?.user.id
             if (!userId) return
             await providerSetLocale({ apiPrefix, fetch, userId, locale })
+            if (unmounted) return
             // Applied here rather than by reading /me again, which on failure would take the
             // whole shell down for a saved language.
             await applyLocale(locale, enabled.value)
@@ -392,13 +394,13 @@ export const createAdmin = (options: AdminOptions): App => {
   }
   const failedScreen = shallowRef<string>()
   router.onError((error: unknown, to) => {
-    if (unmounted) return
     console.error(error)
-    if (to !== latest) return
+    if (unmounted || to !== latest) return
     failedScreen.value = to.fullPath
     checkForNewDeploy()
   })
   router.afterEach((to, from, failure) => {
+    if (unmounted) return
     if (isNavigationFailure(failure, NavigationFailureType.duplicated)) latest = to
     if (to === latest) failedScreen.value = undefined
     if (from.matched.length > 0) checkForNewDeploy()

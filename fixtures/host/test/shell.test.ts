@@ -438,3 +438,70 @@ test('an unmounted admin ignores a screen that fails to load late', async () => 
   await tick(50)
   expect(checksAfterUnmount).toBe(0)
 })
+
+const heldNextRequest = () => {
+  const held = Promise.withResolvers<void>()
+  onTestFinished(() => held.resolve())
+  let holding = false
+  let reached = false
+  return {
+    onRequest: async () => {
+      if (!holding) return
+      holding = false
+      reached = true
+      await held.promise
+    },
+    hold: () => {
+      holding = true
+    },
+    reached: () => reached,
+    release: () => held.resolve(),
+  }
+}
+
+test('an unmounted admin does not redirect when a sign-out answers late', async () => {
+  const user = await seedUser(db.url, { name: 'Late Sign-out', locale: 'sk' })
+  const own = await hosts.b1.signIn(user.email, user.password)
+  const dashboard = capturedState()
+  const request = heldNextRequest()
+  const admin = mountDisposable(adminModules, own, {
+    overrides: dashboard.overrides,
+    onRequest: request.onRequest,
+  })
+  await expect.poll(() => document.body.textContent).toContain('state captured')
+  const signOut = dashboard.state().signOut
+  if (!signOut) throw new Error('the auth provider offers no sign-out')
+  request.hold()
+  const signedOut = signOut().catch(() => {})
+  await expect.poll(request.reached).toBe(true)
+  admin.unmount()
+  history.replaceState(null, '', '/elsewhere')
+  request.release()
+  await signedOut
+  await tick(50)
+  expect(location.pathname).toBe('/elsewhere')
+  expect(dashboard.state().status.value).toBe('ready')
+})
+
+test('an unmounted admin keeps its user when a language change answers late', async () => {
+  const user = await seedUser(db.url, { name: 'Late Language', locale: 'sk' })
+  const own = await hosts.b1.signIn(user.email, user.password)
+  const dashboard = capturedState()
+  const request = heldNextRequest()
+  const admin = mountDisposable(adminModules, own, {
+    overrides: dashboard.overrides,
+    onRequest: request.onRequest,
+  })
+  await expect.poll(() => document.body.textContent).toContain('state captured')
+  const { setLocale, me } = dashboard.state()
+  if (!setLocale) throw new Error('the auth provider offers no language change')
+  const before = me.value
+  request.hold()
+  const changed = setLocale('en').catch(() => {})
+  await expect.poll(request.reached).toBe(true)
+  admin.unmount()
+  request.release()
+  await changed
+  await tick(50)
+  expect(me.value).toBe(before)
+})
