@@ -100,8 +100,13 @@ const toI18n = (catalog: Messages, namespace?: string): Messages => {
   return { ...labels, ...(namespace ? { [namespace]: rest } : rest) }
 }
 
-type SavedLocale = { readonly userId: string; readonly locale: string | null }
-const unmountedSaves = new Set<Promise<SavedLocale | undefined>>()
+type LandedLocale = {
+  readonly userId: string
+  readonly locale: string | null
+  readonly pick: number
+}
+const pageAdmins = new Set<(landed: LandedLocale) => void>()
+let pagePicks = 0
 
 /**
  * The admin SPA, served at `/admin`: Nuxt UI dashboard layout, nav groups and dashboard
@@ -293,17 +298,6 @@ export const createAdmin = (options: AdminOptions): App => {
     await ready
     await toSignIn()
   }
-  let picks = 0
-  if (unmountedSaves.size > 0) {
-    void Promise.all(unmountedSaves)
-      .then((saves) => {
-        if (unmounted) return
-        const saved = saves.findLast((save) => save !== undefined)
-        if (saved) lastWrite = { userId: saved.userId, apply: showLocale(saved.locale) }
-        return read()
-      })
-      .catch((error: unknown) => console.warn(error))
-  }
   // A write's own answer may belong to an ended session or be older than another write, so the
   // shell shows what the server holds after it, read fresh.
   const afterWrite = async (
@@ -377,39 +371,50 @@ export const createAdmin = (options: AdminOptions): App => {
   const providerSignOut = auth.auth?.signOut
   const providerSetLocale = auth.auth?.setLocale
   const accountRoute = auth.auth?.accountRoute
-  let lastLocaleSave: Promise<SavedLocale | undefined> = Promise.resolve(undefined)
-  const saveLocale = async (locale: string | null, save: (userId: string) => Promise<void>) => {
-    const userId = me.value?.user.id
-    if (!userId) return
-    const pick = ++picks
-    if (unmountedSaves.size > 0) {
-      void Promise.all(unmountedSaves)
-        .then((saves) => {
-          const overwritten = saves.some((saved) => saved !== undefined)
-          if (overwritten && !unmounted && pick === picks && me.value?.user.id === userId)
-            return saveLocale(locale, save)
-        })
-        .catch((error: unknown) => console.warn(error))
-    }
+  type Pick = LandedLocale & { readonly save: (userId: string) => Promise<void> }
+  let lastPick: Pick | undefined
+  let lastLocaleSave: Promise<void> = Promise.resolve()
+  const sendLocale = async (pick: Pick) => {
+    const { userId, locale, save } = pick
     waitingPicks.push(userId)
-    const previous = lastLocaleSave
-    const write = previous.then(() => {
+    const write = lastLocaleSave.then(() => {
       if (unmounted) throw new Error('the admin unmounted before this language was saved')
+      if (me.value?.user.id !== userId)
+        throw new Error('another account is shown, so this language was not saved')
       return save(userId)
     })
     const picked = () => void waitingPicks.splice(waitingPicks.indexOf(userId), 1)
     lastLocaleSave = write.then(
       () => {
         picked()
-        return { userId, locale }
+        for (const notify of pageAdmins) if (notify !== landed) notify(pick)
       },
       () => {
         picked()
-        return previous
+        if (lastPick === pick) lastPick = undefined
       },
     )
     await afterWrite(write, showLocale(locale))
   }
+  const saveLocale = async (locale: string | null, save: (userId: string) => Promise<void>) => {
+    const userId = me.value?.user.id
+    if (!userId) return
+    lastPick = { userId, locale, pick: ++pagePicks, save }
+    await sendLocale(lastPick)
+  }
+  const landed = ({ userId, locale, pick }: LandedLocale) => {
+    if (lastPick && lastPick.pick > pick) {
+      void sendLocale(lastPick).catch((error: unknown) => console.warn(error))
+      return
+    }
+    void ready
+      .then(() => {
+        lastWrite = { userId, apply: showLocale(locale) }
+        return read()
+      })
+      .catch((error: unknown) => console.warn(error))
+  }
+  pageAdmins.add(landed)
   const state: AdminState = {
     brand: options.brand,
     me,
@@ -540,11 +545,7 @@ export const createAdmin = (options: AdminOptions): App => {
     .provide(failedScreenKey, failedScreen)
   app.onUnmount(() => {
     unmounted = true
-    if (waitingPicks.length > 0) {
-      const saves = lastLocaleSave
-      unmountedSaves.add(saves)
-      void saves.then(() => unmountedSaves.delete(saves))
-    }
+    pageAdmins.delete(landed)
     const history = router.options.history
     history.destroy()
     history.push = history.replace = () => {}
