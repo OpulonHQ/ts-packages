@@ -8,8 +8,14 @@ import { failedScreenKey } from '../state.ts'
 const { t } = useI18n()
 const router = useRouter()
 const failedScreen = inject(failedScreenKey)
-// A full load: browsers keep a failed dynamic import cached for the page's lifetime.
-const retry = () => failedScreen?.value && location.assign(router.resolve(failedScreen.value).href)
+// A full load: browsers keep a failed dynamic import cached for the page's lifetime. Assigning
+// the current URL with a #fragment only jumps within the page, so that case reloads.
+const retry = () => {
+  if (!failedScreen?.value) return
+  const { href } = router.resolve(failedScreen.value)
+  if (new URL(href, location.href).href === location.href) location.reload()
+  else location.assign(href)
+}
 </script>
 
 <template>

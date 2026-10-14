@@ -8,4 +8,4 @@ The built-in Dashboard is now a separate lazy chunk for every host, so an overri
 
 Keep Effect outside dependency prebundling when component overrides are configured.
 
-Show a retryable error above the current screen when a route screen fails to load, and re-check the server build so a deploy prompts a reload.
+Show a retryable error above the current screen when a route screen fails to load or a route guard throws, and re-check the server build so a deploy prompts a reload. Retrying reloads the page at the failed address.

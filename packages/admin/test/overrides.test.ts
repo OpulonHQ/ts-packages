@@ -319,3 +319,19 @@ test('a failing leave guard shows the screen failure', async () => {
   await expect(router.push('/protected')).rejects.toThrow('leave guard failed')
   await expect.poll(() => document.querySelector('[role="alert"]')).not.toBeNull()
 })
+
+test('retrying a failed screen at the current URL reloads the page', async () => {
+  const assign = vi.spyOn(location, 'assign').mockImplementation(() => {})
+  const reload = vi.spyOn(location, 'reload').mockImplementation(() => {})
+  onTestFinished(() => {
+    assign.mockRestore()
+    reload.mockRestore()
+  })
+  mount('/protected?invite=1#token=abc', {
+    overrides: { 'demo.protected': () => Promise.reject(new Error('first load failed')) },
+  })
+  await expect.poll(() => document.querySelector('[role="alert"] button')).not.toBeNull()
+  document.querySelector<HTMLButtonElement>('[role="alert"] button')?.click()
+  expect(reload).toHaveBeenCalled()
+  expect(assign).not.toHaveBeenCalled()
+})
