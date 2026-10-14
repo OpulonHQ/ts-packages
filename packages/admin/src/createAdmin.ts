@@ -172,7 +172,7 @@ export const createAdmin = (options: AdminOptions): App => {
   let epoch = 0
   const begin = () => {
     const turn = ++epoch
-    return () => turn === epoch
+    return () => !unmounted && turn === epoch
   }
   const getMe = async (): Promise<Me | 'signedOut'> => {
     const response = await fetch(new URL(`${apiPrefix}/me`, location.origin), {
@@ -433,7 +433,6 @@ export const createAdmin = (options: AdminOptions): App => {
     .provide(failedScreenKey, failedScreen)
   app.onUnmount(() => {
     unmounted = true
-    epoch++
     router.options.history.destroy()
   })
   return app

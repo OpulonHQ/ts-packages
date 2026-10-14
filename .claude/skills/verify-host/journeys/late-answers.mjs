@@ -30,7 +30,7 @@ export default async (ctx) => {
   }
 
   await page.goto(`${base}/admin/`)
-  await page.getByRole('button', { name: 'User menu' }).waitFor()
+  await page.getByRole('button', { name: /^(User menu|Používateľské menu)$/ }).waitFor()
   if ((await page.evaluate(() => document.documentElement.lang)) !== 'en') {
     await chooseLanguage('Používateľské menu', 'Jazyk', 'English', 'en')
   }
