@@ -46,11 +46,15 @@ export const useAdminLifetime = () => {
     for (const release of gates) release()
     let settled = false
     const drained = (async () => {
-      for (let i = 0; i < pending.length; i++)
-        await pending[i]?.then(
-          () => {},
-          () => {},
-        )
+      let seen = 0
+      do {
+        for (; seen < pending.length; seen++)
+          await pending[seen]?.then(
+            () => {},
+            () => {},
+          )
+        await new Promise((resolve) => setTimeout(resolve, 0))
+      } while (seen < pending.length)
       settled = true
     })()
     const limit = Promise.withResolvers<void>()

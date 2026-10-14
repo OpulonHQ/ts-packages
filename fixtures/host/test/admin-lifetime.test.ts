@@ -32,6 +32,24 @@ test('the next test starts after that admin unmounted and its requests and clean
   expect(document.body.innerHTML).toBe('')
 })
 
+let chained = 0
+const chain = admin.track({
+  first: () => later(),
+  second: async () => {
+    chained++
+  },
+})
+test('a call chained after a timer still belongs to the test that started it', () => {
+  void chain.first().then(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    await chain.second()
+  })
+})
+
+test('the next test starts after the chained call settled', () => {
+  expect(chained).toBe(1)
+})
+
 const failing = admin.track({
   fail: async () => {
     throw new Error('detached failure')
