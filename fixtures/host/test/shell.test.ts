@@ -1635,6 +1635,54 @@ test('a saved language stays when a deploy check lands while its fallback loads'
   expect(me.value?.locale).toBe('sk')
 })
 
+test('a deploy check compares with the language shown when it answers, not when it started', async () => {
+  const user = await seedUser(db.url, { name: 'Fallback Before Check Answer', locale: 'en' })
+  const own = await hosts.b1.signIn(user.email, user.password)
+  const dashboard = capturedState()
+  const catalogs = heldCatalogs(false)
+  const checkGate = Promise.withResolvers<void>()
+  onTestFinished(() => checkGate.resolve())
+  let failNextRead = false
+  let holdNextRead = false
+  let checkHeld = false
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+  onTestFinished(() => error.mockRestore())
+  mountDisposable(catalogs.modules, own, {
+    overrides: dashboard.overrides,
+    onResponse: async (url) => {
+      if (!url.endsWith('/api/me')) return
+      if (failNextRead) {
+        failNextRead = false
+        throw new Error('read failed')
+      }
+      if (!holdNextRead) return
+      holdNextRead = false
+      checkHeld = true
+      await checkGate.promise
+    },
+  })
+  await expect.poll(() => document.body.textContent).toContain('state captured')
+  const { setLocale, me } = dashboard.state()
+  if (!setLocale) throw new Error('the auth provider offers no language change')
+  catalogs.hold()
+  failNextRead = true
+  await setLocale('sk')
+  await expect.poll(catalogs.asked).toBe(true)
+  const saved = await hosts.b1.request('PUT', `/users/users/${user.id}/locale`, {
+    cookie: own,
+    body: { locale: 'en' },
+  })
+  expect(saved.status).toBe(204)
+  holdNextRead = true
+  navigate('/admin/nowhere')
+  await expect.poll(() => checkHeld).toBe(true)
+  await catalogs.release()
+  await expect.poll(() => document.documentElement.lang).toBe('sk')
+  checkGate.resolve()
+  await expect.poll(() => me.value?.locale).toBe('en')
+  await expect.poll(() => document.documentElement.lang).toBe('en')
+})
+
 test('a sign-out sticks when the read after it fails', async () => {
   const user = await seedUser(db.url, { name: 'Sign-out Then Failed Read', locale: 'en' })
   const own = await hosts.b1.signIn(user.email, user.password)

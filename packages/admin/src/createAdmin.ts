@@ -454,7 +454,7 @@ export const createAdmin = (options: AdminOptions): App => {
           return toSignIn().catch((error: unknown) => console.warn(error))
         }
         // A signed-in check carries no locale or fallback, and a read in flight may hold an older answer.
-        if (reading || next.user.id !== known.user.id || next.locale !== known.locale) {
+        if (reading || next.user.id !== me.value?.user.id || next.locale !== me.value.locale) {
           return void read().catch((error: unknown) => console.warn(error))
         }
         lastWrite = undefined
