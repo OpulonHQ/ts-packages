@@ -170,6 +170,7 @@ export const createAdmin = (options: AdminOptions): App => {
 
   let unmounted = false
   let epoch = 0
+  let session = 0
   const begin = () => {
     const turn = ++epoch
     return () => !unmounted && turn === epoch
@@ -213,6 +214,7 @@ export const createAdmin = (options: AdminOptions): App => {
     const live = begin()
     return getMe().then(
       async (first) => {
+        if (first === 'signedOut' || first.user.id !== me.value?.user.id) session++
         if (first === 'signedOut') {
           await loadMessages(defaultLocale, [auth], live)
           if (live()) status.value = 'signedOut'
@@ -314,6 +316,7 @@ export const createAdmin = (options: AdminOptions): App => {
             await providerSignOut({ apiPrefix, fetch })
             if (unmounted) return
             epoch++
+            session++
             me.value = undefined
             status.value = 'signedOut'
             await router.push({ name: auth.auth!.signInRoute })
@@ -327,8 +330,9 @@ export const createAdmin = (options: AdminOptions): App => {
             const userId = me.value?.user.id
             if (!userId) return
             const write = ++latestLocale
+            const signedIn = session
             await providerSetLocale({ apiPrefix, fetch, userId, locale })
-            if (write !== latestLocale || me.value?.user.id !== userId) return
+            if (write !== latestLocale || signedIn !== session) return
             const live = begin()
             // Applied here rather than by reading /me again, which on failure would take the
             // whole shell down for a saved language.

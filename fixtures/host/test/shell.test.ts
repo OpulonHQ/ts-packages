@@ -282,7 +282,7 @@ const heldCatalogs = (holding = true) => {
 
 const mountDisposable = (
   modules: typeof adminModules,
-  session: string,
+  session: string | (() => string),
   {
     overrides = {},
     onRequest = () => {},
@@ -303,7 +303,8 @@ const mountDisposable = (
     fetch: async (input, init) => {
       const url = String(input instanceof Request ? input.url : input)
       await onRequest(url)
-      const response = await hosts.b1.browserFetch({ cookie: session })(input, init)
+      const cookie = typeof session === 'string' ? session : session()
+      const response = await hosts.b1.browserFetch({ cookie })(input, init)
       requested = true
       await onResponse(url)
       return response
@@ -838,3 +839,70 @@ test('a language save that answers after a sign-out leaves the signed-out shell 
   expect(status.value).toBe('signedOut')
   expect(document.documentElement.lang).toBe('sk')
 })
+
+type Seeded = Awaited<ReturnType<typeof seedUser>>
+
+const signInInEnglish = async (user: Seeded) => {
+  const session = await hosts.b1.signIn(user.email, user.password)
+  const { id } = (await hosts.b1.me(session)).user
+  const saved = await hosts.b1.request('PUT', `/users/users/${id}/locale`, {
+    cookie: session,
+    body: { locale: 'en' },
+  })
+  expect(saved.status).toBe(204)
+  return session
+}
+
+const lateLanguageInNextSession = async (
+  next: (current: {
+    user: Seeded
+    session: string
+    signOut: () => Promise<void>
+    refresh: () => Promise<void>
+  }) => Promise<string>,
+) => {
+  const user = await seedUser(db.url, { name: 'Late Language Session', locale: 'en' })
+  let session = await hosts.b1.signIn(user.email, user.password)
+  const dashboard = capturedState()
+  const answer = heldAnswer('/locale')
+  mountDisposable(adminModules, () => session, {
+    overrides: dashboard.overrides,
+    onResponse: answer.onResponse,
+  })
+  await expect.poll(() => document.body.textContent).toContain('state captured')
+  const { setLocale, signOut, refresh, me, status } = dashboard.state()
+  if (!signOut || !setLocale) throw new Error('the auth provider offers no sign-out or language')
+  answer.hold()
+  const changed = setLocale('sk')
+  await expect.poll(answer.answered).toBe(true)
+  session = await next({ user, session, signOut, refresh })
+  await refresh()
+  const current = me.value
+  expect(status.value).toBe('ready')
+  expect(current?.locale).toBe('en')
+  await answer.release()
+  await changed
+  expect(me.value).toBe(current)
+  expect(document.documentElement.lang).toBe('en')
+}
+
+test('a language save from before a sign-out stays out of the same user’s next session', () =>
+  lateLanguageInNextSession(async ({ user, signOut }) => {
+    await signOut()
+    return signInInEnglish(user)
+  }))
+
+test('a language save from a session that ended elsewhere stays out of the next one', () =>
+  lateLanguageInNextSession(async ({ user, session, refresh }) => {
+    expect(
+      (await hosts.b1.request('POST', '/users/auth/sign-out', { cookie: session })).status,
+    ).toBeLessThan(300)
+    await refresh()
+    return signInInEnglish(user)
+  }))
+
+test('a language save stays out of another user’s session signed in over it', () =>
+  lateLanguageInNextSession(async () => {
+    const other = await seedUser(db.url, { name: 'Next User', locale: 'en' })
+    return hosts.b1.signIn(other.email, other.password)
+  }))
