@@ -375,11 +375,15 @@ export const createAdmin = (options: AdminOptions): App => {
     return true
   })
   // Re-check the build after each navigation, so an open tab learns about a deploy.
+  let rechecks = 0
   const recheckBuild = () => {
     if (!me.value) return
+    const recheck = ++rechecks
     getMe().then(
       (next) => {
-        if (next !== 'signedOut') me.value = { ...next, modules: me.value?.modules ?? next.modules }
+        // An older check answering late must not undo what a newer one found.
+        if (recheck !== rechecks || next === 'signedOut') return
+        me.value = { ...next, modules: me.value?.modules ?? next.modules }
       },
       // A failed re-check keeps the last known state; the next navigation retries.
       (error: unknown) => console.warn(error),
