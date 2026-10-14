@@ -382,14 +382,37 @@ test('a language pick still queued when the admin unmounts is never saved', asyn
   const next = mount('/admin/', host.browserFetch(jar))
   await expect.poll(next.text).toContain('Prehľad')
   await pickLanguage('Používateľské menu', 'Jazyk', 'English')
-  await expect.poll(() => document.documentElement.lang).toBe('en')
   first.release()
   await expect.poll(first.done).toBe(true)
+  await expect.poll(() => document.documentElement.lang).toBe('en')
   await tick(100)
 
   expect(oldSaves).toBe(1)
   expect((await host.me(jar.cookie)).locale).toBe('en')
   expect(document.documentElement.lang).toBe('en')
+})
+
+test('a language save still on its way when the admin unmounts does not overwrite the next admin pick', async () => {
+  const user = await seedUser(db.url, { name: 'Active Save Across Mounts', locale: 'sk' })
+  const jar = { cookie: await host.signIn(user.email, user.password) }
+  const first = held(isLocaleSave)
+  const old = mount('/admin/', first.wrap(host.browserFetch(jar)))
+  await expect.poll(old.text).toContain('Prehľad')
+  await pickLanguage('Používateľské menu', 'Jazyk', 'English')
+  await expect.poll(first.reached).toBe(true)
+  old.unmount()
+
+  const next = mount('/admin/', host.browserFetch(jar))
+  await expect.poll(next.text).toContain('Prehľad')
+  await pickLanguage('Používateľské menu', 'Jazyk', 'Slovenčina')
+  await tick(100)
+  first.release()
+  await expect.poll(first.done).toBe(true)
+  await expect.poll(async () => (await host.me(jar.cookie)).locale).toBe('sk')
+  await tick(100)
+
+  expect((await host.me(jar.cookie)).locale).toBe('sk')
+  expect(document.documentElement.lang).toBe('sk')
 })
 
 test('a language save that answers after a sign-out does not keep the user signed in when reads fail', async () => {
