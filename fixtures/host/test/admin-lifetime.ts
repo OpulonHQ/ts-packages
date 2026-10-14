@@ -7,6 +7,7 @@ type Calls = {
   readonly pending: Array<Promise<unknown>>
   readonly busy: Set<Promise<unknown>>
   parked: number
+  wake: () => void
   readonly rejected: Array<{ readonly call: Watched<unknown>; readonly error: unknown }>
 }
 
@@ -66,6 +67,7 @@ export const useAdminLifetime = () => {
     pending: [],
     busy: new Set(),
     parked: 0,
+    wake: () => {},
     rejected: [],
   })
   let current = fresh('before the first test')
@@ -176,6 +178,7 @@ export const useAdminLifetime = () => {
         await Promise.race([
           ...[...calls.busy].map((call) => Promise.prototype.then.call(call, null, () => {})),
           new Promise((resolve) => setTimeout(resolve, Math.max(0, deadline - Date.now()))),
+          new Promise<void>((resolve) => (calls.wake = resolve)),
         ])
       }
     },
@@ -185,6 +188,7 @@ export const useAdminLifetime = () => {
       calls.gates.push(gate.resolve)
       const park = async () => {
         calls.parked++
+        calls.wake()
         try {
           await gate.promise
         } finally {
