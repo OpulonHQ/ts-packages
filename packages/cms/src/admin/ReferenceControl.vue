@@ -3,6 +3,7 @@ import { useI18n } from '@opulonjs/admin'
 import { listDefaultPerPage, listMaxOffset, listMaxPerPage } from '@opulonjs/core/api'
 import { type TableQuery, UButton, UCheckbox } from '@opulonjs/ui'
 import DataTable from '@opulonjs/ui/components/DataTable'
+import { Schema } from 'effect'
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import type { Field, ItemSummary } from '../api.ts'
 import { useContent } from './use-cms.ts'
@@ -14,6 +15,7 @@ const content = useContent()
 type SelectedReference =
   | { readonly kind: 'item'; readonly title: string; readonly collection: string }
   | { readonly kind: 'missing'; readonly collection: string }
+const isItemId = Schema.is(Schema.String.check(Schema.isUUID()))
 const chosen = shallowRef<ReadonlyMap<string, SelectedReference>>(new Map())
 const failed = ref(false)
 const selected = computed<ReadonlyArray<string>>(() =>
@@ -36,8 +38,11 @@ watch(
     const rows = new Map(
       [...chosen.value].filter(([id, item]) => wanted.has(id) && item.collection === collection),
     )
-    chosen.value = rows
-    const missing = [...wanted].filter((id) => !rows.has(id))
+    const unknown = [...wanted].filter((id) => !rows.has(id))
+    for (const id of unknown)
+      if (!isItemId(id)) rows.set(id, { kind: 'missing', collection: collection ?? '' })
+    const missing = unknown.filter(isItemId)
+    chosen.value = new Map(rows)
     if (missing.length === 0) return
     for (let start = 0; start < missing.length; start += listMaxPerPage) {
       const batch = missing.slice(start, start + listMaxPerPage)

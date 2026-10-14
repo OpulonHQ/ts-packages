@@ -238,6 +238,32 @@ test('a deleted saved reference is marked missing and remains removable without 
     .toEqual([])
 })
 
+test('a stored reference that is not an item ID is marked missing while the others resolve', async () => {
+  const category = (
+    await host.call<Item>('POST', '/collections/categories/items', {
+      body: { locales: {}, data: { name: { en: 'Valid reference' } } },
+    })
+  ).body
+  const post = (
+    await host.call<Item>('POST', '/collections/posts/items', {
+      body: { locales: {}, data: { title: { en: 'Legacy reference' }, categories: [category.id] } },
+    })
+  ).body
+  await host.query(
+    `update cms.document set draft = jsonb_set(draft, '{data,categories}', '["legacy-ref", "${category.id}"]') where id = '${post.id}'`,
+  )
+  admin.mount(`/admin/cms/items/${post.id}`, { fetch: host.fetch })
+  await expect
+    .poll(() => document.querySelector('[aria-label="Odstrániť Valid reference"]'))
+    .toBeTruthy()
+  expect(
+    document.querySelector(
+      '[aria-label="Odstrániť Chýbajúca alebo vymazaná položka (legacy-ref)"]',
+    ),
+  ).toBeTruthy()
+  expect(document.querySelector('[role="alert"]')).toBeNull()
+})
+
 test('a failed reference summary request shows a load alert without marking the item deleted', async () => {
   const category = (
     await host.call<Item>('POST', '/collections/categories/items', {
