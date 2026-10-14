@@ -441,8 +441,7 @@ export const createAdmin = (options: AdminOptions): App => {
   // Re-check the build after each navigation, so an open tab learns about a deploy.
   let latestCheck = 0
   const checkForNewDeploy = () => {
-    const known = me.value
-    if (!known || unmounted) return
+    if (!me.value || unmounted) return
     const turn = epoch
     const check = ++latestCheck
     getMe().then(
@@ -458,7 +457,7 @@ export const createAdmin = (options: AdminOptions): App => {
           return void read().catch((error: unknown) => console.warn(error))
         }
         lastWrite = undefined
-        me.value = { ...next, modules: known.modules }
+        me.value = { ...next, modules: me.value.modules }
       },
       // A failed re-check keeps the last known state; the next navigation retries.
       (error: unknown) => console.warn(error),

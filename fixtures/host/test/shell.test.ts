@@ -288,11 +288,13 @@ const mountDisposable = (
     onRequest = () => {},
     onResponse = () => {},
     host = () => hosts.b1,
+    rewrite = (_url, response) => response,
   }: {
     overrides?: NonNullable<AdminOptions['overrides']>
     onRequest?: (url: string) => Promise<void> | void
     onResponse?: (url: string) => Promise<void> | void
     host?: () => (typeof hosts)[keyof typeof hosts]
+    rewrite?: (url: string, response: Response) => Promise<Response> | Response
   } = {},
 ) => {
   let requested = false
@@ -309,7 +311,7 @@ const mountDisposable = (
       const response = await host().browserFetch({ cookie })(input, init)
       requested = true
       await onResponse(url)
-      return response
+      return rewrite(url, response)
     },
   })
   document.body.innerHTML = '<div id="app"></div>'
@@ -1681,6 +1683,59 @@ test('a deploy check compares with the language shown when it answers, not when 
   checkGate.resolve()
   await expect.poll(() => me.value?.locale).toBe('en')
   await expect.poll(() => document.documentElement.lang).toBe('en')
+})
+
+test('a deploy check keeps the modules of a read that applied after it started', async () => {
+  const user = await seedUser(db.url, { name: 'Modules After Check', locale: 'en' })
+  const own = await hosts.b1.signIn(user.email, user.password)
+  const dashboard = capturedState()
+  const catalogs = heldCatalogs(false)
+  const screenGate = Promise.withResolvers<Awaited<ReturnType<ReturnType<typeof screen>>>>()
+  onTestFinished(() => screenGate.resolve(screen('slow screen')()))
+  const checkGate = Promise.withResolvers<void>()
+  onTestFinished(() => checkGate.resolve())
+  let screenAsked = false
+  let withoutEmails = false
+  let holdNextRead = false
+  let checkHeld = false
+  mountDisposable(catalogs.modules, own, {
+    overrides: {
+      ...dashboard.overrides,
+      'users.signIn': () => {
+        screenAsked = true
+        return screenGate.promise
+      },
+    },
+    onResponse: async (url) => {
+      if (!holdNextRead || !url.endsWith('/api/me')) return
+      holdNextRead = false
+      checkHeld = true
+      await checkGate.promise
+    },
+    rewrite: async (url, response) => {
+      if (!withoutEmails || !url.endsWith('/api/me') || !response.ok) return response
+      const body = (await response.json()) as { modules: ReadonlyArray<string> }
+      return Response.json({ ...body, modules: body.modules.filter((m) => m !== 'emails') })
+    },
+  })
+  await expect.poll(() => document.body.textContent).toContain('state captured')
+  const { refresh, me } = dashboard.state()
+  expect(me.value?.modules).toContain('emails')
+  navigate('/admin/sign-in')
+  await expect.poll(() => screenAsked).toBe(true)
+  catalogs.hold()
+  withoutEmails = true
+  const refreshing = refresh()
+  await expect.poll(catalogs.asked).toBe(true)
+  holdNextRead = true
+  screenGate.resolve(await screen('slow screen')())
+  await expect.poll(() => checkHeld).toBe(true)
+  await catalogs.release()
+  await refreshing
+  expect(me.value?.modules).not.toContain('emails')
+  checkGate.resolve()
+  await tick(100)
+  expect(me.value?.modules).not.toContain('emails')
 })
 
 test('a sign-out sticks when the read after it fails', async () => {
