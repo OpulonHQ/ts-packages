@@ -5,7 +5,7 @@ import { UButton, UCard, UCheckbox } from '@opulonjs/ui'
 import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
 import StatusBadge from '@opulonjs/ui/components/StatusBadge'
-import { ref, shallowRef } from 'vue'
+import { onBeforeUnmount, ref, shallowRef } from 'vue'
 import type { UserInfo } from '../api.ts'
 import LocalePicker from './LocalePicker.vue'
 import { failureKey, useUsersClient } from './client.ts'
@@ -23,16 +23,23 @@ const busy = ref(false)
 const confirming = ref(false)
 const timeline = ref<{ refresh: () => Promise<void> }>()
 
-const load = () =>
-  users((client) => client.users()).then(
+let latest = 0
+onBeforeUnmount(() => latest++)
+const load = () => {
+  const ticket = ++latest
+  return users((client) => client.users({ query: { id } })).then(
     (list) => {
+      if (ticket !== latest) return
       user.value = list.users.find((u) => u.id === id)
       roles.value = list.roles
       roleIds.value = [...(user.value?.roleIds ?? [])]
       status.value = user.value ? 'ready' : 'notFound'
     },
-    () => (status.value = 'failed'),
+    () => {
+      if (ticket === latest) status.value = 'failed'
+    },
   )
+}
 void load()
 
 const roleName = (role: { id: string; name: string }) =>

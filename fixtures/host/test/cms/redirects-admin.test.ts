@@ -1,22 +1,13 @@
-import { createAdmin } from '@opulonjs/admin'
 import type { Redirect } from '@opulonjs/cms/api'
-import { beforeEach, expect, onTestFinished, test } from 'vitest'
-import { brand } from '../../admin/brand.ts'
-import { adminModules } from '../../admin/modules.ts'
+import { beforeEach, expect, test } from 'vitest'
+import { useAdminLifetime } from '../admin-lifetime.ts'
 import { useCmsHost } from './helpers.ts'
 
 // Runs in the `admin` vitest project (happy-dom); the admin's fetch goes into the test Worker.
-const host = useCmsHost()
+const admin = useAdminLifetime()
+const host = admin.track(useCmsHost())
 beforeEach(() => host.query('delete from cms.redirect'))
-
-function mountAdmin(path: string) {
-  history.replaceState(null, '', path)
-  document.body.innerHTML = '<div id="app"></div>'
-  const app = createAdmin({ brand, modules: adminModules, buildId: 'build-1', fetch: host.fetch })
-  app.mount('#app')
-  onTestFinished(() => app.unmount())
-  return () => document.body.textContent ?? ''
-}
+const mountAdmin = (path: string) => admin.mount(path, { fetch: host.fetch })
 
 const buttons = (label: string) =>
   [...document.querySelectorAll('button')].filter((b) => b.textContent?.trim() === label)
@@ -62,6 +53,7 @@ test('editors list, create, edit and delete redirects', async () => {
   await expect
     .poll(async () => (await stored()).find((r) => r.from === '/old-team')?.to)
     .toBe('/our-team')
+  await expect.poll(() => document.querySelector('[name="from"]')).toBeNull()
 
   row('/old-team')!.click()
   await expect.poll(() => button('Vymazať')).toBeDefined()

@@ -168,6 +168,7 @@ export const createAdmin = (options: AdminOptions): App => {
   const allowed = (access: Access | undefined) =>
     !access || access.public || access.signedIn || can(access.permission)
 
+  let unmounted = false
   const getMe = async (): Promise<Me | 'signedOut'> => {
     const response = await fetch(new URL(`${apiPrefix}/me`, location.origin), {
       credentials: 'same-origin',
@@ -193,6 +194,7 @@ export const createAdmin = (options: AdminOptions): App => {
       loadMessages(locale, modules),
       locale === 'en' ? undefined : loadMessages('en', modules),
     ])
+    if (unmounted) return
     i18n.global.locale.value = locale
     document.documentElement.lang = locale
   }
@@ -201,9 +203,10 @@ export const createAdmin = (options: AdminOptions): App => {
   const load = () =>
     getMe().then(
       async (first) => {
+        if (unmounted) return
         if (first === 'signedOut') {
           await loadMessages(defaultLocale, [auth])
-          status.value = 'signedOut'
+          if (!unmounted) status.value = 'signedOut'
           return
         }
         for (const m of options.modules) {
@@ -217,12 +220,13 @@ export const createAdmin = (options: AdminOptions): App => {
           first.locale,
           options.modules.filter((m) => first.modules.includes(m.id)),
         )
+        if (unmounted) return
         me.value = first
         status.value = 'ready'
       },
       (error: unknown) => {
         console.error(error)
-        status.value = 'failed'
+        if (!unmounted) status.value = 'failed'
       },
     )
   let ready = load()
@@ -296,6 +300,7 @@ export const createAdmin = (options: AdminOptions): App => {
       ? {
           signOut: async () => {
             await providerSignOut({ apiPrefix, fetch })
+            if (unmounted) return
             me.value = undefined
             status.value = 'signedOut'
             await router.push({ name: auth.auth!.signInRoute })
@@ -309,10 +314,11 @@ export const createAdmin = (options: AdminOptions): App => {
             const userId = me.value?.user.id
             if (!userId) return
             await providerSetLocale({ apiPrefix, fetch, userId, locale })
+            if (unmounted) return
             // Applied here rather than by reading /me again, which on failure would take the
             // whole shell down for a saved language.
             await applyLocale(locale, enabled.value)
-            if (me.value) me.value = { ...me.value, locale }
+            if (me.value && !unmounted) me.value = { ...me.value, locale }
           },
         }
       : {}),
@@ -362,6 +368,7 @@ export const createAdmin = (options: AdminOptions): App => {
   router.beforeEach(async (to) => {
     latest = to
     await ready
+    if (unmounted) return true
     const { module, access } = to.meta
     if (access?.public) return true
     if (status.value === 'signedOut') {
@@ -376,11 +383,11 @@ export const createAdmin = (options: AdminOptions): App => {
   // Re-check the build after each navigation, so an open tab learns about a deploy.
   let latestCheck = 0
   const checkForNewDeploy = () => {
-    if (!me.value) return
+    if (!me.value || unmounted) return
     const check = ++latestCheck
     getMe().then(
       (next) => {
-        if (check !== latestCheck || next === 'signedOut') return
+        if (unmounted || check !== latestCheck || next === 'signedOut') return
         me.value = { ...next, modules: me.value?.modules ?? next.modules }
       },
       // A failed re-check keeps the last known state; the next navigation retries.
@@ -390,22 +397,28 @@ export const createAdmin = (options: AdminOptions): App => {
   const failedScreen = shallowRef<string>()
   router.onError((error: unknown, to) => {
     console.error(error)
-    if (to !== latest) return
+    if (unmounted || to !== latest) return
     failedScreen.value = to.fullPath
     checkForNewDeploy()
   })
   router.afterEach((to, from, failure) => {
+    if (unmounted) return
     if (isNavigationFailure(failure, NavigationFailureType.duplicated)) latest = to
     if (to === latest) failedScreen.value = undefined
     if (from.matched.length > 0) checkForNewDeploy()
   })
 
   document.title = options.brand.name
-  return createApp(Shell)
+  const app = createApp(Shell)
     .use(router)
     .use(i18n)
     .use(uiPlugin)
     .provide(apiContextKey, { apiPrefix, fetch })
     .provide(adminStateKey, state)
     .provide(failedScreenKey, failedScreen)
+  app.onUnmount(() => {
+    unmounted = true
+    router.options.history.destroy()
+  })
+  return app
 }

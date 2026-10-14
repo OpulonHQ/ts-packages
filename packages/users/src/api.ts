@@ -1,5 +1,5 @@
 // Client-safe: the users HttpApi groups and key catalogs, imported by the admin build too.
-import { Authorization, Policy, Public } from '@opulonjs/core/api'
+import { Authorization, ListQuery, listOffsetWithinLimit, Policy, Public } from '@opulonjs/core/api'
 import { Schema } from 'effect'
 import * as HttpApiEndpoint from 'effect/http-api/HttpApiEndpoint'
 import {
@@ -143,11 +143,20 @@ export const RoleInfo = Schema.Struct({
 })
 export type RoleInfo = typeof RoleInfo.Type
 
-/** Users, with the roles to assign (names only). */
+/** One page of users, its match count, and the roles to assign (names only). */
 export const UserList = Schema.Struct({
   users: Schema.Array(UserInfo),
+  total: Schema.Number,
   roles: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
 })
+export type UserList = typeof UserList.Type
+
+export const UserQuery = Schema.Struct({
+  ...ListQuery.fields,
+  sort: Schema.optionalKey(Schema.Literals(['name', 'email', 'deactivated'])),
+  id: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(200))),
+}).check(Schema.makeFilter(listOffsetWithinLimit))
+export type UserQuery = typeof UserQuery.Type
 
 export const RoleList = Schema.Struct({ roles: Schema.Array(RoleInfo) })
 
@@ -168,7 +177,10 @@ export const UsersGroup = HttpApiGroup.make('users')
     }).annotate(Policy, 'users.manage'),
   )
   .add(
-    HttpApiEndpoint.get('users', '/users', { success: UserList }).annotate(Policy, 'users.manage'),
+    HttpApiEndpoint.get('users', '/users', { query: UserQuery, success: UserList }).annotate(
+      Policy,
+      'users.manage',
+    ),
   )
   .add(
     HttpApiEndpoint.put('assignRoles', '/users/:id/roles', {

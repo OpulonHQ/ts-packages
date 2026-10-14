@@ -7,10 +7,11 @@ import {
   requirePermission,
   withTransaction,
 } from '@opulonjs/core'
-import { Context, Effect, Layer } from 'effect'
+import { listDefaultPerPage } from '@opulonjs/core/api'
+import { Context, Effect, Layer, Schema } from 'effect'
 import { BadRequest, Conflict, Forbidden, NotFound } from 'effect/http-api/HttpApiError'
 import { SqlClient } from 'effect/sql/SqlClient'
-import { Refused, type RoleInfo, superAdminRole, type UserInfo } from '../api.ts'
+import { Refused, type RoleInfo, superAdminRole, UserList, type UserQuery } from '../api.ts'
 import { type Access, canGrant, loadAccess, lockAccessWrites, outranks } from './access.ts'
 
 /** Permissions nobody may take from themselves (no self-lockout). */
@@ -24,13 +25,7 @@ type RoleRow = { id: string; name: string; permissions: ReadonlyArray<string>; b
 export class UserManagement extends Context.Service<
   UserManagement,
   {
-    readonly users: () => Effect.Effect<
-      {
-        readonly users: ReadonlyArray<UserInfo>
-        readonly roles: ReadonlyArray<{ readonly id: string; readonly name: string }>
-      },
-      Forbidden
-    >
+    readonly users: (query: UserQuery) => Effect.Effect<UserList, Forbidden>
     readonly roles: () => Effect.Effect<{ readonly roles: ReadonlyArray<RoleInfo> }, Forbidden>
     readonly createRole: (input: {
       readonly name: string
@@ -140,21 +135,47 @@ export class UserManagement extends Context.Service<
 
       return UserManagement.of({
         users: Effect.fn('UserManagement.users')(
-          function* () {
+          function* (query) {
             yield* requirePermission('users.manage')
-            const users = yield* sql<UserInfo>`
-            select u.id, u.name, u.email, u.admin_locale as locale,
-              u.deactivated_at is not null as deactivated,
-              coalesce(jsonb_agg(ur.role_id order by ur.role_id)
-                filter (where ur.role_id is not null), '[]') as "roleIds"
-            from users."user" u left join users.user_role ur on ur.user_id = u.id
-            group by u.id order by u.deactivated_at is not null, lower(u.name), u.email`
-            const roles = yield* sql<{ id: string; name: string }>`
-            select id, name from users.role order by built_in desc, lower(name)`
-            return { users, roles }
+            const page = query.page ?? 1
+            const perPage = query.perPage ?? listDefaultPerPage
+            const search = query.search?.trim()
+            const orderColumn = {
+              name: sql`lower(name)`,
+              email: sql`email`,
+              deactivated: sql`(deactivated_at is not null)`,
+            }[query.sort ?? 'name']
+            const direction = query.direction === 'desc' ? sql`desc` : sql`asc`
+            const order =
+              query.sort === undefined
+                ? sql`(deactivated_at is not null) asc, lower(name) ${direction}, id ${direction}`
+                : sql`${orderColumn} ${direction}, id ${direction}`
+            const where = sql.and([
+              sql`true`,
+              ...(query.id !== undefined ? [sql`id = ${query.id}`] : []),
+              ...(search
+                ? [
+                    sql`(strpos(lower(name), lower(${search})) > 0 or strpos(lower(email), lower(${search})) > 0)`,
+                  ]
+                : []),
+            ])
+            const rows = yield* sql`with filtered as not materialized (
+              select * from users."user" where ${where}
+            ), paged as (
+              select * from filtered order by ${order} limit ${perPage} offset ${(page - 1) * perPage}
+            ) select (select count(*)::float8 from filtered) as total,
+              coalesce((select jsonb_agg(jsonb_build_object(
+                'id', id, 'name', name, 'email', email, 'locale', admin_locale,
+                'deactivated', deactivated_at is not null,
+                'roleIds', coalesce((select jsonb_agg(role_id order by role_id)
+                  from users.user_role where user_id = paged.id), '[]'::jsonb)
+              ) order by ${order}) from paged), '[]'::jsonb) as users,
+              coalesce((select jsonb_agg(jsonb_build_object('id', id, 'name', name)
+                order by built_in desc, lower(name), id) from users.role), '[]'::jsonb) as roles`
+            return yield* Schema.decodeUnknownEffect(UserList)(rows[0])
           },
           provide,
-          Effect.orDie,
+          Effect.catchTags({ SqlError: Effect.die, SchemaError: Effect.die }),
         ),
 
         roles: Effect.fn('UserManagement.roles')(

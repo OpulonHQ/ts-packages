@@ -1,31 +1,14 @@
-import { createAdmin } from '@opulonjs/admin'
 import { defineCms, fields, type Page } from '@opulonjs/cms/api'
 import { cmsAdmin } from '@opulonjs/cms/admin'
-import { expect, onTestFinished, test } from 'vitest'
-import { brand } from '../../admin/brand.ts'
-import { adminModules } from '../../admin/modules.ts'
-import { page, section, trackRequests, useCmsHost } from './helpers.ts'
+import { expect, test } from 'vitest'
+import { useAdminLifetime } from '../admin-lifetime.ts'
+import { page, section, useCmsHost } from './helpers.ts'
 
 // Runs in the `admin` vitest project (happy-dom); the admin's fetch goes into the test Worker.
-const host = useCmsHost()
+const admin = useAdminLifetime()
+const host = admin.track(useCmsHost())
 
-function mountAdmin(path: string) {
-  history.replaceState(null, '', path)
-  document.body.innerHTML = '<div id="app"></div>'
-  const requests = trackRequests(host.fetch)
-  const app = createAdmin({
-    brand,
-    modules: adminModules,
-    buildId: 'build-1',
-    fetch: requests.fetch,
-  })
-  app.mount('#app')
-  onTestFinished(async () => {
-    app.unmount()
-    await requests.drain()
-  })
-  return () => document.body.textContent ?? ''
-}
+const mountAdmin = (path: string) => admin.mount(path, { fetch: host.fetch })
 
 const button = (label: string) =>
   [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === label)

@@ -9,6 +9,7 @@ Maintained source for verifying what a user of a host built from `@opulonjs/*` s
 | Media library | [media.md](media.md) | media | `media.mjs`, `smoke.sh` |
 | CMS pages and Read API | [cms-pages.md](cms-pages.md) | cms | `cms-pages.mjs`, `smoke.sh` |
 | Emails: log, templates, outbox | [emails.md](emails.md) | emails, core | `emails.mjs`, `smoke.sh` |
+| Server-side list paging and reference picker | [list-paging.md](list-paging.md) | users, cms, core | `list-paging.mjs` |
 
 All journeys last passed together on 2026-10-13. Not mapped: the fixture-only `Notes` demo module (`fixtures/host/modules/demo`), cms Collections, Menus, Site settings and Redirects screens beyond their mention in `cms-pages.md`.
 

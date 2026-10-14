@@ -2,10 +2,12 @@ import { CmsSections, createCmsClient, sectionComponents } from '@opulonjs/cms/s
 import { createApp, defineComponent, h, type PropType } from 'vue'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import type { definitions } from '../../cms/definitions.ts'
+import { useAdminLifetime } from '../admin-lifetime.ts'
 import { page, section, useCmsHost } from './helpers.ts'
 
 // Runs in the `admin` vitest project (happy-dom): a public page rendered from the Read API.
-const host = useCmsHost()
+const admin = useAdminLifetime()
+const host = admin.track(useCmsHost())
 
 const Hero = defineComponent({
   props: { data: { type: Object as PropType<Record<string, unknown>>, required: true } },

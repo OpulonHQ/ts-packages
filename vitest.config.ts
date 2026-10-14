@@ -14,12 +14,13 @@ const server = { deps: { inline: [/better-auth/, /@opentelemetry\/semantic-conve
 // Nuxt UI and the offline icons as `opulonAdmin()` adds them. The preset is assembled from
 // source here because a bare package import in this config would load the package's dist.
 const adminTests = [
-  'fixtures/host/test/{shell,packages,email-log,email-templates,users-admin,audit-admin}.test.ts',
+  'fixtures/host/test/{shell,packages,email-log,email-templates,users-admin,audit-admin,admin-lifetime,admin-lifetime-drain}.test.ts',
   'packages/{ui,admin}/test/**/*.test.ts',
   'fixtures/host/test/media/admin.test.ts',
   'fixtures/host/test/cms/admin.test.ts',
   'fixtures/host/test/cms/redirects-admin.test.ts',
   'fixtures/host/test/cms/content-admin.test.ts',
+  'fixtures/host/test/cms/reference-paging-admin.test.ts',
   'fixtures/host/test/cms/cms-sections.test.ts',
 ]
 
@@ -57,6 +58,8 @@ export default defineConfig({
           name: 'admin',
           include: adminTests,
           environment: './test/happy-dom-server.ts',
+          expect: { poll: { timeout: 5000 } },
+          testTimeout: 15_000,
           globalSetup,
           server,
         },

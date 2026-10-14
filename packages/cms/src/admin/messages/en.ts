@@ -87,6 +87,7 @@ export default {
     deleted: 'Redirect deleted.',
   },
   collections: {
+    paginationLimit: 'Refine your search to reach results beyond the paging limit.',
     title: 'Collections',
     description: 'Posts, people and other collections. Edit an item, then publish it.',
     create: 'New item',
@@ -117,6 +118,13 @@ export default {
     addChild: 'Add sub-entry',
     remove: 'Remove entry',
   },
+  reference: {
+    missing: 'Missing or deleted item ({id})',
+    selected: 'Selected items',
+    remove: 'Remove {title}',
+    empty: 'No matching items.',
+    search: 'Search items…',
+  },
   link: {
     type: 'Links to',
     none: 'Nothing',
@@ -126,6 +134,7 @@ export default {
     url: 'URL',
     urlHelp: 'https://…, mailto:, tel: or a path starting with "/".',
     target: 'Target',
+    collection: 'Collection',
   },
   errors: { failed: 'The action failed. Try again.', notFound: 'This page does not exist.' },
   permissions: {

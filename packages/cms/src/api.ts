@@ -1,7 +1,14 @@
 // Client-safe: the cms HttpApi group, its catalogs, document schemas and the definitions
 // builders (TSPACK-11). Imported by the admin build and the host's definitions file, so no
 // server-only imports here.
-import { Authorization, Policy, Public } from '@opulonjs/core/api'
+import {
+  Authorization,
+  ListQuery,
+  listMaxPerPage,
+  listOffsetWithinLimit,
+  Policy,
+  Public,
+} from '@opulonjs/core/api'
 import { ResolvedMedia } from '@opulonjs/media/api'
 import { Schema } from 'effect'
 import * as HttpApiEndpoint from 'effect/http-api/HttpApiEndpoint'
@@ -144,6 +151,24 @@ export const ItemSummary = Schema.Struct({
   ...documentState,
 })
 export type ItemSummary = typeof ItemSummary.Type
+
+export const ItemPage = Schema.Struct({ rows: Schema.Array(ItemSummary), total: Schema.Number })
+export type ItemPage = typeof ItemPage.Type
+const isItemId = Schema.is(Schema.String.check(Schema.isUUID()))
+const ItemIds = Schema.String.check(
+  Schema.isMaxLength(listMaxPerPage * 37 - 1),
+  Schema.makeFilter((value) => {
+    const ids = value.split(',')
+    return ids.length <= listMaxPerPage && ids.every(isItemId)
+  }),
+)
+export const ItemQuery = Schema.Struct({
+  ...ListQuery.fields,
+  sort: Schema.optionalKey(Schema.Literals(['title', 'path', 'status', 'updatedAt'])),
+  /** Comma-separated UUIDs, at most listMaxPerPage, within the path's collection. */
+  ids: Schema.optionalKey(ItemIds),
+}).check(Schema.makeFilter(listOffsetWithinLimit))
+export type ItemQuery = typeof ItemQuery.Type
 
 export const Item = Schema.Struct({
   ...ItemSummary.fields,
@@ -478,7 +503,8 @@ export const CmsGroup = HttpApiGroup.make('cms')
   .add(
     HttpApiEndpoint.get('listItems', '/collections/:collection/items', {
       params: collection,
-      success: Schema.Struct({ rows: Schema.Array(ItemSummary), total: Schema.Number }),
+      query: ItemQuery,
+      success: ItemPage,
       error: CmsNotFound,
     }).annotate(Policy, 'cms.collections.view'),
   )

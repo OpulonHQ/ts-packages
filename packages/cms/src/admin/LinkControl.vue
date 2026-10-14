@@ -4,9 +4,10 @@
 import { useI18n } from '@opulonjs/admin'
 import FieldSelect from '@opulonjs/ui/components/Field/Select'
 import FieldText from '@opulonjs/ui/components/Field/Text'
-import { computed, onMounted, ref } from 'vue'
-import { labelText, type Link } from '../api.ts'
+import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { CmsNotFound, fields, labelText, type ItemSummary, type Link } from '../api.ts'
 import { pageTitle, useCmsContext, useContent } from './use-cms.ts'
+import ReferenceControl from './ReferenceControl.vue'
 
 const model = defineModel<unknown>()
 const props = defineProps<{ name: string; label: string; disabled?: boolean }>()
@@ -15,7 +16,16 @@ const { t, locale } = useI18n()
 const { definitions } = useCmsContext()
 const content = useContent()
 const pages = ref<Array<{ value: string; label: string }>>([])
-const items = ref<Array<{ value: string; label: string }>>([])
+const failure = ref(false)
+const itemCollection = ref<string | null>(null)
+const knownItem = shallowRef<Pick<ItemSummary, 'id' | 'collection'>>()
+const routed = computed(() =>
+  Object.entries(definitions.collections)
+    .filter(([, collection]) => collection.routed)
+    .map(([key, collection]) => ({ value: key, label: labelText(collection.label, locale.value) })),
+)
+let latest = 0
+onBeforeUnmount(() => latest++)
 
 const isLink = (value: unknown): value is Link =>
   typeof value === 'object' && value !== null && 'type' in value
@@ -53,10 +63,17 @@ const target = computed({
   },
   set: (value: string | number | null) => {
     const l = link.value
-    if (!l || value === null) return
+    if (!l) return
+    if (value === null) {
+      if (l.type === 'item' || l.type === 'page') model.value = null
+      return
+    }
     if (l.type === 'system') model.value = { type: 'system', key: String(value) }
-    else if (l.type === 'page' || l.type === 'item')
+    else if (l.type === 'page' || l.type === 'item') {
+      if (l.type === 'item' && itemCollection.value)
+        knownItem.value = { id: String(value), collection: itemCollection.value }
       model.value = { type: l.type, id: String(value) }
+    }
   },
 })
 const url = computed({
@@ -64,26 +81,54 @@ const url = computed({
   set: (value: string | null) => (model.value = { type: 'url', url: value ?? '' }),
 })
 
-onMounted(async () => {
-  try {
-    pages.value = (await content.listPages()).rows.map((row) => ({
-      value: row.id,
-      label: pageTitle(definitions, row, locale.value),
-    }))
-    const routed = Object.entries(definitions.collections).filter(([, c]) => c.routed)
-    const lists = await Promise.all(
-      routed.map(async ([key, collection]) =>
-        (await content.listItems(key)).rows.map((row) => ({
-          value: row.id,
-          label: `${labelText(collection.label, locale.value)}: ${row.title}`,
-        })),
-      ),
-    )
-    items.value = lists.flat()
-  } catch {
-    // Without the permission to list targets the select stays empty; the link keeps its value.
-  }
-})
+watch(
+  [
+    () => link.value?.type,
+    () =>
+      link.value?.type === 'item' && link.value.id !== knownItem.value?.id
+        ? link.value.id
+        : undefined,
+  ],
+  async ([kind, unresolvedId]) => {
+    const ticket = ++latest
+    failure.value = false
+    if (kind === 'page') {
+      try {
+        const result = await content.listPages()
+        if (ticket === latest)
+          pages.value = result.rows.map((row) => ({
+            value: row.id,
+            label: pageTitle(definitions, row, locale.value),
+          }))
+      } catch {
+        if (ticket === latest) failure.value = true
+      }
+    } else if (kind === 'item') {
+      if (!unresolvedId) {
+        if (!itemCollection.value) itemCollection.value = routed.value[0]?.value ?? null
+        return
+      }
+      try {
+        const item = await content.getItem(unresolvedId)
+        if (ticket === latest) {
+          knownItem.value = { id: item.id, collection: item.collection }
+          itemCollection.value = item.collection
+        }
+      } catch (error) {
+        if (ticket !== latest) return
+        if (error instanceof CmsNotFound) itemCollection.value ??= routed.value[0]?.value ?? null
+        else failure.value = true
+      }
+    }
+  },
+  { immediate: true },
+)
+function selectCollection(value: string | number | null | undefined) {
+  latest++
+  itemCollection.value = value === null || value === undefined ? null : String(value)
+  knownItem.value = undefined
+  model.value = { type: 'item', id: '' }
+}
 </script>
 
 <template>
@@ -98,13 +143,32 @@ onMounted(async () => {
       :disabled="disabled"
     />
     <FieldSelect
-      v-if="link && link.type !== 'url'"
+      v-if="link && (link.type === 'page' || link.type === 'system')"
       v-model="target"
       :name="`${name}.target`"
       :label="t('cms.link.target')"
-      :items="link.type === 'page' ? pages : link.type === 'item' ? items : systemPages"
+      :items="link.type === 'page' ? pages : systemPages"
       :disabled="disabled"
     />
+    <template v-if="link?.type === 'item'">
+      <FieldSelect
+        :model-value="itemCollection"
+        :name="`${name}.collection`"
+        :label="t('cms.link.collection')"
+        :items="routed"
+        :disabled="disabled"
+        @update:model-value="selectCollection"
+      />
+      <ReferenceControl
+        v-if="itemCollection"
+        v-model="target"
+        :field="fields.reference({ label: props.label, collection: itemCollection })"
+        :name="`${name}.target`"
+        :label="t('cms.link.target')"
+        :disabled="disabled"
+      />
+    </template>
+    <p v-if="failure" role="alert" class="text-sm text-error">{{ t('cms.errors.failed') }}</p>
     <FieldText
       v-if="link?.type === 'url'"
       v-model="url"

@@ -18,6 +18,7 @@ import { Items } from './collections.ts'
 import createDocument from './migrations/0001_create_document.ts'
 import createRedirect from './migrations/0002_create_redirect.ts'
 import singletons from './migrations/0003_singletons.ts'
+import itemListOrder from './migrations/0004_item_list_order.ts'
 import { Pages } from './pages.ts'
 import { makeReader, type Tagged } from './read.ts'
 import { Redirects } from './redirects.ts'
@@ -116,6 +117,7 @@ export const cms = (options: CmsOptions) =>
       '0001_create_document': createDocument,
       '0002_create_redirect': createRedirect,
       '0003_singletons': singletons,
+      '0004_item_list_order': itemListOrder,
     },
     permissions: cmsPermissions,
     auditActions: cmsAuditActions,
@@ -167,7 +169,7 @@ const handlers = (api: HttpApi.HttpApi<'opulon', typeof CmsGroup | typeof CmsRea
         .handle('previewPage', ({ params, query }) =>
           preview(pages.preview(params.id, query.locale)),
         )
-        .handle('listItems', ({ params }) => items.list(params.collection))
+        .handle('listItems', ({ params, query }) => items.list(params.collection, query))
         .handle('createItem', ({ params, payload }) => items.create(params.collection, payload))
         .handle('getItem', ({ params }) => items.get(params.id))
         .handle('saveItemDraft', ({ params, payload }) => items.saveDraft(params.id, payload))

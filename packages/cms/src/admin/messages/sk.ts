@@ -87,6 +87,7 @@ export default {
     deleted: 'Presmerovanie vymazané.',
   },
   collections: {
+    paginationLimit: 'Spresnite vyhľadávanie, aby ste našli výsledky za limitom stránkovania.',
     title: 'Kolekcie',
     description: 'Články, ľudia a ďalšie kolekcie. Upravte položku a potom ju zverejnite.',
     create: 'Nová položka',
@@ -118,6 +119,13 @@ export default {
     addChild: 'Pridať podpoložku',
     remove: 'Odstrániť položku',
   },
+  reference: {
+    missing: 'Chýbajúca alebo vymazaná položka ({id})',
+    selected: 'Vybrané položky',
+    remove: 'Odstrániť {title}',
+    empty: 'Žiadne zodpovedajúce položky.',
+    search: 'Hľadať položky…',
+  },
   link: {
     type: 'Odkazuje na',
     none: 'Nič',
@@ -127,6 +135,7 @@ export default {
     url: 'URL',
     urlHelp: 'https://…, mailto:, tel: alebo cesta začínajúca „/“.',
     target: 'Cieľ',
+    collection: 'Kolekcia',
   },
   errors: { failed: 'Akcia zlyhala. Skúste to znova.', notFound: 'Táto stránka neexistuje.' },
   permissions: {

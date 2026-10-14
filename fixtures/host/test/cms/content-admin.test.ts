@@ -1,4 +1,4 @@
-import { createAdmin, useI18n } from '@opulonjs/admin'
+import { useI18n } from '@opulonjs/admin'
 import {
   defineCms,
   fields,
@@ -11,20 +11,21 @@ import {
   type CmsDefinitions,
 } from '@opulonjs/cms/api'
 import { cmsAdmin } from '@opulonjs/cms/admin'
-import { expect, onTestFinished, test } from 'vitest'
+import { expect, test } from 'vitest'
 import { defineComponent, h, provide, reactive, ref, type VNode } from 'vue'
-import { brand } from '../../admin/brand.ts'
 import { adminModules } from '../../admin/modules.ts'
 import { definitions } from '../../cms/definitions.ts'
 import RevisionView from '../../../../packages/cms/src/admin/RevisionView.vue'
 import { cmsContextKey } from '../../../../packages/cms/src/admin/use-cms.ts'
 import type { RevisionSnapshot } from '../../../../packages/cms/src/admin/use-revisions.ts'
 import { files } from '../media/helpers.ts'
-import { page, section, trackRequests, useCmsHost } from './helpers.ts'
+import { useAdminLifetime } from '../admin-lifetime.ts'
+import { page, section, useCmsHost } from './helpers.ts'
 
 // Runs in the `admin` vitest project (happy-dom); the admin's fetch goes into the test Worker.
 // The editor's admin locale is sk.
-const host = useCmsHost()
+const admin = useAdminLifetime()
+const host = admin.track(useCmsHost())
 const testScreen = (setup: () => () => VNode) => defineComponent({ setup })
 
 test.each(['item', 'page'])(
@@ -179,7 +180,14 @@ test('read-only revision forms preserve the stored snapshot on rerender and rest
     return host.fetch(request)
   }
   const text = mountAdmin(`/admin/cms/items/${created.id}`, fetch, modules)
-  await expect.poll(() => document.querySelectorAll('tbody tr').length).toBe(2)
+  await expect
+    .poll(
+      () =>
+        [...document.querySelectorAll<HTMLButtonElement>('tbody button')].filter(
+          (button) => button.textContent?.trim() === 'Zobraziť revíziu',
+        ).length,
+    )
+    .toBe(2)
   ;[...document.querySelectorAll<HTMLButtonElement>('tbody button')]
     .filter((b) => b.textContent?.trim() === 'Zobraziť revíziu')[1]!
     .click()
@@ -201,17 +209,14 @@ test('read-only revision forms preserve the stored snapshot on rerender and rest
 test('a late page request cannot replace the editor after navigation', async () => {
   const a = (await host.create(page({ en: '/admin-race-a' }))).body
   const b = (await host.create(page({ en: '/admin-race-b' }))).body
-  let release: (() => void) | undefined
-  const held = new Promise<void>((resolve) => {
-    release = resolve
-  })
+  const held = admin.gate()
   let requested = false
   const fetch: typeof host.fetch = async (input, init) => {
     const request = new Request(input, init)
     const response = await host.fetch(request)
     if (request.url.endsWith(`/pages/${a.id}`)) {
       requested = true
-      await held
+      await held.promise
     }
     return response
   }
@@ -220,7 +225,7 @@ test('a late page request cannot replace the editor after navigation', async () 
   history.pushState(null, '', `/admin/cms/pages/${b.id}`)
   window.dispatchEvent(new PopStateEvent('popstate'))
   await expect.poll(text).toContain('/admin-race-b')
-  release!()
+  held.resolve()
   await new Promise((resolve) => setTimeout(resolve, 30))
   expect(document.querySelector<HTMLInputElement>('input[name="locales.en.path"]')?.value).toBe(
     '/admin-race-b',
@@ -234,7 +239,14 @@ test('revision history views a snapshot and restores it to the editor without pu
   const second = (await host.publish(created.id)).body
   const text = mountAdmin(`/admin/cms/pages/${created.id}`)
   await expect.poll(text).toContain('História revízií')
-  await expect.poll(() => document.querySelectorAll('tbody tr').length).toBe(2)
+  await expect
+    .poll(
+      () =>
+        [...document.querySelectorAll<HTMLButtonElement>('tbody button')].filter(
+          (button) => button.textContent?.trim() === 'Zobraziť revíziu',
+        ).length,
+    )
+    .toBe(2)
   const views = [...document.querySelectorAll<HTMLButtonElement>('tbody button')].filter(
     (b) => b.textContent?.trim() === 'Zobraziť revíziu',
   )
@@ -316,7 +328,14 @@ test.each([
   await host.call('PUT', `${path}/draft`, { body: c.second })
   const second = (await host.call<Item | Menu | SiteSettings>('POST', `${path}/publish`)).body
   const text = mountAdmin(c.route(id))
-  await expect.poll(() => document.querySelectorAll('tbody tr').length).toBeGreaterThanOrEqual(2)
+  await expect
+    .poll(
+      () =>
+        [...document.querySelectorAll<HTMLButtonElement>('tbody button')].filter(
+          (button) => button.textContent?.trim() === 'Zobraziť revíziu',
+        ).length,
+    )
+    .toBeGreaterThanOrEqual(2)
   const views = [...document.querySelectorAll<HTMLButtonElement>('tbody button')].filter(
     (b) => b.textContent?.trim() === 'Zobraziť revíziu',
   )
@@ -333,16 +352,20 @@ test.each([
   expect(stored.published).toEqual(second.published)
 })
 
-const failed = useCmsHost(undefined, async () => ({
-  success: false,
-  errors: [{ code: 1, message: 'private diagnostic' }],
-}))
+const failed = admin.track(
+  useCmsHost(undefined, async () => ({
+    success: false,
+    errors: [{ code: 1, message: 'private diagnostic' }],
+  })),
+)
 
 let mediaPurgeRefused = false
-const mediaOnly = useCmsHost(undefined, async () => ({
-  success: !mediaPurgeRefused,
-  errors: mediaPurgeRefused ? [{ code: 1, message: 'private media diagnostic' }] : [],
-}))
+const mediaOnly = admin.track(
+  useCmsHost(undefined, async () => ({
+    success: !mediaPurgeRefused,
+    errors: mediaPurgeRefused ? [{ code: 1, message: 'private media diagnostic' }] : [],
+  })),
+)
 
 test('a media-only editor sees one purge warning after edits, replacement, archive and closing details', async () => {
   mediaPurgeRefused = false
@@ -413,16 +436,7 @@ test('a media view-only editor does not see an unavailable purge status warning'
 })
 
 function mountAdmin(path: string, fetch = host.fetch, modules = adminModules) {
-  history.replaceState(null, '', path)
-  document.body.innerHTML = '<div id="app"></div>'
-  const requests = trackRequests(fetch)
-  const app = createAdmin({ brand, modules, buildId: 'build-1', fetch: requests.fetch })
-  app.mount('#app')
-  onTestFinished(async () => {
-    app.unmount()
-    await requests.drain()
-  })
-  return () => document.body.textContent ?? ''
+  return admin.mount(path, { fetch, modules })
 }
 
 test('the composed admin shows an editor the real failed purge from a media edit', async () => {

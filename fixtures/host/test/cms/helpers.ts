@@ -27,25 +27,6 @@ const editor = [
   'media.archive',
 ]
 
-export const trackRequests = (fetcher: typeof fetch) => {
-  const pending = new Set<Promise<Response>>()
-  const fetch: typeof globalThis.fetch = (input, init) => {
-    const response = fetcher(input, init)
-    pending.add(response)
-    void response.then(
-      () => pending.delete(response),
-      () => pending.delete(response),
-    )
-    return response
-  }
-  return {
-    fetch,
-    drain: async () => {
-      while (pending.size > 0) await Promise.allSettled([...pending])
-    },
-  }
-}
-
 /**
  * The fixture host's composed server behind a test Worker whose Workers Cache (`ctx.cache`)
  * records purges, wired as the fixture host wires it. The

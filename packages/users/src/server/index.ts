@@ -19,6 +19,7 @@ import { createInvitation } from './invitations.ts'
 import createUsers from './migrations/0001_create_users.ts'
 import guardSessionInsert from './migrations/0002_guard_session_insert.ts'
 import onePendingInvitation from './migrations/0003_one_pending_invitation.ts'
+import listOrder from './migrations/0004_list_order.ts'
 import { UserManagement } from './manage.ts'
 import { Users } from './service.ts'
 import { invitationEmail, passwordResetEmail } from './templates.ts'
@@ -129,7 +130,7 @@ export const users = () =>
             const manage = yield* UserManagement
             return h
               .handle('invite', ({ payload }) => users.invite(payload))
-              .handle('users', () => manage.users())
+              .handle('users', ({ query }) => manage.users(query))
               .handle('assignRoles', ({ params, payload }) =>
                 manage.assignRoles(params.id, payload.roleIds),
               )
@@ -164,6 +165,7 @@ export const users = () =>
       '0001_create_users': createUsers,
       '0002_guard_session_insert': guardSessionInsert,
       '0003_one_pending_invitation': onePendingInvitation,
+      '0004_list_order': listOrder,
     },
     permissions: usersPermissions,
     auditActions: usersAuditActions,
