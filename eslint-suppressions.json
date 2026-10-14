@@ -1,4 +1,9 @@
 {
+  "fixtures/host/test/admin-late-results.test.ts": {
+    "no-restricted-imports": {
+      "count": 1
+    }
+  },
   "fixtures/host/test/admin-lifetime-late-mount.test.ts": {
     "tests/no-sleep": {
       "count": 3
@@ -34,7 +39,15 @@
       "count": 1
     }
   },
+  "fixtures/host/test/packages.test.ts": {
+    "no-restricted-imports": {
+      "count": 1
+    }
+  },
   "fixtures/host/test/shell.test.ts": {
+    "no-restricted-imports": {
+      "count": 1
+    },
     "tests/no-sleep": {
       "count": 23
     }

@@ -112,6 +112,25 @@ export default defineConfig(
     rules: { 'no-restricted-syntax': ['error', ownTransactions] },
   },
   {
+    files: ['fixtures/host/test/**/*.test.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [nuxtUi],
+          paths: [
+            {
+              name: '@opulonjs/admin',
+              importNames: ['createAdmin'],
+              message:
+                'Mount admins with useAdminLifetime().mount from fixtures/host/test/admin-lifetime.ts, so each test unmounts and drains them.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ['**/*.test.ts'],
     plugins: { tests: { rules: { 'no-sleep': noSleep } } },
     rules: { 'tests/no-sleep': 'error' },
