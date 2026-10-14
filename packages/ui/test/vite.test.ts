@@ -38,3 +38,25 @@ test('a consumer manualChunks stays in effect: the preset adds no codeSplitting'
   expect(resolved.manualChunks).toBe(manualChunks)
   expect(resolved.codeSplitting).toBeUndefined()
 })
+
+test('a later plugin that sets manualChunks keeps it: the preset adds no codeSplitting', async () => {
+  const manualChunks = (id: string) => (id.includes('prosemirror-') ? 'editor' : undefined)
+  const resolved = (
+    await resolveConfig(
+      {
+        configFile: false,
+        logLevel: 'silent',
+        plugins: [
+          ...opulonUi(),
+          {
+            name: 'host-chunks',
+            config: () => ({ build: { rolldownOptions: { output: { manualChunks } } } }),
+          },
+        ],
+      },
+      'build',
+    )
+  ).build.rolldownOptions.output as Rolldown.OutputOptions
+  expect(resolved.manualChunks).toBe(manualChunks)
+  expect(resolved.codeSplitting).toBeUndefined()
+})
