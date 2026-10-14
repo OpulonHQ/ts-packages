@@ -1,9 +1,11 @@
+// Server-side paging: seeds 240 users, 600 posts and 45 categories through the APIs, then checks
+// the users and items lists, the reference picker and the ID filters. Needs VERIFY_DATABASE_URL.
+// ui.sh journeys/list-paging.mjs
 import { readFile, writeFile } from 'node:fs/promises'
 import process from 'node:process'
 import { URL } from 'node:url'
 import pg from 'pg'
-import signedIn from '../../../.claude/skills/verify-host/journeys/signed-in.mjs'
-import captureListPlans from './list-plans.mjs'
+import signedIn from './signed-in.mjs'
 
 export default async (ctx) => {
   const { page, base, shot, check } = ctx
@@ -170,7 +172,6 @@ export default async (ctx) => {
     } finally {
       await api('POST', `/users/users/${firstUser.id}/reactivate`)
     }
-    await captureListPlans(db, process.env.EVIDENCE_DIR, check)
   } finally {
     await db.query(
       'drop trigger if exists verify_invitation_mail_capture on emails.email_log; drop function if exists public.verify_invitation_mail_capture(); drop table if exists public.verify_invitation_mail',
