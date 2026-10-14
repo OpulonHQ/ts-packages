@@ -133,6 +133,7 @@ export const useFocusReturn = (locked: () => boolean, form: () => HTMLElement | 
           held = active.closest('[role="dialog"]') ? 'form' : active
         return
       }
+      clearTimeout(timer)
       timer = setTimeout(() => {
         if (locked() || !held) return
         const target = held
