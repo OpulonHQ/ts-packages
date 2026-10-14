@@ -16,8 +16,6 @@ import {
   createRouter,
   createWebHistory,
   type RouteComponent,
-  type RouteLocationNormalized,
-  type RouteLocationRaw,
   type RouteRecordSingleView,
 } from 'vue-router'
 import { apiContextKey } from './api-client.ts'
@@ -357,25 +355,6 @@ export const createAdmin = (options: AdminOptions): App => {
         : route
     }),
   })
-  // Only the latest requested navigation (push, replace, back/forward, or a guard redirect of it)
-  // may show or clear a failed screen. Leave guards run before any global guard, so requests are
-  // recorded where navigations start.
-  let requested = router.resolve(history.location).fullPath
-  const request = (to: RouteLocationRaw) => {
-    requested = router.resolve(to).fullPath
-  }
-  const { push, replace } = router
-  router.push = (to) => {
-    request(to)
-    return push(to)
-  }
-  router.replace = (to) => {
-    request(to)
-    return replace(to)
-  }
-  history.listen((to) => request(to))
-  const isRequested = (to: RouteLocationNormalized) =>
-    to.fullPath === requested || to.redirectedFrom?.fullPath === requested
   router.beforeEach(async (to) => {
     await ready
     const { module, access } = to.meta
@@ -401,15 +380,50 @@ export const createAdmin = (options: AdminOptions): App => {
     )
   }
   const failedScreen = shallowRef<string>()
-  router.onError((error: unknown, to) => {
-    console.error(error)
-    if (!isRequested(to)) return
-    failedScreen.value = to.fullPath
+  const fail = (target: string) => {
+    failedScreen.value = target
     // A screen chunk missing after a deploy surfaces as a failed load.
     recheckBuild()
+  }
+  // Only the latest navigation may show or clear a failed screen. Leave guards run before any
+  // global guard, so each push or replace call owns its outcome; navigations without a caller
+  // (the first load, back and forward) settle through the router hooks.
+  let latestCall = 0
+  let called = false
+  const failedTargets = new WeakMap<object, string>()
+  const own =
+    (navigate: typeof router.push): typeof router.push =>
+    (to) => {
+      const call = ++latestCall
+      called = true
+      return navigate(to).then(
+        (result) => {
+          if (call === latestCall) failedScreen.value = undefined
+          return result
+        },
+        (error: unknown) => {
+          if (call === latestCall)
+            fail(
+              (typeof error === 'object' && error && failedTargets.get(error)) ||
+                router.resolve(to).fullPath,
+            )
+          throw error
+        },
+      )
+    }
+  router.push = own(router.push)
+  router.replace = own(router.replace)
+  history.listen(() => {
+    latestCall++
+    called = false
   })
-  router.afterEach((to, from) => {
-    if (isRequested(to)) failedScreen.value = undefined
+  router.onError((error: unknown, to) => {
+    console.error(error)
+    if (typeof error === 'object' && error) failedTargets.set(error, to.fullPath)
+    if (!called) fail(to.fullPath)
+  })
+  router.afterEach((_to, from, failure) => {
+    if (!called && !failure) failedScreen.value = undefined
     if (from.matched.length > 0) recheckBuild()
   })
 

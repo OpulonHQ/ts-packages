@@ -366,3 +366,37 @@ test('a failure after a guard redirect belongs to the redirected navigation', as
   await expect(router.push('/protected')).rejects.toThrow('sign-in chunk failed')
   await expect.poll(() => document.querySelector('[role="alert"]')).not.toBeNull()
 })
+
+test('a late rejection of an earlier request to the same screen stays hidden', async () => {
+  const old = deferred<boolean>()
+  let calls = 0
+  const leaving = defineComponent(() => {
+    onBeforeRouteLeave(() => (++calls === 1 ? old.promise : true))
+    return () => h('p', 'leaving screen')
+  })
+  const app = mount('/', {
+    overrides: { dashboard: leaving, 'demo.protected': screen('protected good') },
+  })
+  const router = app.config.globalProperties.$router
+  await expect.poll(() => document.body.textContent).toContain('leaving screen')
+  const first = router.push('/protected').catch((error: unknown) => error)
+  await expect.poll(() => calls).toBe(1)
+  await router.push('/protected')
+  await expect.poll(() => document.body.textContent).toContain('protected good')
+  old.reject(new Error('first request failed late'))
+  await first
+  await sleep()
+  expect(document.querySelector('[role="alert"]')).toBeNull()
+})
+
+test('a failed replace with an encoded query shows the screen failure', async () => {
+  const app = mount('/', {
+    overrides: { 'demo.protected': () => Promise.reject(new Error('screen download failed')) },
+  })
+  const router = app.config.globalProperties.$router
+  await expect.poll(() => document.body.textContent).toContain('Nothing to show here yet.')
+  await expect(router.replace('/protected?search=hello%20world')).rejects.toThrow(
+    'screen download failed',
+  )
+  await expect.poll(() => document.querySelector('[role="alert"]')).not.toBeNull()
+})
