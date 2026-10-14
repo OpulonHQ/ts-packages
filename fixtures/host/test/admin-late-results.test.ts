@@ -147,3 +147,31 @@ test('two quick language changes save and show the last one picked', async () =>
   await expect.poll(() => document.documentElement.lang).toBe('sk')
   expect(admin.text()).toContain('Prehľad')
 })
+
+test('a second language pick waits for a failed first save, then saves and shows', async () => {
+  const user = await seedUser(db.url, { name: 'Queued Pick', locale: 'sk' })
+  const jar = { cookie: await host.signIn(user.email, user.password) }
+  const first = held(isLocaleSave)
+  let saves = 0
+  const failingFirst: typeof globalThis.fetch = async (input, init) =>
+    isLocaleSave(new Request(input, init)) && ++saves === 1
+      ? new Response('down', { status: 503 })
+      : host.browserFetch(jar)(input, init)
+  const admin = mount('/admin/', first.wrap(failingFirst))
+  await expect.poll(admin.text).toContain('Prehľad')
+
+  await pickLanguage('Používateľské menu', 'Jazyk', 'English')
+  await expect.poll(first.reached).toBe(true)
+  await pickLanguage('Používateľské menu', 'Jazyk', 'English')
+  await tick(50)
+  expect(saves).toBe(0)
+  expect(document.documentElement.lang).toBe('sk')
+  expect(admin.text()).toContain('Prehľad')
+
+  first.release()
+  await expect.poll(admin.text).toContain('Jazyk sa nepodarilo uložiť.')
+  await expect.poll(() => document.documentElement.lang).toBe('en')
+  await expect.poll(admin.text).toContain('Dashboard')
+  expect(saves).toBe(2)
+  expect(await host.me(jar.cookie)).toMatchObject({ locale: 'en' })
+})
