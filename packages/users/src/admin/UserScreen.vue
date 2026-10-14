@@ -5,7 +5,7 @@ import { UButton, UCard, UCheckbox } from '@opulonjs/ui'
 import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
 import StatusBadge from '@opulonjs/ui/components/StatusBadge'
-import { onBeforeUnmount, ref, shallowRef } from 'vue'
+import { ref, shallowRef } from 'vue'
 import type { UserInfo } from '../api.ts'
 import LocalePicker from './LocalePicker.vue'
 import { failureKey, useUsersClient } from './client.ts'
@@ -24,7 +24,6 @@ const confirming = ref(false)
 const timeline = ref<{ refresh: () => Promise<void> }>()
 
 let latest = 0
-onBeforeUnmount(() => latest++)
 const load = () => {
   const ticket = ++latest
   return users((client) => client.users({ query: { id } })).then(
@@ -79,10 +78,12 @@ const setActive = (active: boolean) =>
     active ? 'users.user.reactivated' : 'users.user.deactivated',
   )
 
+const localeUsers = useUsersClient({ detached: true })
 const setLocale = (locale: string | null) => {
-  const save = () => users((c) => c.setLocale({ params: { id }, payload: { locale } }))
+  const save = (client: typeof users) => () =>
+    client((c) => c.setLocale({ params: { id }, payload: { locale } }))
   return run(
-    () => (id === me.value?.user.id ? saveLocale(locale, save) : save()),
+    () => (id === me.value?.user.id ? saveLocale(locale, save(localeUsers)) : save(users)()),
     'users.user.localeSaved',
   )
 }

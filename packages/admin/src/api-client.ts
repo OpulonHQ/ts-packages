@@ -5,7 +5,7 @@ import type { HttpClientError } from 'effect/http/HttpClientError'
 import * as HttpApi from 'effect/http-api/HttpApi'
 import * as HttpApiClient from 'effect/http-api/HttpApiClient'
 import type * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
-import { inject } from 'vue'
+import { getCurrentScope, inject, onScopeDispose } from 'vue'
 import { apiContextKey } from './state.ts'
 
 /** The typed client of one HttpApi group: endpoint identifiers to client methods. */
@@ -20,8 +20,16 @@ export type GroupClient<Group extends HttpApiGroup.Constraint> = HttpApiClient.C
  * composition puts it: `<apiPrefix>/<module id>`, the module id being the group identifier's
  * first segment. Core mounts at `<apiPrefix>` itself. Returns a runner: `const demo = useApiClient(DemoGroup)` in `setup`, then
  * `await demo((client) => client.notes())`.
+ *
+ * Called in `setup`, an answer that arrives after the component unmounted never settles, so code
+ * after the `await` cannot touch a screen, toast or route that moved on. The request itself still
+ * completes. Pass `{ detached: true }` for calls handed to an owner that outlives the component,
+ * such as the `save` given to `useAdmin().saveLocale`.
  */
-export const useApiClient = <Group extends HttpApiGroup.Constraint>(group: Group) => {
+export const useApiClient = <Group extends HttpApiGroup.Constraint>(
+  group: Group,
+  { detached = false }: { readonly detached?: boolean } = {},
+) => {
   const context = inject(apiContextKey)
   if (!context) throw new Error('useApiClient must be called inside a createAdmin app')
   const { apiPrefix, fetch } = context
@@ -35,12 +43,24 @@ export const useApiClient = <Group extends HttpApiGroup.Constraint>(group: Group
     HttpApiClient.group(api, { group: group.identifier, httpClient, baseUrl: location.origin }),
   ) as unknown as Effect.Effect<GroupClient<Group>, never, HttpClient.HttpClient>
 
-  return <A, E>(run: (client: GroupClient<Group>) => Effect.Effect<A, E>): Promise<A> =>
-    Effect.runPromise(
+  let unmounted = false
+  const scoped = !detached && getCurrentScope() !== undefined
+  if (scoped) onScopeDispose(() => (unmounted = true))
+
+  return <A, E>(run: (client: GroupClient<Group>) => Effect.Effect<A, E>): Promise<A> => {
+    const answer = Effect.runPromise(
       client.pipe(
         Effect.flatMap(run),
         Effect.provide(FetchHttpClient.layer),
         Effect.provideService(FetchHttpClient.Fetch, fetch),
       ),
     )
+    if (!scoped) return answer
+    return new Promise((resolve, reject) =>
+      answer.then(
+        (value) => unmounted || resolve(value),
+        (error: unknown) => unmounted || reject(error),
+      ),
+    )
+  }
 }

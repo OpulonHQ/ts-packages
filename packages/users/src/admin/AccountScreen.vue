@@ -9,7 +9,7 @@ import LocalePicker from './LocalePicker.vue'
 
 const { t } = useI18n()
 const { me, saveLocale } = useAdmin()
-const users = useUsersClient()
+const users = useUsersClient({ detached: true })
 const busy = ref(false)
 const failed = ref(false)
 

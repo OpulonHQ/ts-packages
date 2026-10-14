@@ -7,7 +7,7 @@ import { useI18n } from '@opulonjs/admin'
 import { UCard } from '@opulonjs/ui'
 import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
-import { computed, onBeforeUnmount, ref, shallowRef, watch, useTemplateRef } from 'vue'
+import { computed, ref, shallowRef, watch, useTemplateRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { type Item, type ItemDocument, labelText, type PageLocale } from '../api.ts'
 import RevisionHistory from './RevisionHistory.vue'
@@ -70,9 +70,6 @@ const show = (next: Item) => {
 }
 
 let loadTicket = 0
-onBeforeUnmount(() => {
-  loadTicket++
-})
 watch(
   () => String(route.params.id),
   async (id) => {
