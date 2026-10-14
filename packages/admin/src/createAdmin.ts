@@ -364,6 +364,7 @@ export const createAdmin = (options: AdminOptions): App => {
   router.beforeEach(async (to) => {
     latest = to
     await ready
+    if (unmounted) return false
     const { module, access } = to.meta
     if (access?.public) return true
     if (status.value === 'signedOut') {

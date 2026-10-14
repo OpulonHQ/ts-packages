@@ -295,3 +295,45 @@ test('an unmounted admin stops following the browser history', async () => {
   await new Promise((resolve) => setTimeout(resolve, 50))
   expect(location.pathname).toBe('/elsewhere')
 })
+
+test('an unmounted admin does not redirect when its catalogs arrive late', async () => {
+  const held = Promise.withResolvers<void>()
+  onTestFinished(() => held.resolve())
+  const loads: Array<Promise<unknown>> = []
+  const hold =
+    <T>(load: () => Promise<T>) =>
+    async () => {
+      await held.promise
+      const loaded = load()
+      loads.push(loaded)
+      return loaded
+    }
+  const modules = adminModules.map((m) => ({
+    ...m,
+    messages: { en: hold(m.messages.en), sk: hold(m.messages.sk) },
+  }))
+  let requested = false
+  const app = createAdmin({
+    brand,
+    modules,
+    buildId: 'b1',
+    fetch: async (input, init) => {
+      const response = await hosts.b1.browserFetch({ cookie: '' })(input, init)
+      requested = true
+      return response
+    },
+  })
+  history.replaceState(null, '', '/admin/')
+  document.body.innerHTML = '<div id="app"></div>'
+  app.mount('#app')
+  await expect.poll(() => requested).toBe(true)
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  app.unmount()
+  history.replaceState(null, '', '/elsewhere')
+  held.resolve()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  await Promise.all(loads)
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  expect(loads.length).toBeGreaterThan(0)
+  expect(location.pathname).toBe('/elsewhere')
+})
