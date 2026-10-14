@@ -164,16 +164,30 @@ export const useAdminLifetime = () => {
     },
     mount: (
       path: string,
-      { fetch, ...options }: Partial<AdminOptions> & { readonly fetch: typeof globalThis.fetch },
+      {
+        fetch,
+        modules = adminModules,
+        ...options
+      }: Partial<AdminOptions> & { readonly fetch: typeof globalThis.fetch },
     ) => {
       const lifetime = current
+      const pending =
+        <T>(load: () => Promise<T>) =>
+        () => {
+          const loading = load()
+          lifetime.pending.push(loading)
+          return loading
+        }
       history.replaceState(null, '', path)
       document.body.innerHTML = '<div id="app"></div>'
       const app = createAdmin({
         brand,
-        modules: adminModules,
         buildId: 'build-1',
         ...options,
+        modules: modules.map((m) => ({
+          ...m,
+          messages: { en: pending(m.messages.en), sk: pending(m.messages.sk) },
+        })),
         fetch: (input, init) => {
           const response = fetch(input, init)
           if (!(response instanceof Watched)) lifetime.pending.push(response)
