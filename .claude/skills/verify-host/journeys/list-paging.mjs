@@ -264,7 +264,7 @@ export default async (ctx) => {
   await shot('reference-search-and-selection')
   const savedDraft = page.waitForResponse(
     (response) =>
-      response.url().endsWith(`/api/cms/items/${state.posts[0].id}/draft`) &&
+      response.url().includes(`/api/cms/items/${state.posts[0].id}/draft?`) &&
       response.request().method() === 'PUT',
   )
   await page.getByRole('button', { name: 'Save draft', exact: true }).click()
@@ -300,7 +300,8 @@ export default async (ctx) => {
   await picker.evaluate((element) => element.scrollIntoView({ block: 'start' }))
   await shot('reference-phone')
   await page.setViewportSize({ width: 1280, height: 800 })
-  await api('PUT', '/cms/settings/draft', {
+  const settings = await api('GET', '/cms/settings')
+  await api('PUT', `/cms/settings/draft?version=${settings.version}`, {
     data: { cta: { type: 'item', id: state.posts[599].id } },
   })
   await page.goto(`${base}/admin/cms/settings`)
@@ -334,7 +335,7 @@ export default async (ctx) => {
   await chosenLink.click()
   const savedSettings = page.waitForResponse(
     (response) =>
-      response.url().endsWith('/api/cms/settings/draft') && response.request().method() === 'PUT',
+      response.url().includes('/api/cms/settings/draft?') && response.request().method() === 'PUT',
   )
   await page.getByRole('button', { name: 'Save draft', exact: true }).click()
   check((await savedSettings).status() === 200, 'single reference clears and saves successfully')
@@ -348,8 +349,8 @@ export default async (ctx) => {
     locales: {},
     data: { name: { en: 'Removed fixture reference' } },
   })
-  const draft = (await api('GET', `/cms/items/${state.posts[0].id}`)).draft
-  await api('PUT', `/cms/items/${state.posts[0].id}/draft`, {
+  const { draft, version } = await api('GET', `/cms/items/${state.posts[0].id}`)
+  await api('PUT', `/cms/items/${state.posts[0].id}/draft?version=${version}`, {
     ...draft,
     data: { ...draft.data, categories: [...draft.data.categories, doomed.id] },
   })
@@ -369,7 +370,7 @@ export default async (ctx) => {
   await missing.click()
   const removedReference = page.waitForResponse(
     (response) =>
-      response.url().endsWith(`/api/cms/items/${state.posts[0].id}/draft`) &&
+      response.url().includes(`/api/cms/items/${state.posts[0].id}/draft?`) &&
       response.request().method() === 'PUT',
   )
   await page.getByRole('button', { name: 'Save draft', exact: true }).click()

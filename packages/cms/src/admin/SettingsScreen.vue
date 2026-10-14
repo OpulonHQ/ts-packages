@@ -3,12 +3,13 @@
 import { useI18n } from '@opulonjs/admin'
 import { UCard } from '@opulonjs/ui'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
-import { computed, onMounted, ref, shallowRef } from 'vue'
+import { computed, onMounted, ref, shallowRef, useTemplateRef } from 'vue'
 import type { SiteSettings } from '../api.ts'
 import RevisionHistory from './RevisionHistory.vue'
 import FieldsForm from './FieldsForm.vue'
 import PublishActions from './PublishActions.vue'
-import { useAction, useCmsContext, useContent } from './use-cms.ts'
+import ActionStatus from './ActionStatus.vue'
+import { useAction, useCmsContext, useContent, useFocusReturn } from './use-cms.ts'
 
 const { t } = useI18n()
 const content = useContent()
@@ -19,6 +20,12 @@ const settings = shallowRef<SiteSettings>()
 const data = ref<Record<string, unknown>>({})
 const revisionPending = ref(false)
 const canEdit = computed(() => content.can('cms.site.edit'))
+const locked = computed(() => !canEdit.value || pending.value || revisionPending.value)
+const form = useTemplateRef<HTMLFormElement>('form')
+useFocusReturn(
+  () => pending.value || revisionPending.value,
+  () => form.value,
+)
 
 const show = (next: SiteSettings | undefined) => {
   if (!next) return
@@ -27,20 +34,17 @@ const show = (next: SiteSettings | undefined) => {
 }
 onMounted(async () => show(await run(() => content.getSettings(), '')))
 
-const save = async () =>
-  show(await run(() => content.saveSettings({ data: data.value }), t('cms.page.saved')))
-const publish = async () =>
-  show(
-    await run(async () => {
-      await content.saveSettings({ data: data.value })
-      return content.publishSettings()
-    }, t('cms.page.published')),
-  )
+const saveDraft = () => content.saveSettings(settings.value!.version, { data: data.value })
+const save = async () => show(await run(saveDraft, t('cms.page.saved')))
+async function publish() {
+  const saved = await run(saveDraft, '')
+  if (!saved) return
+  settings.value = saved
+  show(await run(() => content.publishSettings(saved.version), t('cms.page.published')))
+}
 const unpublish = async () =>
   show(await run(() => content.unpublishSettings(), t('cms.site.unpublished')))
-async function restored() {
-  show(await run(() => content.getSettings(), t('cms.revisions.restored')))
-}
+const reload = async (done = '') => show(await run(() => content.getSettings(), done))
 </script>
 
 <template>
@@ -59,34 +63,37 @@ async function restored() {
         />
       </template>
     </PageHeader>
-    <p
-      v-if="status && status.message"
-      :role="status.kind === 'error' ? 'alert' : 'status'"
-      :class="status.kind === 'error' ? 'text-error' : 'text-success'"
-      class="mb-4 text-sm"
+    <ActionStatus :status="status" @reload="reload()" />
+    <form
+      v-if="settings"
+      ref="form"
+      tabindex="-1"
+      :aria-label="t('cms.settings.title')"
+      @submit.prevent="save"
     >
-      {{ status.message }}
-    </p>
-    <form v-if="settings" @submit.prevent="save">
-      <UCard>
-        <FieldsForm
-          v-model:data="data"
-          :group="definitions.settings"
-          :locales="content.contentLocales.value"
-          name="data"
-          :disabled="!canEdit"
-        />
-      </UCard>
+      <fieldset :disabled="pending || revisionPending" class="min-w-0">
+        <UCard>
+          <FieldsForm
+            v-model:data="data"
+            :group="definitions.settings"
+            :locales="content.contentLocales.value"
+            name="data"
+            :disabled="locked"
+          />
+        </UCard>
+      </fieldset>
     </form>
     <RevisionHistory
       v-if="settings"
+      :version="settings.version"
       kind="settings"
       :document-ref="'site'"
       :published-revision-id="settings.publishedRevisionId"
       :can-restore="content.can('cms.site.publish')"
       :disabled="pending"
       @busy="revisionPending = $event"
-      @restored="restored"
+      @restored="reload(t('cms.revisions.restored'))"
+      @reload="reload()"
     />
   </section>
 </template>

@@ -7,7 +7,7 @@ Maintained source for verifying what a user of a host built from `@opulonjs/*` s
 | Sign in, invitations, password reset | [sign-in.md](sign-in.md) | users, admin | `sign-in.mjs`, `forgot-password.mjs`, `smoke.sh` |
 | Users and roles | [users-and-roles.md](users-and-roles.md) | users, core | `users-and-roles.mjs` |
 | Media library | [media.md](media.md) | media | `media.mjs`, `smoke.sh` |
-| CMS pages and Read API | [cms-pages.md](cms-pages.md) | cms | `cms-pages.mjs`, `smoke.sh` |
+| CMS pages and Read API | [cms-pages.md](cms-pages.md) | cms | `cms-pages.mjs`, `cms-draft-conflict.mjs`, `smoke.sh` |
 | Emails: log, templates, outbox | [emails.md](emails.md) | emails, core | `emails.mjs`, `smoke.sh` |
 | Server-side list paging and reference picker | [list-paging.md](list-paging.md) | users, cms, core | `list-paging.mjs` |
 

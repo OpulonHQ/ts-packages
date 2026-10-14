@@ -213,10 +213,10 @@ test('media ids resolve to url, alt, dimensions, mime and srcset; links to publi
     seo: { title: 'Media', image: { id: lake, alt: 'A lake' }, noindex: true },
   })
 
-  await host.call('PUT', '/settings/draft', {
-    body: { data: { siteName: { en: 'Example' }, cta: { type: 'page', id: target } } },
+  await host.saveDraft('/settings', {
+    data: { siteName: { en: 'Example' }, cta: { type: 'page', id: target } },
   })
-  await host.call('POST', '/settings/publish')
+  await host.publishDraft('/settings')
   const site = await read<PublicSite>('/site?locale=it')
   expect(site.body.settings).toMatchObject({
     siteName: 'Example',
@@ -251,17 +251,15 @@ test('site answers menus with resolved hrefs and the system pages map per locale
     link,
     children,
   })
-  await host.call('PUT', '/menus/main/draft', {
-    body: {
-      items: [
-        entry('About', { type: 'page', id: about }, [
-          entry('Contact', { type: 'system', key: 'contact' }),
-        ]),
-        entry('Docs', { type: 'url', url: 'https://example.test/docs' }),
-      ],
-    },
+  await host.saveDraft('/menus/main', {
+    items: [
+      entry('About', { type: 'page', id: about }, [
+        entry('Contact', { type: 'system', key: 'contact' }),
+      ]),
+      entry('Docs', { type: 'url', url: 'https://example.test/docs' }),
+    ],
   })
-  await host.call('POST', '/menus/main/publish')
+  await host.publishDraft('/menus/main')
 
   const it = await read<PublicSite>('/site?locale=it')
   expect(it.body.menus.main).toMatchObject([
@@ -301,7 +299,7 @@ test('a routed item resolves at its path; collections list published items with 
     return created.body.id
   }
   const news = await createItem('categories', { locales: {}, data: { name: { en: 'News' } } })
-  await host.call('POST', `/items/${news}/publish`)
+  await host.publishDraft(`/items/${news}`)
   const posts: Array<string> = []
   for (const n of [1, 2, 3]) {
     const id = await createItem('posts', {
@@ -311,7 +309,7 @@ test('a routed item resolves at its path; collections list published items with 
       },
       data: { title: { en: `Post ${n}` }, categories: n === 3 ? [] : [news] },
     })
-    expect((await host.call('POST', `/items/${id}/publish`)).status).toBe(200)
+    expect((await host.publishDraft(`/items/${id}`)).status).toBe(200)
     posts.push(id)
   }
   await createItem('posts', {

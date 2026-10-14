@@ -7,14 +7,15 @@ import { useI18n } from '@opulonjs/admin'
 import { UCard } from '@opulonjs/ui'
 import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
-import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, shallowRef, watch, useTemplateRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { type Item, type ItemDocument, labelText, type PageLocale } from '../api.ts'
 import RevisionHistory from './RevisionHistory.vue'
 import FieldsForm from './FieldsForm.vue'
 import LocaleDetails from './LocaleDetails.vue'
 import PublishActions from './PublishActions.vue'
-import { useAction, useCmsContext, useContent } from './use-cms.ts'
+import ActionStatus from './ActionStatus.vue'
+import { useAction, useCmsContext, useContent, useFocusReturn } from './use-cms.ts'
 
 interface Draft {
   locales: Record<string, PageLocale>
@@ -36,6 +37,12 @@ const revisionPending = ref(false)
 
 const locales = computed(() => content.contentLocales.value)
 const canEdit = computed(() => content.can('cms.collections.edit'))
+const locked = computed(() => !canEdit.value || pending.value || revisionPending.value)
+const form = useTemplateRef<HTMLFormElement>('form')
+useFocusReturn(
+  () => pending.value || revisionPending.value,
+  () => form.value,
+)
 const collection = computed(() =>
   item.value ? definitions.collections[item.value.collection] : undefined,
 )
@@ -85,19 +92,16 @@ watch(
   { immediate: true },
 )
 
-const save = async () =>
-  show(await run(() => content.saveItem(item.value!.id, draft.value!), t('cms.page.saved')))
+const saveDraft = () => content.saveItem(item.value!.id, item.value!.version, draft.value!)
+const save = async () => show(await run(saveDraft, t('cms.page.saved')))
 
 // Publishing publishes what is on screen: the draft is saved first.
-const publish = async () =>
-  show(
-    await run(async () => {
-      const id = item.value!.id
-      const document = draft.value!
-      await content.saveItem(id, document)
-      return content.publishItem(id)
-    }, t('cms.page.published')),
-  )
+async function publish() {
+  const saved = await run(saveDraft, '')
+  if (!saved) return
+  item.value = saved
+  show(await run(() => content.publishItem(saved.id, saved.version), t('cms.page.published')))
+}
 const unpublish = async () =>
   show(await run(() => content.unpublishItem(item.value!.id), t('cms.item.unpublished')))
 async function remove() {
@@ -107,9 +111,7 @@ async function remove() {
   if (status.value?.kind === 'ok')
     await router.push({ name: 'cms.collections', params: { collection: collectionKey } })
 }
-async function restored() {
-  show(await run(() => content.getItem(item.value!.id), t('cms.revisions.restored')))
-}
+const reload = async (done = '') => show(await run(() => content.getItem(item.value!.id), done))
 </script>
 
 <template>
@@ -142,37 +144,33 @@ async function restored() {
         </template>
       </PageHeader>
 
-      <p
-        v-if="status && status.message"
-        :role="status.kind === 'error' ? 'alert' : 'status'"
-        :class="status.kind === 'error' ? 'text-error' : 'text-success'"
-        class="mb-4 text-sm"
-      >
-        {{ status.message }}
-      </p>
+      <ActionStatus :status="status" @reload="reload()" />
 
-      <form class="space-y-6" @submit.prevent="save">
-        <UCard v-if="collection.routed">
-          <template #header>
-            <h2 class="font-semibold text-highlighted">{{ t('cms.item.details') }}</h2>
-          </template>
-          <LocaleDetails :value="draft.locales" :locales="locales" :disabled="!canEdit" />
-        </UCard>
-        <UCard>
-          <template #header>
-            <h2 class="font-semibold text-highlighted">{{ t('cms.item.content') }}</h2>
-          </template>
-          <FieldsForm
-            v-model:data="draft.data"
-            :group="collection"
-            :locales="locales"
-            name="data"
-            :disabled="!canEdit"
-          />
-        </UCard>
+      <form ref="form" tabindex="-1" :aria-label="item.title" @submit.prevent="save">
+        <fieldset :disabled="pending || revisionPending" class="min-w-0 space-y-6">
+          <UCard v-if="collection.routed">
+            <template #header>
+              <h2 class="font-semibold text-highlighted">{{ t('cms.item.details') }}</h2>
+            </template>
+            <LocaleDetails :value="draft.locales" :locales="locales" :disabled="locked" />
+          </UCard>
+          <UCard>
+            <template #header>
+              <h2 class="font-semibold text-highlighted">{{ t('cms.item.content') }}</h2>
+            </template>
+            <FieldsForm
+              v-model:data="draft.data"
+              :group="collection"
+              :locales="locales"
+              name="data"
+              :disabled="locked"
+            />
+          </UCard>
+        </fieldset>
       </form>
       <RevisionHistory
         v-if="item"
+        :version="item.version"
         kind="item"
         :document-ref="item.id"
         :collection="item.collection"
@@ -180,7 +178,8 @@ async function restored() {
         :can-restore="content.can('cms.collections.publish')"
         :disabled="pending"
         @busy="revisionPending = $event"
-        @restored="restored"
+        @restored="reload(t('cms.revisions.restored'))"
+        @reload="reload()"
       />
 
       <ConfirmDialog

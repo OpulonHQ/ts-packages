@@ -17,21 +17,19 @@ const entry = (
   children: MenuDocument['items'] = [],
 ) => ({ id: crypto.randomUUID(), label, link, children })
 const saveMenu = (key: string, items: MenuDocument['items']) =>
-  host.call<Menu>('PUT', `/menus/${key}/draft`, { body: { items } })
+  host.saveDraft<Menu>(`/menus/${key}`, { items })
 
 test('site settings hold the global SEO fields and the host fields, with draft and publishing', async () => {
   const initial = await host.call<SiteSettings>('GET', '/settings')
   expect(initial.body).toMatchObject({ status: 'draft', draft: { data: {} }, published: null })
 
-  const saved = await host.call<SiteSettings>('PUT', '/settings/draft', {
-    body: {
-      data: {
-        siteName: { en: 'Example', it: 'Esempio' },
-        twitterHandle: '@example',
-        phone: '+421 900 000 000',
-        cta: { type: 'system', key: 'contact' },
-        unknown: 'dropped',
-      },
+  const saved = await host.saveDraft<SiteSettings>('/settings', {
+    data: {
+      siteName: { en: 'Example', it: 'Esempio' },
+      twitterHandle: '@example',
+      phone: '+421 900 000 000',
+      cta: { type: 'system', key: 'contact' },
+      unknown: 'dropped',
     },
   })
   expect(saved.status).toBe(200)
@@ -47,7 +45,7 @@ test('site settings hold the global SEO fields and the host fields, with draft a
   expect(preview.body.data).toMatchObject({ siteName: 'Esempio', phone: '+421 900 000 000' })
 
   const purges = host.purged.length
-  const published = await host.call<SiteSettings>('POST', '/settings/publish')
+  const published = await host.publishDraft<SiteSettings>('/settings')
   expect(published.body).toMatchObject({ status: 'published', published: saved.body.draft })
   expect(host.purged.slice(purges)).toEqual([['cms:site']])
   await host.call('POST', '/settings/unpublish')
@@ -70,7 +68,7 @@ test.each([
   ['a script URL', { type: 'url', url: 'javascript:alert(1)' }, 'must start with'],
   ['a page link without a page id', { type: 'page', id: 'about' }, 'points at no page'],
 ])('a settings link field refuses %s', async (_, cta, message) => {
-  const { status, body } = await host.call('PUT', '/settings/draft', { body: { data: { cta } } })
+  const { status, body } = await host.saveDraft('/settings', { data: { cta } })
   expect(status).toBe(400)
   expect(body).toMatchObject({ message: expect.stringContaining(message) })
 })
@@ -90,7 +88,7 @@ test('menus are declared by the host; items link to pages, items, system pages a
       },
     })
   ).body
-  await host.call('POST', `/items/${post.id}/publish`)
+  await host.publishDraft(`/items/${post.id}`)
 
   const saved = await saveMenu('main', [
     entry({ en: 'About', it: 'Chi siamo' }, { type: 'page', id: about.id }, [
@@ -118,7 +116,7 @@ test('menus are declared by the host; items link to pages, items, system pages a
   expect(en.items[0]?.children[0]).toMatchObject({ href: '/blog/first' })
 
   const purges = host.purged.length
-  const published = await host.call<Menu>('POST', '/menus/main/publish')
+  const published = await host.publishDraft<Menu>('/menus/main')
   expect(published.body).toMatchObject({ status: 'published', key: 'main' })
   expect(host.purged.slice(purges)).toEqual([['cms:site']])
   expect(
@@ -141,7 +139,7 @@ test('menus nest no deeper than declared and need labels in the default locale t
   expect(tooDeep.body).toMatchObject({ message: '"Main menu" nests at most 3 levels.' })
 
   expect((await saveMenu('footer', [entry({ it: 'Solo' }, link)])).status).toBe(200)
-  const refused = await host.call('POST', '/menus/footer/publish')
+  const refused = await host.publishDraft('/menus/footer')
   expect(refused.status).toBe(400)
   expect(refused.body).toMatchObject({ message: 'Menu item 1 needs a label in en.' })
 })
@@ -152,12 +150,9 @@ test('site settings and menus need the site permissions', async () => {
   expect((await host.call('GET', '/menus', { as: pagesOnly })).status).toBe(403)
   const viewer = ['cms.site.view']
   expect((await host.call('GET', '/menus/main', { as: viewer })).status).toBe(200)
+  expect((await host.saveDraft('/settings', { data: {} }, { as: viewer })).status).toBe(403)
   expect(
-    (await host.call('PUT', '/settings/draft', { as: viewer, body: { data: {} } })).status,
-  ).toBe(403)
-  expect(
-    (await host.call('POST', '/menus/main/publish', { as: ['cms.site.view', 'cms.site.edit'] }))
-      .status,
+    (await host.publishDraft('/menus/main', { as: ['cms.site.view', 'cms.site.edit'] })).status,
   ).toBe(403)
 })
 
@@ -169,7 +164,7 @@ test('a site linking hundreds of pages keeps its Cache-Tag header bounded, and s
     )
   for (const key of ['main', 'footer']) {
     expect((await saveMenu(key, links(200))).status).toBe(200)
-    expect((await host.call(`POST`, `/menus/${key}/publish`)).status).toBe(200)
+    expect((await host.publishDraft(`/menus/${key}`)).status).toBe(200)
   }
 
   const site = await host.call('GET', '/site', { as: null })

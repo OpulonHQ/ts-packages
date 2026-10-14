@@ -110,16 +110,14 @@ test('page SEO, collection lists, routed items and unresolved media ids carry me
   const item = await host.call<Item>('POST', '/collections/posts/items', {
     body: { locales: { en: locale('/media-post') }, data: { title: { en: 'Post' }, cover: id } },
   })
-  expect((await host.call('POST', `/items/${item.body.id}/publish`)).status).toBe(200)
+  expect((await host.publishDraft(`/items/${item.body.id}`)).status).toBe(200)
   for (const path of ['/collections/posts', '/resolve?path=/media-post']) {
     const read = await host.call('GET', path, { as: null })
     expect(read.status).toBe(200)
     expect(read.headers.get('cache-tag')?.split(',')).toContain(`media:${id}`)
   }
-  expect(
-    (await host.call('PUT', '/settings/draft', { body: { data: { defaultImage: id } } })).status,
-  ).toBe(200)
-  expect((await host.call('POST', '/settings/publish')).status).toBe(200)
+  expect((await host.saveDraft('/settings', { data: { defaultImage: id } })).status).toBe(200)
+  expect((await host.publishDraft('/settings')).status).toBe(200)
   const site = await host.call('GET', '/site', { as: null })
   expect(site.headers.get('cache-tag')?.split(',')).toContain(`media:${id}`)
 })

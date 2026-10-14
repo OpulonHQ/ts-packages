@@ -39,6 +39,7 @@ export class Pages extends Context.Service<
     readonly restoreRevision: (
       id: string,
       revisionId: string,
+      version: number,
     ) => Effect.Effect<Page, PagesError | CmsInvalid | CmsConflict>
     readonly get: (id: string) => Effect.Effect<Page, PagesError>
     readonly create: (
@@ -46,11 +47,15 @@ export class Pages extends Context.Service<
     ) => Effect.Effect<Page, Forbidden | CmsInvalid | CmsConflict>
     readonly saveDraft: (
       id: string,
+      version: number,
       draft: PageDocument,
     ) => Effect.Effect<Page, PagesError | CmsInvalid | CmsConflict>
     readonly remove: (id: string) => Effect.Effect<void, PagesError | CmsConflict>
     /** Copies the draft to published, records a revision and purges the page's tags. */
-    readonly publish: (id: string) => Effect.Effect<Page, PagesError | CmsInvalid | CmsConflict>
+    readonly publish: (
+      id: string,
+      version: number,
+    ) => Effect.Effect<Page, PagesError | CmsInvalid | CmsConflict>
     readonly unpublish: (id: string) => Effect.Effect<Page, PagesError>
     /** The draft in one content locale (default: the default locale). */
     readonly preview: (id: string, locale?: string) => Effect.Effect<PagePreview, PagesError>
@@ -139,8 +144,8 @@ export class Pages extends Context.Service<
         return {
           listRevisions: (id, page) => documents.listRevisions(id, page),
           getRevision: (id, revisionId) => documents.getRevision(id, revisionId),
-          restoreRevision: (id, revisionId) =>
-            documents.restoreRevision(id, revisionId).pipe(Effect.map(toPage)),
+          restoreRevision: (id, revisionId, version) =>
+            documents.restoreRevision(id, revisionId, version).pipe(Effect.map(toPage)),
           list: () =>
             Effect.gen(function* () {
               yield* requirePermission('cms.pages.view')
@@ -150,9 +155,10 @@ export class Pages extends Context.Service<
             }),
           get: (id) => documents.get(id).pipe(Effect.map(toPage)),
           create: (draft) => documents.create(null, draft).pipe(Effect.map(toPage)),
-          saveDraft: (id, draft) => documents.saveDraft(id, draft).pipe(Effect.map(toPage)),
+          saveDraft: (id, version, draft) =>
+            documents.saveDraft(id, version, draft).pipe(Effect.map(toPage)),
           remove: (id) => documents.remove(id),
-          publish: (id) => documents.publish(id).pipe(Effect.map(toPage)),
+          publish: (id, version) => documents.publish(id, version).pipe(Effect.map(toPage)),
           unpublish: (id) => documents.unpublish(id).pipe(Effect.map(toPage)),
           preview: (id, requested) =>
             Effect.gen(function* () {

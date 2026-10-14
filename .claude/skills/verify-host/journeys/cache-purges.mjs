@@ -48,7 +48,7 @@ export default async (ctx) => {
   })
   check(created.status() === 200, 'page created through composed API')
   const document = await created.json()
-  const published = await page.request.post(`${base}/api/cms/pages/${document.id}/publish`, {
+  const published = await page.request.post(`${base}/api/cms/pages/${document.id}/publish?version=${document.version}`, {
     headers: { origin: base },
   })
   check(published.status() === 200, 'page published through composed API')

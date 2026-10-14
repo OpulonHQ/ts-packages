@@ -34,6 +34,7 @@ export interface DocumentRow<D> {
   readonly publishedAt: Date | null
   readonly publishedRevisionId: string | null
   readonly updatedAt: Date
+  readonly version: number
 }
 
 /** A published path of a routed document (page or item). */
@@ -81,10 +82,11 @@ const Row = Schema.Struct({
   published_at: Schema.NullOr(Schema.Date),
   published_revision_id: Schema.NullOr(Schema.String),
   updated_at: Schema.Date,
+  version: Schema.Number,
 })
 const decodeRows = Schema.decodeUnknownEffect(Schema.Array(Row))
 const columns = `id, key, draft, published, coalesce(draft = published, false) as in_sync,
-  published_at, published_revision_id, updated_at`
+  published_at, published_revision_id, updated_at, version`
 
 /** Status of a document as the admin shows it. */
 export const documentState = (row: DocumentRow<unknown>) => ({
@@ -96,6 +98,7 @@ export const documentState = (row: DocumentRow<unknown>) => ({
         : ('changed' as const),
   updatedAt: row.updatedAt.toISOString(),
   publishedAt: row.publishedAt?.toISOString() ?? null,
+  version: row.version,
 })
 
 /**
@@ -169,6 +172,7 @@ export const makeDocuments = Effect.gen(function* () {
           publishedAt: raw.published_at,
           publishedRevisionId: raw.published_revision_id,
           updatedAt: raw.updated_at,
+          version: raw.version,
         } satisfies DocumentRow<D>
       })
     const one = <E>(query: Effect.Effect<ReadonlyArray<unknown>, E>, ref: string) =>
@@ -177,6 +181,22 @@ export const makeDocuments = Effect.gen(function* () {
         return raw ? yield* toRow(raw) : yield* new CmsNotFound({ id: ref })
       })
     const lock = (forUpdate: boolean) => sql.literal(forUpdate ? 'for update' : '')
+    const writeDraft = (row: DocumentRow<D>, draft: D, ref: string) =>
+      one(
+        sql`update cms.document
+          set draft = ${JSON.stringify(draft)}::jsonb, updated_at = now(), version = version + 1
+          where id = ${row.id} returning ${sql.literal(columns)}`,
+        ref,
+      )
+    const checkVersion = (row: DocumentRow<D>, version: number) =>
+      row.version === version
+        ? Effect.void
+        : Effect.fail(
+            new CmsConflict({
+              reason: 'draft_changed',
+              message: 'Someone else changed this draft after you opened it.',
+            }),
+          )
 
     /** By id, or by key for singletons (created with an empty draft on first read). */
     const find = (ref: string, forUpdate = false) =>
@@ -258,20 +278,16 @@ export const makeDocuments = Effect.gen(function* () {
       ),
 
       restoreRevision: Effect.fn('Documents.restoreRevision')(
-        function* (ref: string, revisionId: string) {
+        function* (ref: string, revisionId: string, version: number) {
           yield* requirePermission(spec.permissions.publish)
           return yield* withTransaction(
             Effect.gen(function* () {
               const row = yield* find(ref, true)
+              yield* checkVersion(row, version)
               const snapshot = yield* revision(row.id, revisionId)
               const draft = yield* spec.normalize(row.key, snapshot.document)
               if (spec.routes) yield* checkPaths(row.id, spec.routes(draft))
-              const restored = yield* one(
-                sql`update cms.document
-              set draft = ${JSON.stringify(draft)}::jsonb, updated_at = now()
-              where id = ${row.id} returning ${sql.literal(columns)}`,
-                ref,
-              )
+              const restored = yield* writeDraft(row, draft, ref)
               yield* Audit.record({
                 action: spec.actions.restored,
                 subject: spec.subject(restored),
@@ -330,19 +346,15 @@ export const makeDocuments = Effect.gen(function* () {
       ),
 
       saveDraft: Effect.fn('Documents.saveDraft')(
-        function* (ref: string, input: D) {
+        function* (ref: string, version: number, input: D) {
           yield* requirePermission(spec.permissions.edit)
           return yield* withTransaction(
             Effect.gen(function* () {
               const row = yield* find(ref, true)
+              yield* checkVersion(row, version)
               const draft = yield* spec.normalize(row.key, input)
               if (spec.routes) yield* checkPaths(row.id, spec.routes(draft))
-              return yield* one(
-                sql`update cms.document
-                  set draft = ${JSON.stringify(draft)}::jsonb, updated_at = now()
-                  where id = ${row.id} returning ${sql.literal(columns)}`,
-                ref,
-              )
+              return yield* writeDraft(row, draft, ref)
             }),
           )
         },
@@ -370,12 +382,13 @@ export const makeDocuments = Effect.gen(function* () {
 
       /** Copies the draft to published, records a revision, audits and purges. */
       publish: Effect.fn('Documents.publish')(
-        function* (ref: string) {
+        function* (ref: string, version: number) {
           yield* requirePermission(spec.permissions.publish)
           const actor = yield* CurrentActor
           return yield* withTransaction(
             Effect.gen(function* () {
               const row = yield* find(ref, true)
+              yield* checkVersion(row, version)
 
               // Again, as the definitions may have changed since the draft was saved.
               const draft = yield* spec.normalize(row.key, row.draft)
@@ -390,7 +403,7 @@ export const makeDocuments = Effect.gen(function* () {
               const published = yield* one(
                 sql`update cms.document set draft = ${document}::jsonb,
                   published = ${document}::jsonb, published_at = now(),
-                  published_revision_id = ${revisionId}
+                  published_revision_id = ${revisionId}, version = version + 1
                   where id = ${row.id} returning ${sql.literal(columns)}`,
                 ref,
               )

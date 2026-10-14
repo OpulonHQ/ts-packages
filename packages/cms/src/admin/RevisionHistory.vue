@@ -6,7 +6,8 @@ import DataTable from '@opulonjs/ui/components/DataTable'
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { revisionPageSize, type RevisionSummary } from '../api.ts'
 import RevisionView from './RevisionView.vue'
-import { failureMessage } from './use-cms.ts'
+import ActionStatus from './ActionStatus.vue'
+import { type ActionResult, failureMessage, failureStatus } from './use-cms.ts'
 import { useRevisions, type RevisionSnapshot, type RevisionTarget } from './use-revisions.ts'
 
 const props = defineProps<{
@@ -14,10 +15,11 @@ const props = defineProps<{
   documentRef: string
   collection?: string
   publishedRevisionId: string | null
+  version: number
   canRestore: boolean
   disabled?: boolean
 }>()
-const emit = defineEmits<{ restored: []; busy: [value: boolean] }>()
+const emit = defineEmits<{ restored: []; reload: []; busy: [value: boolean] }>()
 const { t, locale } = useI18n()
 const api = useRevisions()
 const identity = computed(() => `${props.kind}:${props.documentRef}:${props.publishedRevisionId}`)
@@ -38,7 +40,7 @@ const state = shallowRef<
 >({ kind: 'idle' })
 const confirming = ref(false)
 const restoring = ref(false)
-const status = ref<{ kind: 'ok' | 'error'; message: string }>()
+const status = ref<ActionResult>()
 let ticket = 0
 watch(identity, () => {
   ticket++
@@ -46,6 +48,12 @@ watch(identity, () => {
   confirming.value = false
   status.value = undefined
 })
+watch(
+  () => props.version,
+  () => {
+    if (status.value?.kind === 'conflict') status.value = undefined
+  },
+)
 onBeforeUnmount(() => {
   ticket++
   emit('busy', false)
@@ -74,7 +82,7 @@ async function restore() {
   emit('busy', true)
   status.value = undefined
   try {
-    await api.restore(document, revisionId)
+    await api.restore(document, revisionId, props.version)
     if (request !== ticket) return
     confirming.value = false
     status.value = { kind: 'ok', message: t('cms.revisions.restored') }
@@ -82,7 +90,7 @@ async function restore() {
   } catch (error) {
     if (request === ticket) {
       confirming.value = false
-      status.value = { kind: 'error', message: failureMessage(error, t('cms.errors.failed')) }
+      status.value = failureStatus(error, t('cms.errors.failed'))
     }
   } finally {
     restoring.value = false
@@ -138,14 +146,7 @@ async function restore() {
         @click="confirming = true"
       />
     </div>
-    <p
-      v-if="status"
-      :role="status.kind === 'error' ? 'alert' : 'status'"
-      class="mt-4 text-sm"
-      :class="status.kind === 'error' ? 'text-error' : 'text-success'"
-    >
-      {{ status.message }}
-    </p>
+    <ActionStatus :status="status" class="mt-4" @reload="emit('reload')" />
     <ConfirmDialog
       v-model:open="confirming"
       :title="t('cms.revisions.restore')"

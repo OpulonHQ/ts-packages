@@ -39,7 +39,7 @@ test('the client reads resolve, site and collections as typed JSON', async () =>
   const item = await host.call<{ id: string }>('POST', '/collections/testimonials/items', {
     body: { locales: {}, data: { quote: { en: 'Great' }, author: 'Ann' } },
   })
-  await host.call('POST', `/items/${item.body.id}/publish`)
+  await host.publishDraft(`/items/${item.body.id}`)
   const list = await cms.collection('testimonials', { perPage: 5, ids: [item.body.id] })
   expect(list).toMatchObject({ total: 1, perPage: 5, rows: [{ data: { author: 'Ann' } }] })
 
@@ -56,14 +56,12 @@ test('link helpers: system pages, menus and a locale switcher from the alternate
   )
   const contact = pages.body.rows.find((p) => p.systemKey === 'contact')!.id
   await host.publish(contact)
-  await host.call('PUT', '/menus/main/draft', {
-    body: {
-      items: [
-        { id: crypto.randomUUID(), label: { en: 'Us' }, link: { type: 'page', id }, children: [] },
-      ],
-    },
+  await host.saveDraft('/menus/main', {
+    items: [
+      { id: crypto.randomUUID(), label: { en: 'Us' }, link: { type: 'page', id }, children: [] },
+    ],
   })
-  await host.call('POST', '/menus/main/publish')
+  await host.publishDraft('/menus/main')
   const cms = client()
   const site = await cms.site('en')
 

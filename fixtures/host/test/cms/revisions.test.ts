@@ -55,14 +55,13 @@ test.each(cases)(
     const path = c.create
       ? c.path((await host.call<Document>('POST', c.create, { body: c.first })).body)
       : c.path()
-    if (!c.create)
-      expect((await host.call('PUT', `${path}/draft`, { body: c.first })).status).toBe(200)
+    if (!c.create) expect((await host.saveDraft(path, c.first)).status).toBe(200)
     expect(
       (await host.call<{ rows: Summary[]; total: number }>('GET', `${path}/revisions`)).body,
     ).toEqual({ rows: [], total: 0 })
-    const first = (await host.call<Document>('POST', `${path}/publish`)).body
-    await host.call('PUT', `${path}/draft`, { body: c.second })
-    const second = (await host.call<Document>('POST', `${path}/publish`)).body
+    const first = (await host.publishDraft<Document>(path)).body
+    await host.saveDraft(path, c.second)
+    const second = (await host.publishDraft<Document>(path)).body
     const list = await host.call<{ rows: Summary[]; total: number }>('GET', `${path}/revisions`)
     expect(list.status).toBe(200)
     expect(list.headers.get('cache-control')).toBe('private, no-store')
@@ -81,7 +80,7 @@ test.each(cases)(
     const purges = host.purged.length
     const restore = await host.call<Document>(
       'POST',
-      `${path}/revisions/${first.publishedRevisionId}/restore`,
+      `${path}/revisions/${first.publishedRevisionId}/restore?version=${second.version}`,
     )
     expect(restore.status).toBe(200)
     expect(restore.body).toMatchObject({
@@ -98,11 +97,9 @@ test.each(cases)(
         `select context from core.audit_event where action = 'cms.${c.kind}.restored'`,
       ),
     ).toContainEqual({ context: { revisionId: first.publishedRevisionId } })
+    const restoreAgain = `${path}/revisions/${first.publishedRevisionId}/restore?version=${restore.body.version}`
     for (const as of [[], [`${c.permission}.view`, `${c.permission}.edit`]]) {
-      expect(
-        (await host.call('POST', `${path}/revisions/${first.publishedRevisionId}/restore`, { as }))
-          .status,
-      ).toBe(403)
+      expect((await host.call('POST', restoreAgain, { as })).status).toBe(403)
     }
     expect((await host.call('GET', `${path}/revisions`, { as: [] })).status).toBe(403)
     expect(
@@ -111,12 +108,12 @@ test.each(cases)(
     expect((await host.call('GET', `${path}/revisions`, { as: null })).status).toBe(401)
     expect(
       (
-        await host.call('POST', `${path}/revisions/${first.publishedRevisionId}/restore`, {
+        await host.call('POST', restoreAgain, {
           as: [`${c.permission}.publish`],
         })
       ).status,
     ).toBe(200)
-    const published = await host.call<Document>('POST', `${path}/publish`)
+    const published = await host.publishDraft<Document>(path)
     expect(published.body.published).toEqual(first.draft)
   },
 )
@@ -127,9 +124,14 @@ test('a revision must belong to the requested document; missing and malformed id
   const published = (await host.publish(a.id)).body
   for (const revisionId of [published.publishedRevisionId, crypto.randomUUID(), 'invalid']) {
     expect((await host.call('GET', `/pages/${b.id}/revisions/${revisionId}`)).status).toBe(404)
-    expect((await host.call('POST', `/pages/${b.id}/revisions/${revisionId}/restore`)).status).toBe(
-      404,
-    )
+    expect(
+      (
+        await host.call(
+          'POST',
+          `/pages/${b.id}/revisions/${revisionId}/restore?version=${b.version}`,
+        )
+      ).status,
+    ).toBe(404)
   }
   expect((await host.call('GET', '/menus/unknown/revisions')).status).toBe(404)
   expect(
@@ -141,11 +143,14 @@ test('restore refuses an old path now occupied by another document without chang
   const a = (await host.create(page({ en: '/revision-reused' }))).body
   const old = (await host.publish(a.id)).body
   await host.save(a.id, page({ en: '/revision-moved' }))
-  await host.publish(a.id)
+  const moved = (await host.publish(a.id)).body
   await host.create(page({ en: '/revision-reused' }))
-  expect(
-    (await host.call('POST', `/pages/${a.id}/revisions/${old.publishedRevisionId}/restore`)).status,
-  ).toBe(409)
+  const refused = await host.call(
+    'POST',
+    `/pages/${a.id}/revisions/${old.publishedRevisionId}/restore?version=${moved.version}`,
+  )
+  expect(refused.status).toBe(409)
+  expect(refused.body).toMatchObject({ reason: 'path_taken' })
   expect((await host.call<Page>('GET', `/pages/${a.id}`)).body.draft.locales.en?.path).toBe(
     '/revision-moved',
   )

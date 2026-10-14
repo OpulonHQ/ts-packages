@@ -175,7 +175,10 @@ await step('create and publish a page', async () => {
   })
   check(created.status === 200, `create ${created.status} ${JSON.stringify(created.body)}`)
   pageId = created.body.id
-  const published = await api('POST', `/api/cms/pages/${pageId}/publish`)
+  const published = await api(
+    'POST',
+    `/api/cms/pages/${pageId}/publish?version=${created.body.version}`,
+  )
   check(published.status === 200, `publish ${published.status}`)
   return 'create 200, publish 200'
 })

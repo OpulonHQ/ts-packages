@@ -9,13 +9,21 @@ import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
 import FieldSelect from '@opulonjs/ui/components/Field/Select'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
 import StatusBadge from '@opulonjs/ui/components/StatusBadge'
-import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, shallowRef, watch, useTemplateRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { labelText, type Page, type PageDocument, type PageLocale } from '../api.ts'
 import RevisionHistory from './RevisionHistory.vue'
 import FieldsForm from './FieldsForm.vue'
 import LocaleDetails from './LocaleDetails.vue'
-import { failureMessage, pageTitle, useCmsContext, usePages } from './use-cms.ts'
+import ActionStatus from './ActionStatus.vue'
+import {
+  type ActionResult,
+  failureStatus,
+  pageTitle,
+  useCmsContext,
+  usePages,
+  useFocusReturn,
+} from './use-cms.ts'
 
 /** The draft as edited: plain mutable copies of the document's parts. */
 interface Draft {
@@ -35,11 +43,17 @@ const missing = ref(false)
 const pending = ref(false)
 const confirming = ref(false)
 const revisionPending = ref(false)
-const status = ref<{ kind: 'ok' | 'error'; message: string }>()
+const status = ref<ActionResult>()
 const newType = ref<string | number | null>(null)
 
 const locales = computed(() => pages.contentLocales.value)
 const canEdit = computed(() => pages.can('cms.pages.edit'))
+const locked = computed(() => !canEdit.value || pending.value || revisionPending.value)
+const form = useTemplateRef<HTMLFormElement>('form')
+useFocusReturn(
+  () => pending.value || revisionPending.value,
+  () => form.value,
+)
 const title = computed(() => (page.value ? pageTitle(definitions, page.value, locale.value) : ''))
 const typeLabel = (type: string) => labelText(definitions.sections[type]?.label, locale.value)
 const typeItems = computed(() =>
@@ -96,33 +110,36 @@ watch(
   { immediate: true },
 )
 
-async function run(action: () => Promise<Page | void>, done: string) {
+async function run(
+  action: () => Promise<Page | void>,
+  done: string,
+  apply: (next: Page) => void = show,
+) {
+  if (pending.value) return
   const request = ++actionTicket
   pending.value = true
   status.value = undefined
   try {
     const next = await action()
     if (request !== actionTicket) return
-    if (next) show(next)
+    if (next) apply(next)
     status.value = { kind: 'ok', message: done }
+    return next
   } catch (error) {
-    if (request === actionTicket)
-      status.value = { kind: 'error', message: failureMessage(error, t('cms.errors.failed')) }
+    if (request === actionTicket) status.value = failureStatus(error, t('cms.errors.failed'))
   } finally {
     if (request === actionTicket) pending.value = false
   }
 }
 
-const save = () => run(() => pages.save(page.value!.id, draft.value!), t('cms.page.saved'))
+const saveDraft = () => pages.save(page.value!.id, page.value!.version, draft.value!)
+const save = () => run(saveDraft, t('cms.page.saved'))
 
 // Publishing publishes what is on screen: the draft is saved first.
-const publish = () =>
-  run(async () => {
-    const id = page.value!.id
-    const document = draft.value!
-    await pages.save(id, document)
-    return pages.publish(id)
-  }, t('cms.page.published'))
+async function publish() {
+  const saved = await run(saveDraft, '', (next) => (page.value = next))
+  if (saved) await run(() => pages.publish(saved.id, saved.version), t('cms.page.published'))
+}
 const unpublish = () => run(() => pages.unpublish(page.value!.id), t('cms.page.unpublished'))
 async function remove() {
   confirming.value = false
@@ -140,9 +157,7 @@ function move(index: number, by: -1 | 1) {
   const [section] = sections.splice(index, 1)
   sections.splice(index + by, 0, section!)
 }
-async function restored() {
-  await run(() => pages.get(page.value!.id), t('cms.revisions.restored'))
-}
+const reload = async (done = '') => run(() => pages.get(page.value!.id), done)
 </script>
 
 <template>
@@ -195,98 +210,95 @@ async function restored() {
       </PageHeader>
       <CachePurgeNotice :pending="pending || revisionPending" class="mb-4" />
 
-      <p
-        v-if="status && status.message"
-        :role="status.kind === 'error' ? 'alert' : 'status'"
-        :class="status.kind === 'error' ? 'text-error' : 'text-success'"
-        class="mb-4 text-sm"
-      >
-        {{ status.message }}
-      </p>
+      <ActionStatus :status="status" @reload="reload()" />
 
-      <form class="space-y-6" @submit.prevent="save">
-        <UCard>
-          <template #header>
-            <h2 class="font-semibold text-highlighted">{{ t('cms.page.details') }}</h2>
-          </template>
-          <LocaleDetails :value="draft.locales" :locales="locales" :disabled="!canEdit" />
-        </UCard>
-
-        <div class="space-y-4">
-          <h2 class="font-semibold text-highlighted">{{ t('cms.page.sections') }}</h2>
-          <p v-if="draft.sections.length === 0" class="text-sm text-muted">
-            {{ t('cms.page.noSections') }}
-          </p>
-          <UCard v-for="(section, index) in draft.sections" :key="section.id">
+      <form ref="form" tabindex="-1" :aria-label="title" @submit.prevent="save">
+        <fieldset :disabled="pending || revisionPending" class="min-w-0 space-y-6">
+          <UCard>
             <template #header>
-              <div class="flex items-center justify-between gap-2">
-                <h3 class="font-medium text-highlighted">
-                  {{ index + 1 }}. {{ typeLabel(section.type) }}
-                </h3>
-                <div v-if="canEdit" class="flex gap-1">
-                  <UButton
-                    icon="i-lucide-arrow-up"
-                    color="neutral"
-                    variant="ghost"
-                    :aria-label="t('cms.page.moveUp')"
-                    :disabled="index === 0"
-                    @click="move(index, -1)"
-                  />
-                  <UButton
-                    icon="i-lucide-arrow-down"
-                    color="neutral"
-                    variant="ghost"
-                    :aria-label="t('cms.page.moveDown')"
-                    :disabled="index === draft.sections.length - 1"
-                    @click="move(index, 1)"
-                  />
-                  <UButton
-                    icon="i-lucide-x"
-                    color="error"
-                    variant="ghost"
-                    :aria-label="t('cms.page.removeSection')"
-                    @click="draft.sections.splice(index, 1)"
-                  />
-                </div>
-              </div>
+              <h2 class="font-semibold text-highlighted">{{ t('cms.page.details') }}</h2>
             </template>
-            <FieldsForm
-              v-if="definitions.sections[section.type]"
-              v-model:data="section.data"
-              :group="definitions.sections[section.type]!"
-              :locales="locales"
-              :name="`sections.${index}`"
-              :disabled="!canEdit"
-            />
+            <LocaleDetails :value="draft.locales" :locales="locales" :disabled="locked" />
           </UCard>
-          <div v-if="canEdit" class="flex items-end gap-2">
-            <FieldSelect
-              v-model="newType"
-              name="newSection"
-              :label="t('cms.page.sectionType')"
-              :items="typeItems"
-              class="min-w-60"
-            />
-            <UButton
-              icon="i-lucide-plus"
-              color="neutral"
-              variant="outline"
-              :label="t('cms.page.addSection')"
-              :disabled="!newType"
-              @click="addSection"
-            />
+
+          <div class="space-y-4">
+            <h2 class="font-semibold text-highlighted">{{ t('cms.page.sections') }}</h2>
+            <p v-if="draft.sections.length === 0" class="text-sm text-muted">
+              {{ t('cms.page.noSections') }}
+            </p>
+            <UCard v-for="(section, index) in draft.sections" :key="section.id">
+              <template #header>
+                <div class="flex items-center justify-between gap-2">
+                  <h3 class="font-medium text-highlighted">
+                    {{ index + 1 }}. {{ typeLabel(section.type) }}
+                  </h3>
+                  <div v-if="canEdit" class="flex gap-1">
+                    <UButton
+                      icon="i-lucide-arrow-up"
+                      color="neutral"
+                      variant="ghost"
+                      :aria-label="t('cms.page.moveUp')"
+                      :disabled="index === 0"
+                      @click="move(index, -1)"
+                    />
+                    <UButton
+                      icon="i-lucide-arrow-down"
+                      color="neutral"
+                      variant="ghost"
+                      :aria-label="t('cms.page.moveDown')"
+                      :disabled="index === draft.sections.length - 1"
+                      @click="move(index, 1)"
+                    />
+                    <UButton
+                      icon="i-lucide-x"
+                      color="error"
+                      variant="ghost"
+                      :aria-label="t('cms.page.removeSection')"
+                      @click="draft.sections.splice(index, 1)"
+                    />
+                  </div>
+                </div>
+              </template>
+              <FieldsForm
+                v-if="definitions.sections[section.type]"
+                v-model:data="section.data"
+                :group="definitions.sections[section.type]!"
+                :locales="locales"
+                :name="`sections.${index}`"
+                :disabled="locked"
+              />
+            </UCard>
+            <div v-if="canEdit" class="flex items-end gap-2">
+              <FieldSelect
+                v-model="newType"
+                name="newSection"
+                :label="t('cms.page.sectionType')"
+                :items="typeItems"
+                class="min-w-60"
+              />
+              <UButton
+                icon="i-lucide-plus"
+                color="neutral"
+                variant="outline"
+                :label="t('cms.page.addSection')"
+                :disabled="!newType"
+                @click="addSection"
+              />
+            </div>
           </div>
-        </div>
+        </fieldset>
       </form>
       <RevisionHistory
         v-if="page"
+        :version="page.version"
         kind="page"
         :document-ref="page.id"
         :published-revision-id="page.publishedRevisionId"
         :can-restore="pages.can('cms.pages.publish')"
         :disabled="pending"
         @busy="revisionPending = $event"
-        @restored="restored"
+        @restored="reload(t('cms.revisions.restored'))"
+        @reload="reload()"
       />
 
       <ConfirmDialog

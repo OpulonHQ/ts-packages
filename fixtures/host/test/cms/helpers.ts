@@ -92,6 +92,17 @@ export const useCmsHost = (composed = server, reply?: WorkersCache['purge']) => 
     }
   }
 
+  const missingVersion = 0
+  const currentVersion = async (path: string) => {
+    const { status, body } = await call<{ version: number }>('GET', path)
+    return status === 200 ? body.version : missingVersion
+  }
+  type As = { as?: ReadonlyArray<string> | null }
+  const saveDraft = async <Body = unknown>(path: string, body: unknown, { as }: As = {}) =>
+    call<Body>('PUT', `${path}/draft?version=${await currentVersion(path)}`, { body, as })
+  const publishDraft = async <Body = unknown>(path: string, { as }: As = {}) =>
+    call<Body>('POST', `${path}/publish?version=${await currentVersion(path)}`, { as })
+
   /** A `fetch` routed into the test Worker as the editor, for admin screens. */
   const fetchAs =
     (permissions: ReadonlyArray<string>): typeof fetch =>
@@ -129,9 +140,10 @@ export const useCmsHost = (composed = server, reply?: WorkersCache['purge']) => 
     cookie: () => session(editor, editorName),
     query: <R extends Record<string, unknown>>(sql: string) => adminQuery<R>(db.url, sql),
     create: (draft: PageDocument) => call<Page>('POST', '/pages', { body: draft }),
-    save: (id: string, draft: PageDocument) =>
-      call<Page>('PUT', `/pages/${id}/draft`, { body: draft }),
-    publish: (id: string) => call<Page>('POST', `/pages/${id}/publish`),
+    save: (id: string, draft: PageDocument) => saveDraft<Page>(`/pages/${id}`, draft),
+    publish: (id: string) => publishDraft<Page>(`/pages/${id}`),
+    saveDraft,
+    publishDraft,
     /** Uploads a media file as the editor, with alt text per locale; resolves with its id. */
     upload: async (bytes: Uint8Array, name: string, alt: Record<string, string> = {}) => {
       const data = new FormData()

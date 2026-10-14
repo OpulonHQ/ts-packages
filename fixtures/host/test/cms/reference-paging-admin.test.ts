@@ -131,11 +131,7 @@ test('a single item link resolves a target beyond page one and can be cleared an
   const late = links.at(-1)
   if (!late) throw new Error('no item was created')
   expect(
-    (
-      await host.call('PUT', '/settings/draft', {
-        body: { data: { cta: { type: 'item', id: late.id } } },
-      })
-    ).status,
+    (await host.saveDraft('/settings', { data: { cta: { type: 'item', id: late.id } } })).status,
   ).toBe(200)
   admin.mount('/admin/cms/settings', { fetch: host.fetch })
   const clear = () => document.querySelector<HTMLButtonElement>('[aria-label="Odstrániť Link 31"]')
@@ -157,11 +153,7 @@ test('an item link whose target was deleted shows it missing and stays removable
     })
   ).body
   expect(
-    (
-      await host.call('PUT', '/settings/draft', {
-        body: { data: { cta: { type: 'item', id: target.id } } },
-      })
-    ).status,
+    (await host.saveDraft('/settings', { data: { cta: { type: 'item', id: target.id } } })).status,
   ).toBe(200)
   expect((await host.call('DELETE', `/items/${target.id}`)).status).toBe(204)
   admin.mount('/admin/cms/settings', { fetch: host.fetch })

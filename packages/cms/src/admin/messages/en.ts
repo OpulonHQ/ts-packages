@@ -142,6 +142,12 @@ export default {
     editor: 'The editor could not be loaded. Reloading the page discards unsaved changes.',
     reload: 'Reload page',
   },
+  conflict: {
+    title: 'Someone else changed this draft after you opened it.',
+    description:
+      'Your edits were not saved and are still on screen. Reload to see the latest draft; reloading replaces your edits.',
+    reload: 'Reload draft',
+  },
   permissions: {
     'cms.pages.view': 'View pages',
     'cms.pages.edit': 'Create and edit pages',

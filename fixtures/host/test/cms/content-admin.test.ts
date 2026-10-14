@@ -27,6 +27,54 @@ import { page, section, useCmsHost } from './helpers.ts'
 const admin = useAdminLifetime()
 const host = admin.track(useCmsHost())
 const testScreen = (setup: () => () => VNode) => defineComponent({ setup })
+type Document = Page | Item | SiteSettings | Menu
+const menuLink = (label: string) => ({
+  id: crypto.randomUUID(),
+  label: { en: label },
+  link: { type: 'url' as const, url: '/link' },
+  children: [],
+})
+const editors = [
+  {
+    kind: 'page',
+    open: async () =>
+      `/pages/${(await host.create(page({ en: `/admin-conflict-${crypto.randomUUID()}` }))).body.id}`,
+    field: 'locales.en.path',
+    theirs: () => page({ en: '/admin-conflict-theirs' }),
+    stored: (d: Document) => (d as Page).draft.locales.en?.path,
+  },
+  {
+    kind: 'item',
+    open: async () =>
+      `/items/${
+        (
+          await host.call<Item>('POST', '/collections/posts/items', {
+            body: { locales: {}, data: { title: { en: 'Mine' } } },
+          })
+        ).body.id
+      }`,
+    field: 'data.title.en',
+    theirs: () => ({ locales: {}, data: { title: { en: 'Theirs' } } }),
+    stored: (d: Document) => ((d as Item).draft.data.title as Record<string, string>).en,
+  },
+  {
+    kind: 'settings',
+    open: async () => '/settings',
+    field: 'data.siteName.en',
+    theirs: () => ({ data: { siteName: { en: 'Theirs' } } }),
+    stored: (d: Document) => ((d as SiteSettings).draft.data.siteName as Record<string, string>).en,
+  },
+  {
+    kind: 'menu',
+    open: async () => {
+      await host.saveDraft('/menus/footer', { items: [menuLink('Mine')] })
+      return '/menus/footer'
+    },
+    field: 'items.0.label.en',
+    theirs: () => ({ items: [menuLink('Theirs')] }),
+    stored: (d: Document) => (d as Menu).draft.items[0]?.label.en,
+  },
+]
 
 test.each(['item', 'page'])(
   'every %s revision JSON block preserves stored values after form rendering',
@@ -39,7 +87,7 @@ test.each(['item', 'page'])(
                 body: { locales: {}, data: { title: { en: 'Stored JSON item' } } },
               })
             ).body
-            const published = (await host.call<Item>('POST', `/items/${created.id}/publish`)).body
+            const published = (await host.publishDraft<Item>(`/items/${created.id}`)).body
             return {
               kind: 'item',
               revision: (
@@ -141,11 +189,12 @@ test('read-only revision forms preserve the stored snapshot on rerender and rest
       body: { locales: {}, data: { title: { en: 'Stored revision title' } } },
     })
   ).body
-  const first = (await host.call<Item>('POST', `/items/${created.id}/publish`)).body
-  await host.call('PUT', `/items/${created.id}/draft`, {
-    body: { locales: {}, data: { title: { en: 'New draft title' } } },
+  const first = (await host.publishDraft<Item>(`/items/${created.id}`)).body
+  await host.saveDraft(`/items/${created.id}`, {
+    locales: {},
+    data: { title: { en: 'New draft title' } },
   })
-  await host.call('POST', `/items/${created.id}/publish`)
+  await host.publishDraft(`/items/${created.id}`)
   let rerender: (() => void) | undefined
   const modules = adminModules.map((module) =>
     module.id !== 'cms'
@@ -176,7 +225,8 @@ test('read-only revision forms preserve the stored snapshot on rerender and rest
   let restoreBody: string | undefined
   const fetch: typeof host.fetch = async (input, init) => {
     const request = new Request(input, init)
-    if (request.url.endsWith('/restore')) restoreBody = await request.clone().text()
+    if (new URL(request.url).pathname.endsWith('/restore'))
+      restoreBody = await request.clone().text()
     return host.fetch(request)
   }
   const text = mountAdmin(`/admin/cms/items/${created.id}`, fetch, modules)
@@ -273,6 +323,39 @@ test('revision history views a snapshot and restores it to the editor without pu
   expect(stored.published).toEqual(second.published)
 })
 
+test('a restore over a draft another editor changed is refused and offers to reload', async () => {
+  const created = (await host.create(page({ en: '/admin-restore-stale-old' }))).body
+  await host.publish(created.id)
+  await host.save(created.id, page({ en: '/admin-restore-stale-new' }))
+  await host.publish(created.id)
+  const text = mountAdmin(`/admin/cms/pages/${created.id}`)
+  await expect.poll(() => input('locales.en.path')?.value).toBe('/admin-restore-stale-new')
+  const theirs = (await host.save(created.id, page({ en: '/admin-restore-stale-theirs' }))).body
+  await expect
+    .poll(
+      () =>
+        [...document.querySelectorAll<HTMLButtonElement>('tbody button')].filter(
+          (button) => button.textContent?.trim() === 'Zobraziť revíziu',
+        ).length,
+    )
+    .toBe(2)
+  ;[...document.querySelectorAll<HTMLButtonElement>('tbody button')]
+    .filter((b) => b.textContent?.trim() === 'Zobraziť revíziu')[1]!
+    .click()
+  await expect.poll(() => button('Obnoviť do konceptu')).toBeTruthy()
+  button('Obnoviť do konceptu')!.click()
+  await expect.poll(text).toContain('Nahradí aktuálny koncept')
+  ;[...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')]
+    .find((b) => b.textContent?.trim() === 'Obnoviť do konceptu')!
+    .click()
+  await expect.poll(text).toContain('Tento koncept medzitým zmenil niekto iný.')
+  expect((await host.call<Page>('GET', `/pages/${created.id}`)).body).toEqual(theirs)
+
+  button('Načítať koncept')!.click()
+  await expect.poll(() => input('locales.en.path')?.value).toBe('/admin-restore-stale-theirs')
+  await expect.poll(text).not.toContain('Tento koncept medzitým zmenil niekto iný.')
+})
+
 test('view-only editors can inspect revisions and cannot restore', async () => {
   const created = (await host.create(page({ en: '/admin-revision-view-only' }))).body
   await host.publish(created.id)
@@ -323,10 +406,10 @@ test.each([
 ])('$kind screen exposes history, view and restore with the normal editor', async (c) => {
   const id = c.create ? (await host.call<Item>('POST', c.create, { body: c.first })).body.id : ''
   const path = c.path(id)
-  if (!c.create) await host.call('PUT', `${path}/draft`, { body: c.first })
-  const first = (await host.call<Item | Menu | SiteSettings>('POST', `${path}/publish`)).body
-  await host.call('PUT', `${path}/draft`, { body: c.second })
-  const second = (await host.call<Item | Menu | SiteSettings>('POST', `${path}/publish`)).body
+  if (!c.create) await host.saveDraft(path, c.first)
+  const first = (await host.publishDraft<Item | Menu | SiteSettings>(path)).body
+  await host.saveDraft(path, c.second)
+  const second = (await host.publishDraft<Item | Menu | SiteSettings>(path)).body
   const text = mountAdmin(c.route(id))
   await expect
     .poll(
@@ -559,6 +642,245 @@ test('editors edit and publish the site settings', async () => {
     phone: '+421 900 111 222',
     siteName: { en: 'Example' },
   })
+})
+
+test.each(editors)(
+  'a $kind editor whose draft changed meanwhile keeps their input and can reload',
+  async (c) => {
+    const path = await c.open()
+    const text = mountAdmin(`/admin/cms${path}`)
+    await expect.poll(() => input(c.field)).toBeTruthy()
+    type(c.field, 'Mine, unsaved')
+    expect((await host.saveDraft(path, c.theirs())).status).toBe(200)
+    const theirs = (await host.call<Document>('GET', path)).body
+
+    button('Zverejniť')!.click()
+    await expect.poll(text).toContain('Tento koncept medzitým zmenil niekto iný.')
+    expect(input(c.field)?.value).toBe('Mine, unsaved')
+    expect((await host.call<Document>('GET', path)).body).toEqual(theirs)
+
+    button('Načítať koncept')!.click()
+    await expect.poll(() => input(c.field)?.value).toBe(c.stored(theirs))
+    expect(text()).not.toContain('Tento koncept medzitým zmenil niekto iný.')
+  },
+)
+
+test('a publish still saving cannot publish the page the editor navigated to', async () => {
+  const a = (await host.create(page({ en: '/admin-publish-race-a' }))).body
+  const b = (await host.create(page({ en: '/admin-publish-race-b' }))).body
+  const held = admin.gate()
+  let saving = false
+  const fetch: typeof host.fetch = async (input, init) => {
+    const request = new Request(input, init)
+    const response = await host.fetch(request)
+    if (request.method === 'PUT' && request.url.includes(`/pages/${a.id}/draft`)) {
+      saving = true
+      await held.promise
+    }
+    return response
+  }
+  const text = mountAdmin(`/admin/cms/pages/${a.id}`, fetch)
+  await expect.poll(() => input('locales.en.path')).toBeTruthy()
+  button('Zverejniť')!.click()
+  await expect.poll(() => saving).toBe(true)
+  history.pushState(null, '', `/admin/cms/pages/${b.id}`)
+  window.dispatchEvent(new PopStateEvent('popstate'))
+  await expect.poll(() => input('locales.en.path')?.value).toBe('/admin-publish-race-b')
+  button('Uložiť koncept')!.click()
+  await expect.poll(text).toContain('Koncept uložený.')
+  held.resolve()
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  expect((await host.call<Page>('GET', `/pages/${b.id}`)).body.published).toBeNull()
+  expect((await host.call<Page>('GET', `/pages/${a.id}`)).body.published).toBeNull()
+})
+
+test('a publish that conflicts after its save keeps the input and editing re-enabled', async () => {
+  const held = admin.gate()
+  let saving = false
+  const fetch: typeof host.fetch = async (input, init) => {
+    const request = new Request(input, init)
+    const response = await host.fetch(request)
+    if (request.method === 'PUT' && request.url.includes('/settings/draft')) {
+      saving = true
+      await held.promise
+    }
+    return response
+  }
+  const text = mountAdmin('/admin/cms/settings', fetch)
+  await expect.poll(() => input('data.siteName.en')).toBeTruthy()
+  type('data.siteName.en', 'Submitted')
+  button('Zverejniť')!.click()
+  await expect.poll(() => saving).toBe(true)
+  expect(input('data.siteName.en')!.closest('fieldset[disabled]')).not.toBeNull()
+  expect((await host.saveDraft('/settings', { data: { siteName: { en: 'Theirs' } } })).status).toBe(
+    200,
+  )
+  held.resolve()
+  await expect.poll(text).toContain('Tento koncept medzitým zmenil niekto iný.')
+  expect(input('data.siteName.en')?.value).toBe('Submitted')
+  expect(input('data.siteName.en')!.closest('fieldset[disabled]')).toBeNull()
+})
+
+test.each([
+  ...editors.map((editor) => ({ ...editor, action: 'save' })),
+  { ...editors[0]!, action: 'publish' },
+])(
+  'a $kind editor submitting twice before the first $action returns can keep saving',
+  async (c) => {
+    const path = await c.open()
+    const run = crypto.randomUUID()
+    const held = admin.gate()
+    const saves: Array<number> = []
+    const fetch: typeof host.fetch = async (input, init) => {
+      const request = new Request(input, init)
+      const response = await host.fetch(request)
+      if (request.method === 'PUT' && new URL(request.url).pathname.endsWith('/draft')) {
+        saves.push(response.status)
+        if (saves.length === 1) await held.promise
+      }
+      return response
+    }
+    const text = mountAdmin(`/admin/cms${path}`, fetch)
+    await expect.poll(() => input(c.field)).toBeTruthy()
+    type(c.field, `/rapid-one-${run}`)
+    const submit = () =>
+      c.action === 'save'
+        ? document.querySelector('form')!.dispatchEvent(new Event('submit', { cancelable: true }))
+        : button('Zverejniť')!.click()
+    submit()
+    await expect.poll(() => saves.length).toBe(1)
+    submit()
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    held.resolve()
+    await expect.poll(text).toContain(c.action === 'save' ? 'Koncept uložený.' : 'Zverejnené.')
+
+    type(c.field, `/rapid-two-${run}`)
+    document.querySelector('form')!.dispatchEvent(new Event('submit', { cancelable: true }))
+    await expect.poll(() => saves.length).toBe(2)
+    expect(saves).toEqual([200, 200])
+    expect(c.stored((await host.call<Document>('GET', path)).body)).toBe(`/rapid-two-${run}`)
+  },
+)
+
+test.each([
+  ...editors.map((editor) => ({ ...editor, action: 'Uložiť koncept' })),
+  { ...editors[0]!, action: 'Zverejniť' },
+])('a $kind editor cannot type while "$action" is in flight', async (c) => {
+  const path = await c.open()
+  const value = `/locked-${crypto.randomUUID()}`
+  const held = admin.gate()
+  let holding = false
+  const fetch: typeof host.fetch = async (input, init) => {
+    const request = new Request(input, init)
+    const response = await host.fetch(request)
+    if (request.method === 'PUT' && new URL(request.url).pathname.endsWith('/draft') && !holding) {
+      holding = true
+      await held.promise
+    }
+    return response
+  }
+  const editable = () => {
+    const field = input(c.field)
+    return field !== null && !field.disabled && field.closest('fieldset[disabled]') === null
+  }
+  const text = mountAdmin(`/admin/cms${path}`, fetch)
+  await expect.poll(editable).toBe(true)
+  type(c.field, value)
+  button(c.action)!.click()
+  await expect.poll(() => holding).toBe(true)
+  expect(editable()).toBe(false)
+
+  held.resolve()
+  await expect.poll(text).toContain(c.action === 'Zverejniť' ? 'Zverejnené.' : 'Koncept uložený.')
+  expect(editable()).toBe(true)
+  expect(input(c.field)?.value).toBe(c.stored((await host.call<Document>('GET', path)).body))
+})
+
+test('rich text and reference pickers are locked while an item save is in flight', async () => {
+  const name = `Locked ${crypto.randomUUID()}`
+  await host.call('POST', '/collections/categories/items', {
+    body: { locales: {}, data: { name: { en: name } } },
+  })
+  const post = (
+    await host.call<Item>('POST', '/collections/posts/items', {
+      body: { locales: {}, data: { title: { en: 'Locked widgets' } } },
+    })
+  ).body
+  const held = admin.gate()
+  let holding = false
+  const fetch: typeof host.fetch = async (input, init) => {
+    const request = new Request(input, init)
+    const response = await host.fetch(request)
+    if (request.method === 'PUT' && new URL(request.url).pathname.endsWith('/draft') && !holding) {
+      holding = true
+      await held.promise
+    }
+    return response
+  }
+  const text = mountAdmin(`/admin/cms/items/${post.id}`, fetch)
+  const row = () => {
+    const picker = [...document.querySelectorAll<HTMLTableElement>('table')].find(
+      (table) => table.caption?.textContent?.trim() === 'Kategórie',
+    )
+    return [...(picker?.querySelectorAll<HTMLElement>('tbody tr') ?? [])].find((r) =>
+      r.textContent?.includes(name),
+    )
+  }
+  const richText = () => document.querySelector('.tiptap[contenteditable="true"]')
+  await expect.poll(row).toBeTruthy()
+  await expect.poll(richText).toBeTruthy()
+
+  button('Uložiť koncept')!.click()
+  await expect.poll(() => holding).toBe(true)
+  expect(richText()).toBeNull()
+  row()!.click()
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  expect(document.querySelector(`[aria-label="Odstrániť ${name}"]`)).toBeNull()
+
+  held.resolve()
+  await expect.poll(text).toContain('Koncept uložený.')
+  await expect.poll(richText).toBeTruthy()
+  row()!.click()
+  await expect.poll(() => document.querySelector(`[aria-label="Odstrániť ${name}"]`)).toBeTruthy()
+})
+
+test('no button in the page editor form can change the draft while a save is in flight', async () => {
+  const created = (
+    await host.create(
+      page({ en: `/lock-buttons-${crypto.randomUUID()}` }, [
+        section('hero', { title: { en: 'First' } }),
+        section('hero', { title: { en: 'Second' } }),
+      ]),
+    )
+  ).body
+  const held = admin.gate()
+  let holding = false
+  const fetch: typeof host.fetch = async (input, init) => {
+    const request = new Request(input, init)
+    const response = await host.fetch(request)
+    if (request.method === 'PUT' && new URL(request.url).pathname.endsWith('/draft') && !holding) {
+      holding = true
+      await held.promise
+    }
+    return response
+  }
+  const text = mountAdmin(`/admin/cms/pages/${created.id}`, fetch)
+  const formButtons = () => [...document.querySelectorAll<HTMLButtonElement>('form button')]
+  const usable = () =>
+    formButtons()
+      .filter((b) => !b.disabled && b.closest('fieldset[disabled]') === null)
+      .map((b) => b.getAttribute('aria-label') ?? b.textContent?.trim())
+  await expect
+    .poll(() => formButtons().some((b) => b.getAttribute('aria-label') === 'Odstrániť sekciu'))
+    .toBe(true)
+
+  button('Uložiť koncept')!.click()
+  await expect.poll(() => holding).toBe(true)
+  expect(usable()).toEqual([])
+
+  held.resolve()
+  await expect.poll(text).toContain('Koncept uložený.')
+  expect(usable()).toContain('Odstrániť sekciu')
 })
 
 test('editors build a menu from entries with labels per locale and links', async () => {

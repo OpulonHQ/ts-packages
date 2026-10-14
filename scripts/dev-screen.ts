@@ -42,6 +42,7 @@ const row = {
   status: 'draft',
   updatedAt: '2026-01-01T00:00:00.000Z',
   publishedAt: null,
+  version: 1,
 }
 const responses: Record<string, unknown> = {
   '/api/me': me,

@@ -27,10 +27,6 @@ import { cacheTags } from './cache.ts'
 import { checkFields, cleanData, linkProblem, localizeData, uuid } from './document.ts'
 import { type DocumentRow, documentState, makeDocuments } from './documents.ts'
 
-/** Menus and settings have no paths, so a path conflict cannot happen. */
-const noConflict = <A, E, R>(effect: Effect.Effect<A, E | CmsConflict, R>) =>
-  effect.pipe(Effect.catchTag('CmsConflict', Effect.die))
-
 /** Cache-Tag of the public site response (settings and menus). */
 export const siteTags = ['cms:site']
 
@@ -120,12 +116,16 @@ export class Settings extends Context.Service<
     readonly getRevision: (revisionId: string) => Effect.Effect<SettingsRevision, Failure>
     readonly restoreRevision: (
       revisionId: string,
-    ) => Effect.Effect<SiteSettings, Failure | CmsInvalid>
+      version: number,
+    ) => Effect.Effect<SiteSettings, Failure | CmsInvalid | CmsConflict>
     readonly get: () => Effect.Effect<SiteSettings, Forbidden>
     readonly saveDraft: (
+      version: number,
       draft: SettingsDocument,
-    ) => Effect.Effect<SiteSettings, Forbidden | CmsInvalid>
-    readonly publish: () => Effect.Effect<SiteSettings, Forbidden | CmsInvalid>
+    ) => Effect.Effect<SiteSettings, Forbidden | CmsInvalid | CmsConflict>
+    readonly publish: (
+      version: number,
+    ) => Effect.Effect<SiteSettings, Forbidden | CmsInvalid | CmsConflict>
     readonly unpublish: () => Effect.Effect<SiteSettings, Forbidden>
     readonly preview: (locale?: string) => Effect.Effect<SettingsPreview, Forbidden>
   }
@@ -172,15 +172,15 @@ export class Settings extends Context.Service<
         return {
           listRevisions: (page) => documents.listRevisions(settingsKey, page),
           getRevision: (revisionId) => documents.getRevision(settingsKey, revisionId),
-          restoreRevision: (revisionId) =>
+          restoreRevision: (revisionId, version) =>
             documents
-              .restoreRevision(settingsKey, revisionId)
-              .pipe(noConflict, Effect.map(toSettings)),
+              .restoreRevision(settingsKey, revisionId, version)
+              .pipe(Effect.map(toSettings)),
           get: () => orDie(documents.get(settingsKey)).pipe(Effect.map(toSettings)),
-          saveDraft: (draft) =>
-            orDie(documents.saveDraft(settingsKey, draft)).pipe(noConflict, Effect.map(toSettings)),
-          publish: () =>
-            orDie(documents.publish(settingsKey)).pipe(noConflict, Effect.map(toSettings)),
+          saveDraft: (version, draft) =>
+            orDie(documents.saveDraft(settingsKey, version, draft)).pipe(Effect.map(toSettings)),
+          publish: (version) =>
+            orDie(documents.publish(settingsKey, version)).pipe(Effect.map(toSettings)),
           unpublish: () => orDie(documents.unpublish(settingsKey)).pipe(Effect.map(toSettings)),
           preview: (requested) =>
             Effect.gen(function* () {
@@ -209,13 +209,18 @@ export class Menus extends Context.Service<
     readonly restoreRevision: (
       key: string,
       revisionId: string,
-    ) => Effect.Effect<Menu, Failure | CmsInvalid>
+      version: number,
+    ) => Effect.Effect<Menu, Failure | CmsInvalid | CmsConflict>
     readonly get: (key: string) => Effect.Effect<Menu, Failure>
     readonly saveDraft: (
       key: string,
+      version: number,
       draft: MenuDocument,
-    ) => Effect.Effect<Menu, Failure | CmsInvalid>
-    readonly publish: (key: string) => Effect.Effect<Menu, Failure | CmsInvalid>
+    ) => Effect.Effect<Menu, Failure | CmsInvalid | CmsConflict>
+    readonly publish: (
+      key: string,
+      version: number,
+    ) => Effect.Effect<Menu, Failure | CmsInvalid | CmsConflict>
     readonly unpublish: (key: string) => Effect.Effect<Menu, Failure>
     /** The draft in one locale, links resolved against what is published. */
     readonly preview: (key: string, locale?: string) => Effect.Effect<MenuPreview, Failure>
@@ -334,28 +339,24 @@ export class Menus extends Context.Service<
             declared(key).pipe(Effect.andThen(documents.listRevisions(key, page))),
           getRevision: (key, revisionId) =>
             declared(key).pipe(Effect.andThen(documents.getRevision(key, revisionId))),
-          restoreRevision: (key, revisionId) =>
-            declared(key)
-              .pipe(Effect.andThen(documents.restoreRevision(key, revisionId)))
-              .pipe(noConflict, Effect.map(toMenu)),
+          restoreRevision: (key, revisionId, version) =>
+            declared(key).pipe(
+              Effect.andThen(documents.restoreRevision(key, revisionId, version)),
+              Effect.map(toMenu),
+            ),
           list: () =>
             Effect.forEach(Object.keys(definitions.menus), (key) => documents.get(key)).pipe(
               Effect.catchTag('CmsNotFound', Effect.die),
               Effect.map((rows) => ({ rows: rows.map(toSummary), total: rows.length })),
             ),
           get: (key) => declared(key).pipe(Effect.andThen(documents.get(key)), Effect.map(toMenu)),
-          saveDraft: (key, draft) =>
+          saveDraft: (key, version, draft) =>
             declared(key).pipe(
-              Effect.andThen(documents.saveDraft(key, draft)),
-              noConflict,
+              Effect.andThen(documents.saveDraft(key, version, draft)),
               Effect.map(toMenu),
             ),
-          publish: (key) =>
-            declared(key).pipe(
-              Effect.andThen(documents.publish(key)),
-              noConflict,
-              Effect.map(toMenu),
-            ),
+          publish: (key, version) =>
+            declared(key).pipe(Effect.andThen(documents.publish(key, version)), Effect.map(toMenu)),
           unpublish: (key) =>
             declared(key).pipe(Effect.andThen(documents.unpublish(key)), Effect.map(toMenu)),
           preview: (key, requested) =>

@@ -1,0 +1,38 @@
+<script setup lang="ts">
+import { useI18n } from '@opulonjs/admin'
+import { UAlert } from '@opulonjs/ui'
+import type { ActionResult } from './use-cms.ts'
+
+defineProps<{ status: ActionResult | undefined }>()
+const emit = defineEmits<{ reload: [] }>()
+
+const { t } = useI18n()
+</script>
+
+<template>
+  <div v-if="status?.kind === 'conflict'" role="alert" class="mb-4">
+    <UAlert
+      color="warning"
+      variant="subtle"
+      icon="i-lucide-triangle-alert"
+      :title="t('cms.conflict.title')"
+      :description="t('cms.conflict.description')"
+      :actions="[
+        {
+          label: t('cms.conflict.reload'),
+          color: 'neutral',
+          variant: 'outline',
+          onClick: () => emit('reload'),
+        },
+      ]"
+    />
+  </div>
+  <p
+    v-else-if="status?.message"
+    :role="status.kind === 'error' ? 'alert' : 'status'"
+    :class="status.kind === 'error' ? 'text-error' : 'text-success'"
+    class="mb-4 text-sm"
+  >
+    {{ status.message }}
+  </p>
+</template>

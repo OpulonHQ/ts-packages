@@ -4,13 +4,14 @@ import { useI18n } from '@opulonjs/admin'
 import { UButton, UCard } from '@opulonjs/ui'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
 import { Schema } from 'effect'
-import { computed, ref, shallowRef, watch } from 'vue'
+import { computed, ref, shallowRef, watch, useTemplateRef } from 'vue'
 import { useRoute } from 'vue-router'
 import { labelText, type Menu, MenuDocument } from '../api.ts'
 import RevisionHistory from './RevisionHistory.vue'
 import MenuItemsEditor, { type EditedMenuItem } from './MenuItemsEditor.vue'
 import PublishActions from './PublishActions.vue'
-import { useAction, useCmsContext, useContent } from './use-cms.ts'
+import ActionStatus from './ActionStatus.vue'
+import { useAction, useCmsContext, useContent, useFocusReturn } from './use-cms.ts'
 
 const { t, locale } = useI18n()
 const content = useContent()
@@ -27,6 +28,12 @@ const menu = shallowRef<Menu>()
 const items = ref<EditedMenuItem[]>([])
 const revisionPending = ref(false)
 const canEdit = computed(() => content.can('cms.site.edit'))
+const locked = computed(() => !canEdit.value || pending.value || revisionPending.value)
+const form = useTemplateRef<HTMLFormElement>('form')
+useFocusReturn(
+  () => pending.value || revisionPending.value,
+  () => form.value,
+)
 
 const show = (next: Menu | undefined) => {
   if (!next) return
@@ -48,22 +55,17 @@ watch(
 
 const document = () => Schema.decodeUnknownSync(MenuDocument)({ items: items.value })
 // The server validates links; the editor's working copy is sent as is.
-const save = async () =>
-  show(await run(() => content.saveMenu(current.value!, document()), t('cms.page.saved')))
-const publish = async () =>
-  show(
-    await run(async () => {
-      const key = current.value!
-      const draft = document()
-      await content.saveMenu(key, draft)
-      return content.publishMenu(key)
-    }, t('cms.page.published')),
-  )
+const saveDraft = () => content.saveMenu(current.value!, menu.value!.version, document())
+const save = async () => show(await run(saveDraft, t('cms.page.saved')))
+async function publish() {
+  const saved = await run(saveDraft, '')
+  if (!saved) return
+  menu.value = saved
+  show(await run(() => content.publishMenu(saved.key, saved.version), t('cms.page.published')))
+}
 const unpublish = async () =>
   show(await run(() => content.unpublishMenu(current.value!), t('cms.site.unpublished')))
-async function restored() {
-  show(await run(() => content.getMenu(current.value!), t('cms.revisions.restored')))
-}
+const reload = async (done = '') => show(await run(() => content.getMenu(current.value!), done))
 </script>
 
 <template>
@@ -93,36 +95,41 @@ async function restored() {
         :aria-current="key === current ? 'page' : undefined"
       />
     </nav>
-    <p
-      v-if="status && status.message"
-      :role="status.kind === 'error' ? 'alert' : 'status'"
-      :class="status.kind === 'error' ? 'text-error' : 'text-success'"
-      class="mb-4 text-sm"
+    <ActionStatus :status="status" @reload="reload()" />
+    <form
+      v-if="menu && current"
+      ref="form"
+      tabindex="-1"
+      :aria-label="labelText(definitions.menus[current]!.label, locale)"
+      @submit.prevent="save"
     >
-      {{ status.message }}
-    </p>
-    <form v-if="menu && current" @submit.prevent="save">
-      <UCard>
-        <p v-if="items.length === 0" class="mb-3 text-sm text-muted">{{ t('cms.menus.empty') }}</p>
-        <MenuItemsEditor
-          v-model:items="items"
-          :level="1"
-          :depth="definitions.menus[current]!.depth ?? 3"
-          :locales="content.contentLocales.value"
-          name="items"
-          :disabled="!canEdit"
-        />
-      </UCard>
+      <fieldset :disabled="pending || revisionPending" class="min-w-0">
+        <UCard>
+          <p v-if="items.length === 0" class="mb-3 text-sm text-muted">
+            {{ t('cms.menus.empty') }}
+          </p>
+          <MenuItemsEditor
+            v-model:items="items"
+            :level="1"
+            :depth="definitions.menus[current]!.depth ?? 3"
+            :locales="content.contentLocales.value"
+            name="items"
+            :disabled="locked"
+          />
+        </UCard>
+      </fieldset>
     </form>
     <RevisionHistory
       v-if="menu && current"
+      :version="menu.version"
       kind="menu"
       :document-ref="current"
       :published-revision-id="menu.publishedRevisionId"
       :can-restore="content.can('cms.site.publish')"
       :disabled="pending"
       @busy="revisionPending = $event"
-      @restored="restored"
+      @restored="reload(t('cms.revisions.restored'))"
+      @reload="reload()"
     />
   </section>
 </template>

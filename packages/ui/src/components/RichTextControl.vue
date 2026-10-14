@@ -11,7 +11,7 @@ import UEditor from '@nuxt/ui/components/Editor.vue'
 import UEditorToolbar from '@nuxt/ui/components/EditorToolbar.vue'
 import UInput from '@nuxt/ui/components/Input.vue'
 import UPopover from '@nuxt/ui/components/Popover.vue'
-import { computed, ref, useTemplateRef } from 'vue'
+import { computed, ref, useTemplateRef, watch } from 'vue'
 import { defaultRichTextToolbar, type RichTextButton } from '../fields.ts'
 import { useKitText } from '../text.ts'
 
@@ -25,6 +25,11 @@ const props = withDefaults(
 const text = useKitText()
 
 const editorRef = useTemplateRef<{ editor: Editor | undefined }>('editor')
+watch([() => props.disabled, () => editorRef.value?.editor], ([disabled, editor]) => {
+  if (!editor) return
+  editor.setEditable(!disabled)
+  editor.view.dom.setAttribute('aria-disabled', String(disabled))
+})
 defineExpose({
   /** Inserts HTML or text at the cursor, e.g. a `{{placeholder}}` token. */
   insert: (content: string) => {

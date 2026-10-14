@@ -22,10 +22,10 @@ export default async (ctx) => {
   for (const journey of journeys) {
     const created = journey.create ? await call('POST', journey.create, journey.first) : undefined
     const path = journey.path(created?.id)
-    if (!created) await call('PUT', `${path}/draft`, journey.first)
-    const first = await call('POST', `${path}/publish`)
-    await call('PUT', `${path}/draft`, journey.second)
-    const second = await call('POST', `${path}/publish`)
+    const loaded = created ?? (await call('PUT', `${path}/draft?version=${(await call('GET', path)).version}`, journey.first))
+    const first = await call('POST', `${path}/publish?version=${loaded.version}`)
+    const edited = await call('PUT', `${path}/draft?version=${first.version}`, journey.second)
+    const second = await call('POST', `${path}/publish?version=${edited.version}`)
     await page.goto(`${base}/admin/cms${journey.route(created?.id)}`)
     await page.getByRole('heading', { name: 'Revision history', exact: true }).waitFor()
     const views = page.getByRole('button', { name: 'View revision', exact: true })
@@ -41,7 +41,7 @@ export default async (ctx) => {
     await shot(`${journey.kind}-snapshot`)
     await page.getByRole('button', { name: 'Restore to draft', exact: true }).click()
     await shot(`${journey.kind}-confirmation`)
-    const restoring = page.waitForResponse((r) => r.url().endsWith(`/revisions/${first.publishedRevisionId}/restore`) && r.request().method() === 'POST')
+    const restoring = page.waitForResponse((r) => r.url().includes(`/revisions/${first.publishedRevisionId}/restore?version=`) && r.request().method() === 'POST')
     await page.getByRole('dialog').getByRole('button', { name: 'Restore to draft', exact: true }).click()
     check((await restoring).status() === 200, `${journey.kind} restore through UI 200`)
     await page.getByRole('status').filter({ hasText: 'Revision restored to draft.' }).first().waitFor()
@@ -53,7 +53,7 @@ export default async (ctx) => {
     if (journey.input) await page.locator(`input[name="${journey.input}"]`).scrollIntoViewIfNeeded()
     else await page.locator('form').scrollIntoViewIfNeeded()
     await shot(`${journey.kind}-restored-draft`)
-    const published = page.waitForResponse((r) => r.url().endsWith(`${path}/publish`) && r.request().method() === 'POST')
+    const published = page.waitForResponse((r) => r.url().includes(`${path}/publish?`) && r.request().method() === 'POST')
     await page.getByRole('button', { name: 'Publish', exact: true }).click()
     check((await published).status() === 200, `${journey.kind} normal publish 200`)
     await page.getByRole('status').filter({ hasText: 'Published.' }).waitFor()
@@ -71,7 +71,7 @@ export default async (ctx) => {
     const anonymous = await page.context().browser().newContext()
     try {
       for (const row of evidence) {
-        const denied = await anonymous.request.post(`${base}/api/cms${row.path}/revisions/${row.firstRevisionId}/restore`, { headers: { Origin: base } })
+        const denied = await anonymous.request.post(`${base}/api/cms${row.path}/revisions/${row.firstRevisionId}/restore?version=1`, { headers: { Origin: base } })
         check(denied.status() === 401, `${row.kind} signed-out restore receives 401`)
       }
     } finally { await anonymous.close() }
