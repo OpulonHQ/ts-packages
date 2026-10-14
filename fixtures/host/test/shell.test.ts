@@ -1350,6 +1350,44 @@ test('a language picked while the fallback after a failed read loads its catalog
   expect(shown).not.toContain('en')
 })
 
+test('a language pick waiting for one account does not hold back the language of the next account shown', async () => {
+  const waiting = await seedUser(db.url, { name: 'Waiting Account', locale: 'en' })
+  const next = await seedUser(db.url, { name: 'Next Account', locale: 'sk' })
+  let session = await hosts.b1.signIn(waiting.email, waiting.password)
+  const nextSession = await hosts.b1.signIn(next.email, next.password)
+  const nextId = (await hosts.b1.me(nextSession)).user.id
+  const dashboard = capturedState()
+  const answer = heldAnswer('/locale')
+  mountDisposable(adminModules, () => session, {
+    overrides: dashboard.overrides,
+    onResponse: answer.onResponse,
+  })
+  await expect.poll(() => document.body.textContent).toContain('state captured')
+  const { setLocale, refresh, me } = dashboard.state()
+  if (!setLocale) throw new Error('the auth provider offers no language change')
+  answer.hold()
+  const pick = setLocale('sk')
+  await expect.poll(answer.answered).toBe(true)
+  session = nextSession
+  await refresh()
+  expect(me.value?.user.id).toBe(nextId)
+  expect(me.value?.locale).toBe('sk')
+  expect(document.documentElement.lang).toBe('sk')
+  expect(
+    (
+      await hosts.b1.request('PUT', `/users/users/${nextId}/locale`, {
+        cookie: nextSession,
+        body: { locale: 'en' },
+      })
+    ).status,
+  ).toBe(204)
+  await refresh()
+  expect(me.value?.locale).toBe('en')
+  expect(document.documentElement.lang).toBe('en')
+  await answer.release()
+  await Promise.allSettled([pick])
+})
+
 test('a deploy check that finds the session ended cancels an older refresh still loading', async () => {
   const user = await seedUser(db.url, { name: 'Ended During Catalogs', locale: 'en' })
   const own = await hosts.b1.signIn(user.email, user.password)
