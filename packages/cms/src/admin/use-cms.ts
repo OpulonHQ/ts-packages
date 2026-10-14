@@ -115,9 +115,10 @@ export interface ActionResult {
 
 /**
  * Disabling the form while `locked` blurs the focused control to `<body>`; this gives focus back
- * when it ends, unless something else took focus meanwhile. Dialogs return focus to their opener.
+ * when it ends, unless something else took focus meanwhile. Dialogs return focus to their opener;
+ * a control that disappeared (the conflict alert's Reload) hands focus to the form's first field.
  */
-export const useFocusReturn = (locked: () => boolean) => {
+export const useFocusReturn = (locked: () => boolean, form: () => HTMLElement | null) => {
   let held: HTMLElement | undefined
   watch(
     locked,
@@ -137,7 +138,13 @@ export const useFocusReturn = (locked: () => boolean) => {
         const element = held
         held = undefined
         const active = document.activeElement
-        if (element.isConnected && (!active || active === document.body)) element.focus()
+        if (active && active !== document.body) return
+        const target = element.isConnected
+          ? element
+          : form()?.querySelector<HTMLElement>(
+              'input:not([type="hidden"]):not(:disabled), textarea:not(:disabled), [contenteditable="true"]',
+            )
+        target?.focus()
       })
     },
     { flush: 'sync' },

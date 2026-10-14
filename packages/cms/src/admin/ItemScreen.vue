@@ -7,7 +7,7 @@ import { useI18n } from '@opulonjs/admin'
 import { UCard } from '@opulonjs/ui'
 import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
-import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, shallowRef, watch, useTemplateRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { type Item, type ItemDocument, labelText, type PageLocale } from '../api.ts'
 import RevisionHistory from './RevisionHistory.vue'
@@ -38,7 +38,11 @@ const revisionPending = ref(false)
 const locales = computed(() => content.contentLocales.value)
 const canEdit = computed(() => content.can('cms.collections.edit'))
 const locked = computed(() => !canEdit.value || pending.value || revisionPending.value)
-useFocusReturn(() => pending.value || revisionPending.value)
+const form = useTemplateRef<HTMLFormElement>('form')
+useFocusReturn(
+  () => pending.value || revisionPending.value,
+  () => form.value,
+)
 const collection = computed(() =>
   item.value ? definitions.collections[item.value.collection] : undefined,
 )
@@ -142,7 +146,7 @@ const reload = async (done = '') => show(await run(() => content.getItem(item.va
 
       <ActionStatus :status="status" @reload="reload()" />
 
-      <form @submit.prevent="save">
+      <form ref="form" @submit.prevent="save">
         <fieldset :disabled="pending || revisionPending" class="min-w-0 space-y-6">
           <UCard v-if="collection.routed">
             <template #header>

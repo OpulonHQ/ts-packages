@@ -9,7 +9,7 @@ import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
 import FieldSelect from '@opulonjs/ui/components/Field/Select'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
 import StatusBadge from '@opulonjs/ui/components/StatusBadge'
-import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, shallowRef, watch, useTemplateRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { labelText, type Page, type PageDocument, type PageLocale } from '../api.ts'
 import RevisionHistory from './RevisionHistory.vue'
@@ -49,7 +49,11 @@ const newType = ref<string | number | null>(null)
 const locales = computed(() => pages.contentLocales.value)
 const canEdit = computed(() => pages.can('cms.pages.edit'))
 const locked = computed(() => !canEdit.value || pending.value || revisionPending.value)
-useFocusReturn(() => pending.value || revisionPending.value)
+const form = useTemplateRef<HTMLFormElement>('form')
+useFocusReturn(
+  () => pending.value || revisionPending.value,
+  () => form.value,
+)
 const title = computed(() => (page.value ? pageTitle(definitions, page.value, locale.value) : ''))
 const typeLabel = (type: string) => labelText(definitions.sections[type]?.label, locale.value)
 const typeItems = computed(() =>
@@ -208,7 +212,7 @@ const reload = async (done = '') => run(() => pages.get(page.value!.id), done)
 
       <ActionStatus :status="status" @reload="reload()" />
 
-      <form @submit.prevent="save">
+      <form ref="form" @submit.prevent="save">
         <fieldset :disabled="pending || revisionPending" class="min-w-0 space-y-6">
           <UCard>
             <template #header>

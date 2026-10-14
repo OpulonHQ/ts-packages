@@ -3,7 +3,7 @@
 import { useI18n } from '@opulonjs/admin'
 import { UCard } from '@opulonjs/ui'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
-import { computed, onMounted, ref, shallowRef } from 'vue'
+import { computed, onMounted, ref, shallowRef, useTemplateRef } from 'vue'
 import type { SiteSettings } from '../api.ts'
 import RevisionHistory from './RevisionHistory.vue'
 import FieldsForm from './FieldsForm.vue'
@@ -21,7 +21,11 @@ const data = ref<Record<string, unknown>>({})
 const revisionPending = ref(false)
 const canEdit = computed(() => content.can('cms.site.edit'))
 const locked = computed(() => !canEdit.value || pending.value || revisionPending.value)
-useFocusReturn(() => pending.value || revisionPending.value)
+const form = useTemplateRef<HTMLFormElement>('form')
+useFocusReturn(
+  () => pending.value || revisionPending.value,
+  () => form.value,
+)
 
 const show = (next: SiteSettings | undefined) => {
   if (!next) return
@@ -60,7 +64,7 @@ const reload = async (done = '') => show(await run(() => content.getSettings(), 
       </template>
     </PageHeader>
     <ActionStatus :status="status" @reload="reload()" />
-    <form v-if="settings" @submit.prevent="save">
+    <form v-if="settings" ref="form" @submit.prevent="save">
       <fieldset :disabled="pending || revisionPending" class="min-w-0">
         <UCard>
           <FieldsForm

@@ -4,7 +4,7 @@ import { useI18n } from '@opulonjs/admin'
 import { UButton, UCard } from '@opulonjs/ui'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
 import { Schema } from 'effect'
-import { computed, ref, shallowRef, watch } from 'vue'
+import { computed, ref, shallowRef, watch, useTemplateRef } from 'vue'
 import { useRoute } from 'vue-router'
 import { labelText, type Menu, MenuDocument } from '../api.ts'
 import RevisionHistory from './RevisionHistory.vue'
@@ -29,7 +29,11 @@ const items = ref<EditedMenuItem[]>([])
 const revisionPending = ref(false)
 const canEdit = computed(() => content.can('cms.site.edit'))
 const locked = computed(() => !canEdit.value || pending.value || revisionPending.value)
-useFocusReturn(() => pending.value || revisionPending.value)
+const form = useTemplateRef<HTMLFormElement>('form')
+useFocusReturn(
+  () => pending.value || revisionPending.value,
+  () => form.value,
+)
 
 const show = (next: Menu | undefined) => {
   if (!next) return
@@ -92,7 +96,7 @@ const reload = async (done = '') => show(await run(() => content.getMenu(current
       />
     </nav>
     <ActionStatus :status="status" @reload="reload()" />
-    <form v-if="menu && current" @submit.prevent="save">
+    <form v-if="menu && current" ref="form" @submit.prevent="save">
       <fieldset :disabled="pending || revisionPending" class="min-w-0">
         <UCard>
           <p v-if="items.length === 0" class="mb-3 text-sm text-muted">
