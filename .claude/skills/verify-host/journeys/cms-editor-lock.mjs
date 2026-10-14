@@ -143,7 +143,7 @@ export default async (ctx) => {
       return {
         tag: element?.tagName,
         name: element?.getAttribute('name') ?? element?.textContent?.trim().slice(0, 40),
-        usable: Boolean(element?.closest('form')) && Boolean(element?.checkVisibility()) && !element?.closest('[aria-hidden="true"]'),
+        usable: element?.tagName !== 'FORM' && Boolean(element?.closest('form')) && Boolean(element?.checkVisibility()) && !element?.closest('[aria-hidden="true"]'),
       }
     })
     evidence.push({ kind: label, landed, next })
@@ -215,7 +215,8 @@ export default async (ctx) => {
     const { seen, release } = await holdGet(editor.path)
     await page.keyboard.press('Enter')
     check((await seen) === 200, `${editor.kind} reload after the restore is held`)
-    await page.waitForTimeout(1000)
+    await page.getByRole('dialog').getByRole('button', { name: 'Restore to draft', exact: true }).waitFor({ state: 'detached' })
+    await page.waitForTimeout(100)
     release()
     await page.waitForTimeout(500)
     await shot(`${editor.kind}-slow-restore-focus`)
