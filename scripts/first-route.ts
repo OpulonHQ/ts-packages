@@ -8,7 +8,7 @@ const types: Record<string, string> = { '.js': 'text/javascript', '.css': 'text/
 /**
  * The files a browser fetches for the admin's first route: serves a built admin (`dist`, base
  * `/admin/`), loads it in happy-dom signed in as `me` until the dashboard has rendered, and
- * returns every requested file plus the stylesheets and module preloads index.html links.
+ * returns every requested file plus the stylesheets and module preloads it links.
  */
 export const firstRoute = async (dist: string, me: object): Promise<ReadonlyArray<string>> => {
   const html = await readFile(join(dist, 'index.html'), 'utf8')
@@ -47,10 +47,14 @@ export const firstRoute = async (dist: string, me: object): Promise<ReadonlyArra
         entry,
         JSON.stringify(me),
       ],
-      { stdio: 'inherit' },
+      { stdio: ['ignore', 'pipe', 'inherit'] },
     )
+    let output = ''
+    page.stdout.on('data', (chunk: Buffer) => (output += chunk))
     const code = await new Promise((done) => page.on('exit', done))
     if (code !== 0) throw new Error('first route: the admin dashboard did not render')
+    const preloads = JSON.parse(output.trim().split('\n').at(-1) ?? '[]') as Array<string>
+    for (const path of preloads) requested.add(path.replace(/^\/admin\//, ''))
   } finally {
     server.close()
   }

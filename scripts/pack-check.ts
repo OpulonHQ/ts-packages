@@ -226,8 +226,10 @@ const me = {
   permissionCatalog: [],
   contentLocales: ['en'],
 }
-const route = await firstRoute(resolve('admin-dist'), me)
-const routeEager = including(built, route.filter((file) => built[file]?.type === 'chunk'), editorCode)
+const fetched = await firstRoute(resolve('admin-dist'), me)
+const routeChunks = new Set(fetched.filter((file) => built[file]?.type === 'chunk').flatMap((file) => [...staticImports(built, file)]))
+const route = [...new Set([...fetched, ...routeChunks])]
+const routeEager = including(built, routeChunks, editorCode)
 if (routeEager.length > 0) throw new Error('admin first route fetches on-demand code: ' + routeEager.join(', '))
 const kB = (bytes) => (bytes / 1000).toFixed(1) + ' kB'
 const size = (ext) => {
