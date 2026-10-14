@@ -97,15 +97,20 @@ watch(
   { immediate: true },
 )
 
-async function run(action: () => Promise<Page | void>, done: string) {
+async function run(
+  action: () => Promise<Page | void>,
+  done: string,
+  apply: (next: Page) => void = show,
+) {
   const request = ++actionTicket
   pending.value = true
   status.value = undefined
   try {
     const next = await action()
     if (request !== actionTicket) return
-    if (next) show(next)
+    if (next) apply(next)
     status.value = { kind: 'ok', message: done }
+    return next
   } catch (error) {
     if (request === actionTicket) status.value = failureStatus(error, t('cms.errors.failed'))
   } finally {
@@ -118,9 +123,8 @@ const save = () => run(saveDraft, t('cms.page.saved'))
 
 // Publishing publishes what is on screen: the draft is saved first.
 async function publish() {
-  await run(saveDraft, '')
-  if (status.value?.kind === 'ok')
-    await run(() => pages.publish(page.value!.id, page.value!.version), t('cms.page.published'))
+  const saved = await run(saveDraft, '', (next) => (page.value = next))
+  if (saved) await run(() => pages.publish(saved.id, saved.version), t('cms.page.published'))
 }
 const unpublish = () => run(() => pages.unpublish(page.value!.id), t('cms.page.unpublished'))
 async function remove() {
@@ -270,6 +274,7 @@ const reload = async (done = '') => run(() => pages.get(page.value!.id), done)
       </form>
       <RevisionHistory
         v-if="page"
+        :version="page.version"
         kind="page"
         :document-ref="page.id"
         :published-revision-id="page.publishedRevisionId"
@@ -277,6 +282,7 @@ const reload = async (done = '') => run(() => pages.get(page.value!.id), done)
         :disabled="pending"
         @busy="revisionPending = $event"
         @restored="reload(t('cms.revisions.restored'))"
+        @reload="reload()"
       />
 
       <ConfirmDialog

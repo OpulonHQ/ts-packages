@@ -53,9 +53,9 @@ const saveDraft = () => content.saveMenu(current.value!, menu.value!.version, do
 const save = async () => show(await run(saveDraft, t('cms.page.saved')))
 async function publish() {
   const saved = await run(saveDraft, '')
-  show(saved)
-  if (saved)
-    show(await run(() => content.publishMenu(saved.key, saved.version), t('cms.page.published')))
+  if (!saved) return
+  menu.value = saved
+  show(await run(() => content.publishMenu(saved.key, saved.version), t('cms.page.published')))
 }
 const unpublish = async () =>
   show(await run(() => content.unpublishMenu(current.value!), t('cms.site.unpublished')))
@@ -105,6 +105,7 @@ const reload = async (done = '') => show(await run(() => content.getMenu(current
     </form>
     <RevisionHistory
       v-if="menu && current"
+      :version="menu.version"
       kind="menu"
       :document-ref="current"
       :published-revision-id="menu.publishedRevisionId"
@@ -112,6 +113,7 @@ const reload = async (done = '') => show(await run(() => content.getMenu(current
       :disabled="pending"
       @busy="revisionPending = $event"
       @restored="reload(t('cms.revisions.restored'))"
+      @reload="reload()"
     />
   </section>
 </template>

@@ -27,9 +27,6 @@ import { cacheTags } from './cache.ts'
 import { checkFields, cleanData, linkProblem, localizeData, uuid } from './document.ts'
 import { type DocumentRow, documentState, makeDocuments } from './documents.ts'
 
-const dieOnConflict = <A, E, R>(effect: Effect.Effect<A, E | CmsConflict, R>) =>
-  effect.pipe(Effect.catchTag('CmsConflict', Effect.die))
-
 /** Cache-Tag of the public site response (settings and menus). */
 export const siteTags = ['cms:site']
 
@@ -119,7 +116,8 @@ export class Settings extends Context.Service<
     readonly getRevision: (revisionId: string) => Effect.Effect<SettingsRevision, Failure>
     readonly restoreRevision: (
       revisionId: string,
-    ) => Effect.Effect<SiteSettings, Failure | CmsInvalid>
+      version: number,
+    ) => Effect.Effect<SiteSettings, Failure | CmsInvalid | CmsConflict>
     readonly get: () => Effect.Effect<SiteSettings, Forbidden>
     readonly saveDraft: (
       version: number,
@@ -174,10 +172,10 @@ export class Settings extends Context.Service<
         return {
           listRevisions: (page) => documents.listRevisions(settingsKey, page),
           getRevision: (revisionId) => documents.getRevision(settingsKey, revisionId),
-          restoreRevision: (revisionId) =>
+          restoreRevision: (revisionId, version) =>
             documents
-              .restoreRevision(settingsKey, revisionId)
-              .pipe(dieOnConflict, Effect.map(toSettings)),
+              .restoreRevision(settingsKey, revisionId, version)
+              .pipe(Effect.map(toSettings)),
           get: () => orDie(documents.get(settingsKey)).pipe(Effect.map(toSettings)),
           saveDraft: (version, draft) =>
             orDie(documents.saveDraft(settingsKey, version, draft)).pipe(Effect.map(toSettings)),
@@ -211,7 +209,8 @@ export class Menus extends Context.Service<
     readonly restoreRevision: (
       key: string,
       revisionId: string,
-    ) => Effect.Effect<Menu, Failure | CmsInvalid>
+      version: number,
+    ) => Effect.Effect<Menu, Failure | CmsInvalid | CmsConflict>
     readonly get: (key: string) => Effect.Effect<Menu, Failure>
     readonly saveDraft: (
       key: string,
@@ -340,10 +339,11 @@ export class Menus extends Context.Service<
             declared(key).pipe(Effect.andThen(documents.listRevisions(key, page))),
           getRevision: (key, revisionId) =>
             declared(key).pipe(Effect.andThen(documents.getRevision(key, revisionId))),
-          restoreRevision: (key, revisionId) =>
-            declared(key)
-              .pipe(Effect.andThen(documents.restoreRevision(key, revisionId)))
-              .pipe(dieOnConflict, Effect.map(toMenu)),
+          restoreRevision: (key, revisionId, version) =>
+            declared(key).pipe(
+              Effect.andThen(documents.restoreRevision(key, revisionId, version)),
+              Effect.map(toMenu),
+            ),
           list: () =>
             Effect.forEach(Object.keys(definitions.menus), (key) => documents.get(key)).pipe(
               Effect.catchTag('CmsNotFound', Effect.die),

@@ -92,9 +92,9 @@ const save = async () => show(await run(saveDraft, t('cms.page.saved')))
 // Publishing publishes what is on screen: the draft is saved first.
 async function publish() {
   const saved = await run(saveDraft, '')
-  show(saved)
-  if (saved)
-    show(await run(() => content.publishItem(saved.id, saved.version), t('cms.page.published')))
+  if (!saved) return
+  item.value = saved
+  show(await run(() => content.publishItem(saved.id, saved.version), t('cms.page.published')))
 }
 const unpublish = async () =>
   show(await run(() => content.unpublishItem(item.value!.id), t('cms.item.unpublished')))
@@ -162,6 +162,7 @@ const reload = async (done = '') => show(await run(() => content.getItem(item.va
       </form>
       <RevisionHistory
         v-if="item"
+        :version="item.version"
         kind="item"
         :document-ref="item.id"
         :collection="item.collection"
@@ -170,6 +171,7 @@ const reload = async (done = '') => show(await run(() => content.getItem(item.va
         :disabled="pending"
         @busy="revisionPending = $event"
         @restored="reload(t('cms.revisions.restored'))"
+        @reload="reload()"
       />
 
       <ConfirmDialog

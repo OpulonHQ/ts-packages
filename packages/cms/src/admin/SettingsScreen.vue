@@ -32,8 +32,9 @@ const saveDraft = () => content.saveSettings(settings.value!.version, { data: da
 const save = async () => show(await run(saveDraft, t('cms.page.saved')))
 async function publish() {
   const saved = await run(saveDraft, '')
-  show(saved)
-  if (saved) show(await run(() => content.publishSettings(saved.version), t('cms.page.published')))
+  if (!saved) return
+  settings.value = saved
+  show(await run(() => content.publishSettings(saved.version), t('cms.page.published')))
 }
 const unpublish = async () =>
   show(await run(() => content.unpublishSettings(), t('cms.site.unpublished')))
@@ -70,6 +71,7 @@ const reload = async (done = '') => show(await run(() => content.getSettings(), 
     </form>
     <RevisionHistory
       v-if="settings"
+      :version="settings.version"
       kind="settings"
       :document-ref="'site'"
       :published-revision-id="settings.publishedRevisionId"
@@ -77,6 +79,7 @@ const reload = async (done = '') => show(await run(() => content.getSettings(), 
       :disabled="pending"
       @busy="revisionPending = $event"
       @restored="reload(t('cms.revisions.restored'))"
+      @reload="reload()"
     />
   </section>
 </template>

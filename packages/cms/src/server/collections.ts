@@ -41,6 +41,7 @@ export class Items extends Context.Service<
     readonly restoreRevision: (
       id: string,
       revisionId: string,
+      version: number,
     ) => Effect.Effect<Item, Failure | CmsInvalid | CmsConflict>
     readonly get: (id: string) => Effect.Effect<Item, Failure>
     readonly create: (
@@ -163,8 +164,8 @@ export class Items extends Context.Service<
         return {
           listRevisions: (id, page) => documents.listRevisions(id, page),
           getRevision: (id, revisionId) => documents.getRevision(id, revisionId),
-          restoreRevision: (id, revisionId) =>
-            documents.restoreRevision(id, revisionId).pipe(Effect.map(toItem)),
+          restoreRevision: (id, revisionId, version) =>
+            documents.restoreRevision(id, revisionId, version).pipe(Effect.map(toItem)),
           list: (collection, query) =>
             known(collection).pipe(
               Effect.flatMap((definition) =>

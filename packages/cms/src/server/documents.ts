@@ -278,11 +278,12 @@ export const makeDocuments = Effect.gen(function* () {
       ),
 
       restoreRevision: Effect.fn('Documents.restoreRevision')(
-        function* (ref: string, revisionId: string) {
+        function* (ref: string, revisionId: string, version: number) {
           yield* requirePermission(spec.permissions.publish)
           return yield* withTransaction(
             Effect.gen(function* () {
               const row = yield* find(ref, true)
+              yield* checkVersion(row, version)
               const snapshot = yield* revision(row.id, revisionId)
               const draft = yield* spec.normalize(row.key, snapshot.document)
               if (spec.routes) yield* checkPaths(row.id, spec.routes(draft))

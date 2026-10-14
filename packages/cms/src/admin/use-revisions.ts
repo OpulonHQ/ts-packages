@@ -66,24 +66,35 @@ export const useRevisions = () => {
           }
       }
     },
-    restore: async (target: RevisionTarget, revisionId: string) => {
+    restore: async (target: RevisionTarget, revisionId: string, version: number) => {
       switch (target.kind) {
         case 'page':
           await cms((client) =>
-            client.restorePageRevision({ params: { id: target.ref, revisionId } }),
+            client.restorePageRevision({
+              params: { id: target.ref, revisionId },
+              query: { version },
+            }),
           )
           break
         case 'item':
           await cms((client) =>
-            client.restoreItemRevision({ params: { id: target.ref, revisionId } }),
+            client.restoreItemRevision({
+              params: { id: target.ref, revisionId },
+              query: { version },
+            }),
           )
           break
         case 'settings':
-          await cms((client) => client.restoreSettingsRevision({ params: { revisionId } }))
+          await cms((client) =>
+            client.restoreSettingsRevision({ params: { revisionId }, query: { version } }),
+          )
           break
         case 'menu':
           await cms((client) =>
-            client.restoreMenuRevision({ params: { key: target.ref, revisionId } }),
+            client.restoreMenuRevision({
+              params: { key: target.ref, revisionId },
+              query: { version },
+            }),
           )
           break
       }

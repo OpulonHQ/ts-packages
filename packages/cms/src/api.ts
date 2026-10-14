@@ -381,6 +381,7 @@ export const CmsGroup = HttpApiGroup.make('cms')
   .add(
     HttpApiEndpoint.post('restorePageRevision', '/pages/:id/revisions/:revisionId/restore', {
       params: { ...id, revisionId: Schema.String },
+      query: loadedVersion,
       success: Page,
       error: [CmsInvalid, CmsConflict, CmsNotFound],
     }).annotate(Policy, 'cms.pages.publish'),
@@ -403,6 +404,7 @@ export const CmsGroup = HttpApiGroup.make('cms')
   .add(
     HttpApiEndpoint.post('restoreItemRevision', '/items/:id/revisions/:revisionId/restore', {
       params: { ...id, revisionId: Schema.String },
+      query: loadedVersion,
       success: Item,
       error: [CmsInvalid, CmsConflict, CmsNotFound],
     }).annotate(Policy, 'cms.collections.publish'),
@@ -424,6 +426,7 @@ export const CmsGroup = HttpApiGroup.make('cms')
   .add(
     HttpApiEndpoint.post('restoreSettingsRevision', '/settings/revisions/:revisionId/restore', {
       params: { revisionId: Schema.String },
+      query: loadedVersion,
       success: SiteSettings,
       error: [CmsInvalid, CmsConflict, CmsNotFound],
     }).annotate(Policy, 'cms.site.publish'),
@@ -446,6 +449,7 @@ export const CmsGroup = HttpApiGroup.make('cms')
   .add(
     HttpApiEndpoint.post('restoreMenuRevision', '/menus/:key/revisions/:revisionId/restore', {
       params: { ...key, revisionId: Schema.String },
+      query: loadedVersion,
       success: Menu,
       error: [CmsInvalid, CmsConflict, CmsNotFound],
     }).annotate(Policy, 'cms.site.publish'),

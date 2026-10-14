@@ -139,27 +139,27 @@ const handlers = (api: HttpApi.HttpApi<'opulon', typeof CmsGroup | typeof CmsRea
           pages.listRevisions(params.id, query.page),
         )
         .handle('getPageRevision', ({ params }) => pages.getRevision(params.id, params.revisionId))
-        .handle('restorePageRevision', ({ params }) =>
-          pages.restoreRevision(params.id, params.revisionId),
+        .handle('restorePageRevision', ({ params, query }) =>
+          pages.restoreRevision(params.id, params.revisionId, query.version),
         )
         .handle('listItemRevisions', ({ params, query }) =>
           items.listRevisions(params.id, query.page),
         )
         .handle('getItemRevision', ({ params }) => items.getRevision(params.id, params.revisionId))
-        .handle('restoreItemRevision', ({ params }) =>
-          items.restoreRevision(params.id, params.revisionId),
+        .handle('restoreItemRevision', ({ params, query }) =>
+          items.restoreRevision(params.id, params.revisionId, query.version),
         )
         .handle('listSettingsRevisions', ({ query }) => settings.listRevisions(query.page))
         .handle('getSettingsRevision', ({ params }) => settings.getRevision(params.revisionId))
-        .handle('restoreSettingsRevision', ({ params }) =>
-          settings.restoreRevision(params.revisionId),
+        .handle('restoreSettingsRevision', ({ params, query }) =>
+          settings.restoreRevision(params.revisionId, query.version),
         )
         .handle('listMenuRevisions', ({ params, query }) =>
           menus.listRevisions(params.key, query.page),
         )
         .handle('getMenuRevision', ({ params }) => menus.getRevision(params.key, params.revisionId))
-        .handle('restoreMenuRevision', ({ params }) =>
-          menus.restoreRevision(params.key, params.revisionId),
+        .handle('restoreMenuRevision', ({ params, query }) =>
+          menus.restoreRevision(params.key, params.revisionId, query.version),
         )
         .handle('listPages', () => pages.list())
         .handle('getPage', ({ params }) => pages.get(params.id))

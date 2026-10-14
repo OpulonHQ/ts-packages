@@ -39,6 +39,7 @@ export class Pages extends Context.Service<
     readonly restoreRevision: (
       id: string,
       revisionId: string,
+      version: number,
     ) => Effect.Effect<Page, PagesError | CmsInvalid | CmsConflict>
     readonly get: (id: string) => Effect.Effect<Page, PagesError>
     readonly create: (
@@ -143,8 +144,8 @@ export class Pages extends Context.Service<
         return {
           listRevisions: (id, page) => documents.listRevisions(id, page),
           getRevision: (id, revisionId) => documents.getRevision(id, revisionId),
-          restoreRevision: (id, revisionId) =>
-            documents.restoreRevision(id, revisionId).pipe(Effect.map(toPage)),
+          restoreRevision: (id, revisionId, version) =>
+            documents.restoreRevision(id, revisionId, version).pipe(Effect.map(toPage)),
           list: () =>
             Effect.gen(function* () {
               yield* requirePermission('cms.pages.view')

@@ -32,7 +32,7 @@ export default async (ctx) => {
     if (journey.input) await page.locator(`input[name="${journey.input}"]`).fill(`Stale ${journey.kind} edit`)
     await shot(`${journey.kind}-stale-editor-typed`)
 
-    const restored = await call('POST', `${path}/revisions/${first.publishedRevisionId}/restore`)
+    const restored = await call('POST', `${path}/revisions/${first.publishedRevisionId}/restore?version=${second.version}`)
     check(JSON.stringify(restored.draft) === JSON.stringify(first.draft), `${journey.kind} other editor restored revision 1 to draft`)
 
     const requests = []

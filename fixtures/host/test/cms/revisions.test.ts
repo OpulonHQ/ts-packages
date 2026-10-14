@@ -80,7 +80,7 @@ test.each(cases)(
     const purges = host.purged.length
     const restore = await host.call<Document>(
       'POST',
-      `${path}/revisions/${first.publishedRevisionId}/restore`,
+      `${path}/revisions/${first.publishedRevisionId}/restore?version=${second.version}`,
     )
     expect(restore.status).toBe(200)
     expect(restore.body).toMatchObject({
@@ -97,11 +97,9 @@ test.each(cases)(
         `select context from core.audit_event where action = 'cms.${c.kind}.restored'`,
       ),
     ).toContainEqual({ context: { revisionId: first.publishedRevisionId } })
+    const restoreAgain = `${path}/revisions/${first.publishedRevisionId}/restore?version=${restore.body.version}`
     for (const as of [[], [`${c.permission}.view`, `${c.permission}.edit`]]) {
-      expect(
-        (await host.call('POST', `${path}/revisions/${first.publishedRevisionId}/restore`, { as }))
-          .status,
-      ).toBe(403)
+      expect((await host.call('POST', restoreAgain, { as })).status).toBe(403)
     }
     expect((await host.call('GET', `${path}/revisions`, { as: [] })).status).toBe(403)
     expect(
@@ -110,7 +108,7 @@ test.each(cases)(
     expect((await host.call('GET', `${path}/revisions`, { as: null })).status).toBe(401)
     expect(
       (
-        await host.call('POST', `${path}/revisions/${first.publishedRevisionId}/restore`, {
+        await host.call('POST', restoreAgain, {
           as: [`${c.permission}.publish`],
         })
       ).status,
@@ -126,9 +124,14 @@ test('a revision must belong to the requested document; missing and malformed id
   const published = (await host.publish(a.id)).body
   for (const revisionId of [published.publishedRevisionId, crypto.randomUUID(), 'invalid']) {
     expect((await host.call('GET', `/pages/${b.id}/revisions/${revisionId}`)).status).toBe(404)
-    expect((await host.call('POST', `/pages/${b.id}/revisions/${revisionId}/restore`)).status).toBe(
-      404,
-    )
+    expect(
+      (
+        await host.call(
+          'POST',
+          `/pages/${b.id}/revisions/${revisionId}/restore?version=${b.version}`,
+        )
+      ).status,
+    ).toBe(404)
   }
   expect((await host.call('GET', '/menus/unknown/revisions')).status).toBe(404)
   expect(
@@ -139,12 +142,15 @@ test('a revision must belong to the requested document; missing and malformed id
 test('restore refuses an old path now occupied by another document without changing the draft or auditing', async () => {
   const a = (await host.create(page({ en: '/revision-reused' }))).body
   const old = (await host.publish(a.id)).body
-  await host.save(a.id, page({ en: '/revision-moved' }))
+  const moved = (await host.save(a.id, page({ en: '/revision-moved' }))).body
   await host.publish(a.id)
   await host.create(page({ en: '/revision-reused' }))
-  expect(
-    (await host.call('POST', `/pages/${a.id}/revisions/${old.publishedRevisionId}/restore`)).status,
-  ).toBe(409)
+  const refused = await host.call(
+    'POST',
+    `/pages/${a.id}/revisions/${old.publishedRevisionId}/restore?version=${moved.version}`,
+  )
+  expect(refused.status).toBe(409)
+  expect(refused.body).toMatchObject({ reason: 'path_taken' })
   expect((await host.call<Page>('GET', `/pages/${a.id}`)).body.draft.locales.en?.path).toBe(
     '/revision-moved',
   )

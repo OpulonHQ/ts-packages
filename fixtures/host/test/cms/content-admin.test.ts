@@ -178,7 +178,8 @@ test('read-only revision forms preserve the stored snapshot on rerender and rest
   let restoreBody: string | undefined
   const fetch: typeof host.fetch = async (input, init) => {
     const request = new Request(input, init)
-    if (request.url.endsWith('/restore')) restoreBody = await request.clone().text()
+    if (new URL(request.url).pathname.endsWith('/restore'))
+      restoreBody = await request.clone().text()
     return host.fetch(request)
   }
   const text = mountAdmin(`/admin/cms/items/${created.id}`, fetch, modules)
@@ -273,6 +274,38 @@ test('revision history views a snapshot and restores it to the editor without pu
   expect(stored.draft).toEqual(first.draft)
   expect(stored.publishedRevisionId).toBe(second.publishedRevisionId)
   expect(stored.published).toEqual(second.published)
+})
+
+test('a restore over a draft another editor changed is refused and offers to reload', async () => {
+  const created = (await host.create(page({ en: '/admin-restore-stale-old' }))).body
+  await host.publish(created.id)
+  await host.save(created.id, page({ en: '/admin-restore-stale-new' }))
+  await host.publish(created.id)
+  const text = mountAdmin(`/admin/cms/pages/${created.id}`)
+  await expect.poll(() => input('locales.en.path')?.value).toBe('/admin-restore-stale-new')
+  const theirs = (await host.save(created.id, page({ en: '/admin-restore-stale-theirs' }))).body
+  await expect
+    .poll(
+      () =>
+        [...document.querySelectorAll<HTMLButtonElement>('tbody button')].filter(
+          (button) => button.textContent?.trim() === 'Zobraziť revíziu',
+        ).length,
+    )
+    .toBe(2)
+  ;[...document.querySelectorAll<HTMLButtonElement>('tbody button')]
+    .filter((b) => b.textContent?.trim() === 'Zobraziť revíziu')[1]!
+    .click()
+  await expect.poll(() => button('Obnoviť do konceptu')).toBeTruthy()
+  button('Obnoviť do konceptu')!.click()
+  await expect.poll(text).toContain('Nahradí aktuálny koncept')
+  ;[...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')]
+    .find((b) => b.textContent?.trim() === 'Obnoviť do konceptu')!
+    .click()
+  await expect.poll(text).toContain('Tento koncept medzitým zmenil niekto iný.')
+  expect((await host.call<Page>('GET', `/pages/${created.id}`)).body).toEqual(theirs)
+
+  button('Načítať koncept')!.click()
+  await expect.poll(() => input('locales.en.path')?.value).toBe('/admin-restore-stale-theirs')
 })
 
 test('view-only editors can inspect revisions and cannot restore', async () => {
