@@ -170,6 +170,42 @@ test('a second language pick waits for a failed first save, then saves and shows
   expect(await host.me(jar.cookie)).toMatchObject({ locale: 'en' })
 })
 
+test('a language pick made while the read after an earlier save loads shows only the last pick', async () => {
+  const user = await seedUser(db.url, { name: 'Pick During Read', locale: 'sk' })
+  const jar = { cookie: await host.signIn(user.email, user.password) }
+  let saved = 0
+  const counting: typeof globalThis.fetch = async (input, init) => {
+    const response = await host.browserFetch(jar)(input, init)
+    if (isLocaleSave(new Request(input, init))) saved++
+    return response
+  }
+  const firstRead = held(
+    (request) =>
+      saved === 1 && request.method === 'GET' && new URL(request.url).pathname === '/api/me',
+    'answer',
+  )
+  const secondSave = held((request) => saved === 1 && isLocaleSave(request))
+  const admin = mount('/admin/', firstRead.wrap(secondSave.wrap(counting)))
+  await expect.poll(admin.text).toContain('Prehľad')
+  const shown = languagesShown()
+
+  await pickLanguage('Používateľské menu', 'Jazyk', 'English')
+  await expect.poll(firstRead.reached).toBe(true)
+  await pickLanguage('Používateľské menu', 'Jazyk', 'Slovenčina')
+  await expect.poll(secondSave.reached).toBe(true)
+  firstRead.release()
+  await expect.poll(firstRead.done).toBe(true)
+  await tick(100)
+  secondSave.release()
+  await expect.poll(() => saved).toBe(2)
+  await tick(100)
+
+  expect(await host.me(jar.cookie)).toMatchObject({ locale: 'sk' })
+  expect(document.documentElement.lang).toBe('sk')
+  expect(admin.text()).toContain('Prehľad')
+  expect(shown).not.toContain('en')
+})
+
 test('a language save that answers after a sign-out does not keep the user signed in when reads fail', async () => {
   const user = await seedUser(db.url, { name: 'Save Then Sign-out', locale: 'sk' })
   const jar = { cookie: await host.signIn(user.email, user.password) }
