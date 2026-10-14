@@ -136,7 +136,15 @@ export default async (ctx) => {
   check(afterReload.inForm, `after Reload draft, keyboard focus is in the editor form (${afterReload.tag})`)
 
   const usableFocus = async (label) => {
-    const landed = await page.evaluate(() => ({ tag: document.activeElement?.tagName, inForm: Boolean(document.activeElement?.closest('form')) }))
+    const landed = await page.evaluate(() => {
+      const element = document.activeElement
+      const style = element ? getComputedStyle(element) : undefined
+      return {
+        tag: element?.tagName,
+        inForm: Boolean(element?.closest('form')),
+        ring: element?.tagName !== 'FORM' || (element.matches(':focus-visible') && style.outlineStyle !== 'none' && style.outlineWidth !== '0px'),
+      }
+    })
     await page.keyboard.press('Tab')
     const next = await page.evaluate(() => {
       const element = document.activeElement
@@ -147,7 +155,7 @@ export default async (ctx) => {
       }
     })
     evidence.push({ kind: label, landed, next })
-    check(landed.inForm && next.usable, `${label}: focus lands in the editor form (${landed.tag}) and Tab reaches a visible control (${next.tag} ${next.name})`)
+    check(landed.inForm && landed.ring && next.usable, `${label}: focus lands in the editor form (${landed.tag}, ring ${landed.ring}) and Tab reaches a visible control (${next.tag} ${next.name})`)
   }
   const holdGet = async (path) => {
     let arrived

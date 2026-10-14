@@ -146,3 +146,31 @@ test('a browser without checkVisibility still gives the field its focus back', a
   await rendered()
   expect(document.activeElement).toBe(title)
 })
+
+test('a field under aria-hidden meanwhile hands focus to the form', async () => {
+  const hidden = ref(false)
+  const { locked, form } = editor(() => [
+    h('div', { 'aria-hidden': hidden.value ? 'true' : undefined }, [h('input', { name: 'title' })]),
+  ])
+  await rendered()
+  const title = form().querySelector('input')!
+  title.focus()
+  locked.value = true
+  title.blur()
+  hidden.value = true
+  locked.value = false
+  await rendered()
+  expect(document.activeElement).toBe(form())
+})
+
+test('an editor closed right after its lock ends moves focus nowhere', async () => {
+  const { locked, reloadButton } = editor(() => [h('input', { name: 'title' })])
+  await rendered()
+  reloadButton.focus()
+  locked.value = true
+  reloadButton.blur()
+  locked.value = false
+  for (const done of unmount.splice(0)) done()
+  await rendered()
+  expect(document.activeElement).toBe(document.body)
+})
