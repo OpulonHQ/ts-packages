@@ -372,8 +372,10 @@ export const createAdmin = (options: AdminOptions): App => {
     waitingPicks.push(pick)
     const write = lastLocaleSave.then(() => {
       if (unmounted) throw new Error('the admin unmounted before this language was saved')
-      if (me.value?.user.id !== userId || session !== pick.session)
-        throw new Error('another session is shown, so this language was not saved')
+      if (session !== pick.session)
+        throw new Error(
+          'another user is shown or a sign-out was seen, so this language was not saved',
+        )
       return save(userId)
     })
     const picked = () => void waitingPicks.splice(waitingPicks.indexOf(pick), 1)
