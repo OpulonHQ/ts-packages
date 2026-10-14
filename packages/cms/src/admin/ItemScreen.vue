@@ -64,8 +64,7 @@ const toDraft = (document: ItemDocument): Draft => {
     }
   return copy
 }
-const show = (next: Item | undefined) => {
-  if (!next) return
+const show = (next: Item) => {
   item.value = next
   draft.value = toDraft(next.draft)
 }
@@ -93,17 +92,22 @@ watch(
 )
 
 const saveDraft = () => content.saveItem(item.value!.id, item.value!.version, draft.value!)
-const save = async () => show(await run(saveDraft, t('cms.page.saved')))
+const save = () => run(saveDraft, t('cms.page.saved'), show)
 
-// Publishing publishes what is on screen: the draft is saved first.
-async function publish() {
-  const saved = await run(saveDraft, '')
-  if (!saved) return
-  item.value = saved
-  show(await run(() => content.publishItem(saved.id, saved.version), t('cms.page.published')))
-}
-const unpublish = async () =>
-  show(await run(() => content.unpublishItem(item.value!.id), t('cms.item.unpublished')))
+// Publishing publishes what is on screen: the draft is saved first, under the same lock.
+const publish = () =>
+  run(
+    async (current) => {
+      const saved = await saveDraft()
+      if (!current()) return
+      item.value = saved
+      return content.publishItem(saved.id, saved.version)
+    },
+    t('cms.page.published'),
+    show,
+  )
+const unpublish = () =>
+  run(() => content.unpublishItem(item.value!.id), t('cms.item.unpublished'), show)
 async function remove() {
   confirming.value = false
   const collectionKey = item.value!.collection
@@ -111,7 +115,7 @@ async function remove() {
   if (status.value?.kind === 'ok')
     await router.push({ name: 'cms.collections', params: { collection: collectionKey } })
 }
-const reload = async (done = '') => show(await run(() => content.getItem(item.value!.id), done))
+const reload = (done = '') => run(() => content.getItem(item.value!.id), done, show)
 </script>
 
 <template>

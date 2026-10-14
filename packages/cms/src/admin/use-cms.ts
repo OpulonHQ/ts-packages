@@ -153,7 +153,11 @@ export const useFocusReturn = (locked: () => boolean, form: () => HTMLElement | 
   )
 }
 
-/** Runs one editor action at a time: pending flag, then a success or failure message to show. */
+/**
+ * Runs one editor action at a time: pending flag, then a success or failure message to show.
+ * `apply` takes the response before `pending` ends, so widgets locked meanwhile unlock onto it.
+ * An action of several requests checks `current()` between them: false once navigated away.
+ */
 export const useAction = (failed: () => string) => {
   const pending = ref(false)
   const status = ref<ActionResult>()
@@ -164,21 +168,25 @@ export const useAction = (failed: () => string) => {
     status.value = undefined
   }
   onBeforeUnmount(invalidate)
-  const run = async <T>(action: () => Promise<T>, done: string): Promise<T | undefined> => {
-    if (pending.value) return undefined
+  const run = async <T>(
+    action: (current: () => boolean) => Promise<T | void>,
+    done: string,
+    apply: (result: T) => void = () => {},
+  ) => {
+    if (pending.value) return
     const request = ++ticket
+    const current = () => request === ticket
     pending.value = true
     status.value = undefined
     try {
-      const result = await action()
-      if (request !== ticket) return undefined
+      const result = await action(current)
+      if (!current()) return
+      if (result !== undefined) apply(result)
       status.value = { kind: 'ok', message: done }
-      return result
     } catch (error) {
-      if (request === ticket) status.value = failureStatus(error, failed())
-      return undefined
+      if (current()) status.value = failureStatus(error, failed())
     } finally {
-      if (request === ticket) pending.value = false
+      if (current()) pending.value = false
     }
   }
   return { pending, status, run, invalidate }

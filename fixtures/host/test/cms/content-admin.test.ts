@@ -893,12 +893,21 @@ test.each([
     done: 'Revízia bola obnovená do konceptu.',
   },
 ])('a cover upload that returns while "$action" waits on $held stays picked', async (c) => {
+  const restoring = c.held === 'POST /restore'
+  const title = { en: 'Cover race' }
+  const earlier = restoring ? await host.upload(files.png(20, 20), 'earlier-cover.png') : undefined
   const post = (
     await host.call<Item>('POST', '/collections/posts/items', {
-      body: { locales: {}, data: { title: { en: 'Cover race' } } },
+      body: { locales: {}, data: earlier ? { title, cover: earlier } : { title } },
     })
   ).body
-  await host.call('POST', `/items/${post.id}/publish?version=${post.version}`)
+  const published = (
+    await host.call<Item>('POST', `/items/${post.id}/publish?version=${post.version}`)
+  ).body
+  if (restoring)
+    await host.call('PUT', `/items/${post.id}/draft?version=${published.version}`, {
+      body: { locales: {}, data: { title } },
+    })
   const filename = `cover-${crypto.randomUUID()}.png`
   const uploadHeld = admin.gate()
   const actionHeld = admin.gate()
@@ -918,14 +927,17 @@ test.each([
     return response
   }
   const text = mountAdmin(`/admin/cms/items/${post.id}`, fetch)
-  await expect.poll(() => button('Vybrať médium')).toBeTruthy()
-  if (c.held === 'POST /restore') {
+  const cover = () =>
+    [...document.querySelectorAll('form p')].find((p) => p.textContent?.trim() === 'Obálka')
+      ?.parentElement
+  await expect.poll(() => cover()?.querySelector('button')).toBeTruthy()
+  if (restoring) {
     await expect.poll(() => button('Zobraziť revíziu')).toBeTruthy()
     button('Zobraziť revíziu')!.click()
     await expect.poll(() => button('Obnoviť do konceptu')).toBeTruthy()
   }
 
-  button('Vybrať médium')!.click()
+  cover()!.querySelector('button')!.click()
   await expect.poll(() => document.querySelector('[role="dialog"] input[type="file"]')).toBeTruthy()
   const picker = document.querySelector<HTMLInputElement>('[role="dialog"] input[type="file"]')!
   Object.defineProperty(picker, 'files', {
@@ -934,11 +946,13 @@ test.each([
   })
   picker.dispatchEvent(new Event('change'))
   await expect.poll(() => uploaded).toBeTruthy()
-  document.querySelector<HTMLButtonElement>('[role="dialog"] button[aria-label="Zatvoriť"]')!.click()
+  document
+    .querySelector<HTMLButtonElement>('[role="dialog"] button[aria-label="Zatvoriť"]')!
+    .click()
   await expect.poll(() => document.querySelector('[role="dialog"]')).toBeNull()
 
   button(c.action)!.click()
-  if (c.held === 'POST /restore') {
+  if (restoring) {
     await expect.poll(() => document.querySelector('[role="dialog"]')).toBeTruthy()
     ;[...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')]
       .find((b) => b.textContent?.trim() === c.action)!
@@ -950,8 +964,9 @@ test.each([
   actionHeld.resolve()
   await expect.poll(text).toContain(c.done)
   await new Promise((resolve) => setTimeout(resolve, 30))
-  expect(text()).toContain(filename)
-  expect((await host.call<Item>('GET', `/items/${post.id}`)).body.draft.data.cover).toBeUndefined()
+  expect(cover()?.textContent).toContain(filename)
+  expect(cover()?.textContent).not.toContain('earlier-cover.png')
+  expect((await host.call<Item>('GET', `/items/${post.id}`)).body.draft.data.cover).toBe(earlier)
 
   button('Uložiť koncept')!.click()
   await expect

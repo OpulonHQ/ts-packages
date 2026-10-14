@@ -33,8 +33,10 @@ watch(
     if (!id) return (item.value = undefined)
     if (item.value?.id === id) return
     try {
-      item.value = await media.get(id)
+      const next = await media.get(id)
+      if (model.value === id) item.value = next
     } catch (error) {
+      if (model.value !== id) return
       item.value = undefined
       failure.value = failureMessage(error, t('media.errors.failed'))
     }
@@ -47,6 +49,18 @@ const columns = computed(() => [
   { key: 'preview', label: t('media.columns.preview') },
   { key: 'filename', label: t('media.columns.filename') },
 ])
+
+// An upload that returns while the picker is disabled (its form saving) is picked once enabled.
+let held: MediaItem | undefined
+watch(
+  () => props.disabled,
+  (disabled) => {
+    if (disabled || !held) return
+    const uploaded = held
+    held = undefined
+    pick(uploaded)
+  },
+)
 
 function pick(row: MediaItem) {
   item.value = row
@@ -63,7 +77,9 @@ async function upload(event: Event) {
   uploading.value = true
   failure.value = undefined
   try {
-    pick(await media.upload(file))
+    const uploaded = await media.upload(file)
+    if (props.disabled) held = uploaded
+    else pick(uploaded)
   } catch (error) {
     failure.value = failureMessage(error, t('media.errors.failed'))
   } finally {
