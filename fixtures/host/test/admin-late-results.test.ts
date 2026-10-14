@@ -11,8 +11,6 @@ const lifetime = useAdminLifetime()
 const db = useTestDatabase()
 const host = lifetime.track(makeHost(() => db.url, { buildId: 'b1' }))
 
-const tick = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms))
-
 const held = (matches: (request: Request) => boolean, at: 'request' | 'answer' = 'request') => {
   const gate = lifetime.gate()
   let state: 'waiting' | 'reached' | 'done' = 'waiting'
@@ -22,9 +20,9 @@ const held = (matches: (request: Request) => boolean, at: 'request' | 'answer' =
       if (state !== 'waiting' || !matches(new Request(input, init))) return fetch(input, init)
       state = 'reached'
       try {
-        if (at === 'request') await gate.promise
+        if (at === 'request') await gate.park()
         const response = await fetch(input, init)
-        if (at === 'answer') await gate.promise
+        if (at === 'answer') await gate.park()
         return response
       } finally {
         state = 'done'
@@ -147,7 +145,7 @@ test('two quick language changes save and show the last one picked', async () =>
   await pickLanguage('Používateľské menu', 'Jazyk', 'English')
   await expect.poll(first.reached).toBe(true)
   await pickLanguage('Používateľské menu', 'Jazyk', 'Slovenčina')
-  await tick(50)
+  await lifetime.settled()
   first.release()
   await expect.poll(() => counting.saves()).toBe(2)
   await lifetime.settled()
@@ -173,7 +171,7 @@ test('a second language pick waits for a failed first save, then saves and shows
   await pickLanguage('Používateľské menu', 'Jazyk', 'English')
   await expect.poll(first.reached).toBe(true)
   await pickLanguage('Používateľské menu', 'Jazyk', 'English')
-  await tick(50)
+  await lifetime.settled()
   expect(saves).toBe(0)
   expect(document.documentElement.lang).toBe('sk')
   expect(admin.text()).toContain('Prehľad')
@@ -208,7 +206,7 @@ test('a language pick made while the read after an earlier save loads shows only
   await expect.poll(secondSave.reached).toBe(true)
   firstRead.release()
   await expect.poll(firstRead.done).toBe(true)
-  await tick(100)
+  await lifetime.settled()
   secondSave.release()
   await expect.poll(() => counting.saves()).toBe(2)
   await lifetime.settled()
@@ -242,7 +240,7 @@ test('a navigation while a language pick waits shows only the last pick', async 
   const readsBefore = reads
   document.querySelector<HTMLAnchorElement>('nav a[href="/admin/"]')!.click()
   await expect.poll(() => reads).toBeGreaterThan(readsBefore)
-  await tick(100)
+  await lifetime.settled()
   first.release()
   await expect.poll(() => saved).toBe(2)
   await lifetime.settled()
@@ -651,3 +649,43 @@ test('a pick answered after a sign-out is not the language shown when a read fai
   expect(state.me.value?.locale).toBe('sk')
   expect(document.documentElement.lang).toBe('sk')
 })
+
+test.each(['refresh', 'navigation'] as const)(
+  'a pick queued before a %s showed another user is not sent after the first user returns',
+  async (how) => {
+    const returning = await seedUser(db.url, { name: `Returning ${how}`, locale: 'sk' })
+    const other = await seedUser(db.url, { name: `Shown Between ${how}`, locale: 'en' })
+    const own = await host.signIn(returning.email, returning.password)
+    const otherCookie = await host.signIn(other.email, other.password)
+    const otherId = (await host.me(otherCookie)).user.id
+    const ownId = (await host.me(own)).user.id
+    const jar = { cookie: own }
+    const answer = held(isLocaleSave, 'answer')
+    const counting = countingSaves(jar)
+    const state = await mountWithState(answer.wrap(counting))()
+    const show = async (cookie: string, userId: string) => {
+      jar.cookie = cookie
+      if (how === 'refresh') await state.refresh()
+      else document.querySelector<HTMLAnchorElement>('nav a[href="/admin/"]')!.click()
+      await expect.poll(() => state.me.value?.user.id).toBe(userId)
+    }
+    const pick = state.setLocale!('en')
+    await expect.poll(answer.reached).toBe(true)
+    const queued = state.setLocale!('sk').then(
+      () => 'saved',
+      () => 'dropped',
+    )
+
+    await show(otherCookie, otherId)
+    await saveOnServer(own, 'en')
+    await show(own, ownId)
+    answer.release()
+    await pick
+
+    expect(await queued).toBe('dropped')
+    expect(counting.saves()).toBe(1)
+    expect((await host.me(own)).locale).toBe('en')
+    expect(state.me.value?.locale).toBe('en')
+    expect(document.documentElement.lang).toBe('en')
+  },
+)

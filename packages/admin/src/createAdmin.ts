@@ -257,6 +257,7 @@ export const createAdmin = (options: AdminOptions): App => {
           me.value = { ...first, locale: me.value.locale }
           return
         }
+        if (me.value && me.value.user.id !== first.user.id) session++
         lastWrite = undefined
         me.value = first
         status.value = 'ready'
