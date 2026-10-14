@@ -53,6 +53,7 @@ test('editors list, create, edit and delete redirects', async () => {
   await expect
     .poll(async () => (await stored()).find((r) => r.from === '/old-team')?.to)
     .toBe('/our-team')
+  await expect.poll(() => document.querySelector('[name="from"]')).toBeNull()
 
   row('/old-team')!.click()
   await expect.poll(() => button('Vymazať')).toBeDefined()
