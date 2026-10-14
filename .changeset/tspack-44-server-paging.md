@@ -4,7 +4,7 @@
 "@opulonjs/cms": minor
 ---
 
-Page, sort and search users and collection items on the server. Reference fields use the shared searchable table, retain selected items across pages, and discard stale loads. Users list responses now include a total and both list endpoints default to 25 rows with a 100-row maximum and bounded offsets. Both lists take `page`, `perPage`, `search`, `sort` and `direction`; the items list also takes `ids` (up to 100 comma-separated item IDs) and the users list `id` (one user).
+Page, sort and search users and collection items on the server. Reference fields use the shared searchable table, retain selected items across pages, and discard stale loads; saved references that were deleted or are not item IDs show as missing and stay removable. Item links pick a collection, then search its items, instead of listing every item in one select; removing the target clears the link. Users list responses now include a total and both list endpoints default to 25 rows with a 100-row maximum and bounded offsets. Both lists take `page`, `perPage`, `search`, `sort` and `direction`; the items list also takes `ids` (up to 100 comma-separated item IDs) and the users list `id` (one user).
 
 Breaking changes for API consumers:
 
