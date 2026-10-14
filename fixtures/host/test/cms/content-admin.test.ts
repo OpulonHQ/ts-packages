@@ -818,12 +818,14 @@ test('rich text and reference pickers are locked while an item save is in flight
     return response
   }
   const text = mountAdmin(`/admin/cms/items/${post.id}`, fetch)
-  const row = () =>
-    [...document.querySelectorAll<HTMLTableElement>('table')]
-      .find((table) => table.caption?.textContent?.trim() === 'Kategórie')
-      ?.querySelectorAll<HTMLElement>('tbody tr')
-      .values()
-      .find((r) => r.textContent?.includes(name))
+  const row = () => {
+    const picker = [...document.querySelectorAll<HTMLTableElement>('table')].find(
+      (table) => table.caption?.textContent?.trim() === 'Kategórie',
+    )
+    return [...(picker?.querySelectorAll<HTMLElement>('tbody tr') ?? [])].find((r) =>
+      r.textContent?.includes(name),
+    )
+  }
   const richText = () => document.querySelector('.tiptap[contenteditable="true"]')
   await expect.poll(row).toBeTruthy()
   await expect.poll(richText).toBeTruthy()
