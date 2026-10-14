@@ -169,6 +169,11 @@ export const createAdmin = (options: AdminOptions): App => {
     !access || access.public || access.signedIn || can(access.permission)
 
   let unmounted = false
+  let epoch = 0
+  const begin = () => {
+    const turn = ++epoch
+    return () => turn === epoch
+  }
   const getMe = async (): Promise<Me | 'signedOut'> => {
     const response = await fetch(new URL(`${apiPrefix}/me`, location.origin), {
       credentials: 'same-origin',
@@ -178,35 +183,40 @@ export const createAdmin = (options: AdminOptions): App => {
     return Schema.decodeUnknownSync(MeSchema)(await response.json())
   }
 
-  const loadMessages = (locale: string, modules: ReadonlyArray<AdminModule>) =>
+  const loadMessages = (locale: string, modules: ReadonlyArray<AdminModule>, live: () => boolean) =>
     Promise.all(
       modules.map(async (m) => {
         const load = m.messages[locale as 'en' | 'sk'] ?? m.messages.en
         const { default: messages } = await load()
-        i18n.global.mergeLocaleMessage(locale, toI18n(messages, m.id))
+        if (live()) i18n.global.mergeLocaleMessage(locale, toI18n(messages, m.id))
       }),
     )
 
   /** Loads the modules' catalogs for a user's locale (en as the fallback) and switches to it. */
-  const applyLocale = async (requested: string | null, modules: ReadonlyArray<AdminModule>) => {
+  const applyLocale = async (
+    requested: string | null,
+    modules: ReadonlyArray<AdminModule>,
+    live: () => boolean,
+  ) => {
     const locale = requested && requested in catalogs ? requested : defaultLocale
     await Promise.all([
-      loadMessages(locale, modules),
-      locale === 'en' ? undefined : loadMessages('en', modules),
+      loadMessages(locale, modules, live),
+      locale === 'en' ? undefined : loadMessages('en', modules, live),
     ])
-    if (unmounted) return
+    if (!live()) return
     i18n.global.locale.value = locale
     document.documentElement.lang = locale
   }
 
   // The auth provider's messages are needed before sign-in, too.
-  const load = () =>
-    getMe().then(
+  const load = () => {
+    const live = begin()
+    return getMe().then(
       async (first) => {
-        if (unmounted) return
+        if (!live()) return
         if (first === 'signedOut') {
-          await loadMessages(defaultLocale, [auth])
-          if (!unmounted) status.value = 'signedOut'
+          await loadMessages(defaultLocale, [auth], live)
+          if (live()) status.value = 'signedOut'
           return
         }
         for (const m of options.modules) {
@@ -219,16 +229,18 @@ export const createAdmin = (options: AdminOptions): App => {
         await applyLocale(
           first.locale,
           options.modules.filter((m) => first.modules.includes(m.id)),
+          live,
         )
-        if (unmounted) return
+        if (!live()) return
         me.value = first
         status.value = 'ready'
       },
       (error: unknown) => {
         console.error(error)
-        if (!unmounted) status.value = 'failed'
+        if (live()) status.value = 'failed'
       },
     )
+  }
   let ready = load()
 
   const nav = computed<ReadonlyArray<ShellNavGroup>>(() => {
@@ -299,8 +311,9 @@ export const createAdmin = (options: AdminOptions): App => {
     ...(providerSignOut
       ? {
           signOut: async () => {
+            const live = begin()
             await providerSignOut({ apiPrefix, fetch })
-            if (unmounted) return
+            if (!live()) return
             me.value = undefined
             status.value = 'signedOut'
             await router.push({ name: auth.auth!.signInRoute })
@@ -313,12 +326,13 @@ export const createAdmin = (options: AdminOptions): App => {
           setLocale: async (locale: string | null) => {
             const userId = me.value?.user.id
             if (!userId) return
+            const live = begin()
             await providerSetLocale({ apiPrefix, fetch, userId, locale })
-            if (unmounted) return
+            if (!live()) return
             // Applied here rather than by reading /me again, which on failure would take the
             // whole shell down for a saved language.
-            await applyLocale(locale, enabled.value)
-            if (me.value && !unmounted) me.value = { ...me.value, locale }
+            await applyLocale(locale, enabled.value, live)
+            if (me.value && live()) me.value = { ...me.value, locale }
           },
         }
       : {}),
@@ -383,12 +397,13 @@ export const createAdmin = (options: AdminOptions): App => {
   // Re-check the build after each navigation, so an open tab learns about a deploy.
   let latestCheck = 0
   const checkForNewDeploy = () => {
-    if (!me.value || unmounted) return
+    const known = me.value
+    if (!known || unmounted) return
     const check = ++latestCheck
     getMe().then(
       (next) => {
-        if (unmounted || check !== latestCheck || next === 'signedOut') return
-        me.value = { ...next, modules: me.value?.modules ?? next.modules }
+        if (unmounted || check !== latestCheck || me.value !== known || next === 'signedOut') return
+        me.value = { ...next, modules: known.modules }
       },
       // A failed re-check keeps the last known state; the next navigation retries.
       (error: unknown) => console.warn(error),
@@ -418,6 +433,7 @@ export const createAdmin = (options: AdminOptions): App => {
     .provide(failedScreenKey, failedScreen)
   app.onUnmount(() => {
     unmounted = true
+    epoch++
     router.options.history.destroy()
   })
   return app

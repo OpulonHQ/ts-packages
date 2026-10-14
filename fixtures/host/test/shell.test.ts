@@ -286,9 +286,11 @@ const mountDisposable = (
   {
     overrides = {},
     onRequest = () => {},
+    onResponse = () => {},
   }: {
     overrides?: NonNullable<AdminOptions['overrides']>
     onRequest?: (url: string) => Promise<void> | void
+    onResponse?: (url: string) => Promise<void> | void
   } = {},
 ) => {
   let requested = false
@@ -299,9 +301,11 @@ const mountDisposable = (
     buildId: 'b1',
     overrides,
     fetch: async (input, init) => {
-      await onRequest(String(input instanceof Request ? input.url : input))
+      const url = String(input instanceof Request ? input.url : input)
+      await onRequest(url)
       const response = await hosts.b1.browserFetch({ cookie: session })(input, init)
       requested = true
+      await onResponse(url)
       return response
     },
   })
@@ -312,6 +316,7 @@ const mountDisposable = (
     if (mounted) app.unmount()
   })
   return {
+    app,
     requested: () => requested,
     unmount: () => {
       mounted = false
@@ -333,6 +338,18 @@ test('an unmounted admin leaves the document language alone when its catalogs ar
   admin.unmount()
   await catalogs.release()
   expect(document.documentElement.lang).toBe('xx')
+})
+
+test('an unmounted admin merges no catalog that arrives late', async () => {
+  const catalogs = heldCatalogs()
+  const admin = mountDisposable(catalogs.modules, cookie)
+  await expect.poll(admin.requested).toBe(true)
+  await expect.poll(catalogs.asked).toBe(true)
+  const { $te } = admin.app.config.globalProperties
+  admin.unmount()
+  await catalogs.release()
+  expect($te('demo.nav.notes', 'en')).toBe(false)
+  expect($te('demo.nav.notes', 'sk')).toBe(false)
 })
 
 test('an unmounted admin stops following the browser history', async () => {
@@ -549,4 +566,111 @@ test('an unmounted admin keeps its state when a refresh answers late', async () 
   await tick(50)
   expect(me.value).toBe(before)
   expect(status.value).toBe('ready')
+})
+
+const heldMeAnswer = () => {
+  const held = Promise.withResolvers<void>()
+  onTestFinished(() => held.resolve())
+  let holding = false
+  let answered = false
+  return {
+    onResponse: async (url: string) => {
+      if (!holding || !url.endsWith('/api/me')) return
+      holding = false
+      answered = true
+      await held.promise
+    },
+    hold: () => {
+      holding = true
+    },
+    answered: () => answered,
+    release: async () => {
+      held.resolve()
+      await tick(50)
+    },
+  }
+}
+
+test('a deploy check that answers after a sign-out leaves the user signed out', async () => {
+  const user = await seedUser(db.url, { name: 'Check Sign-out', locale: 'sk' })
+  const own = await hosts.b1.signIn(user.email, user.password)
+  const dashboard = capturedState()
+  const answer = heldMeAnswer()
+  mountDisposable(adminModules, own, {
+    overrides: dashboard.overrides,
+    onResponse: answer.onResponse,
+  })
+  await expect.poll(() => document.body.textContent).toContain('state captured')
+  const { signOut, me, status } = dashboard.state()
+  if (!signOut) throw new Error('the auth provider offers no sign-out')
+  answer.hold()
+  navigate('/admin/nowhere')
+  await expect.poll(answer.answered).toBe(true)
+  await signOut()
+  expect(status.value).toBe('signedOut')
+  await answer.release()
+  expect(me.value).toBeUndefined()
+  expect(status.value).toBe('signedOut')
+})
+
+test('a deploy check that answers after a language change keeps the new language', async () => {
+  const user = await seedUser(db.url, { name: 'Check Language', locale: 'sk' })
+  const own = await hosts.b1.signIn(user.email, user.password)
+  const dashboard = capturedState()
+  const answer = heldMeAnswer()
+  mountDisposable(adminModules, own, {
+    overrides: dashboard.overrides,
+    onResponse: answer.onResponse,
+  })
+  await expect.poll(() => document.body.textContent).toContain('state captured')
+  const { setLocale, me } = dashboard.state()
+  if (!setLocale) throw new Error('the auth provider offers no language change')
+  answer.hold()
+  navigate('/admin/nowhere')
+  await expect.poll(answer.answered).toBe(true)
+  await setLocale('en')
+  expect(me.value?.locale).toBe('en')
+  await answer.release()
+  expect(me.value?.locale).toBe('en')
+})
+
+test('a deploy check that answers after a refresh keeps the refreshed user', async () => {
+  const dashboard = capturedState()
+  const answer = heldMeAnswer()
+  mountDisposable(adminModules, cookie, {
+    overrides: dashboard.overrides,
+    onResponse: answer.onResponse,
+  })
+  await expect.poll(() => document.body.textContent).toContain('state captured')
+  const { refresh, me } = dashboard.state()
+  answer.hold()
+  navigate('/admin/nowhere')
+  await expect.poll(answer.answered).toBe(true)
+  await refresh()
+  const refreshed = me.value
+  await answer.release()
+  expect(me.value).toBe(refreshed)
+})
+
+test('a refresh that answers after a sign-out leaves the user signed out', async () => {
+  const user = await seedUser(db.url, { name: 'Refresh Sign-out', locale: 'sk' })
+  const own = await hosts.b1.signIn(user.email, user.password)
+  const dashboard = capturedState()
+  const answer = heldMeAnswer()
+  mountDisposable(adminModules, own, {
+    overrides: dashboard.overrides,
+    onResponse: answer.onResponse,
+  })
+  await expect.poll(() => document.body.textContent).toContain('state captured')
+  const { refresh, signOut, me, status } = dashboard.state()
+  if (!signOut) throw new Error('the auth provider offers no sign-out')
+  answer.hold()
+  const refreshed = refresh()
+  await expect.poll(answer.answered).toBe(true)
+  const signedOut = signOut()
+  await expect.poll(() => status.value).toBe('signedOut')
+  await answer.release()
+  await Promise.all([refreshed, signedOut])
+  expect(me.value).toBeUndefined()
+  expect(status.value).toBe('signedOut')
 })
