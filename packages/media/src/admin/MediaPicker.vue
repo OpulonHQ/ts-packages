@@ -50,7 +50,7 @@ const columns = computed(() => [
   { key: 'filename', label: t('media.columns.filename') },
 ])
 
-// An upload that returns while the picker is disabled (its form saving) is picked once enabled.
+// Picking while disabled would write into a draft that the pending save is about to replace.
 let held: MediaItem | undefined
 watch(
   () => props.disabled,

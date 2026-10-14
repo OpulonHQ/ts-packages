@@ -28,6 +28,10 @@ export interface CmsWidgetProps {
   name: string
   /** The field's label in the admin locale. */
   label: string
+  /**
+   * No edit permission, or a request is pending whose response replaces the draft. Write no value
+   * until it is false again; a value written meanwhile is lost.
+   */
   disabled?: boolean
 }
 
