@@ -1360,6 +1360,7 @@ test('a deploy that lands while a refresh loads its catalogs still shows the rel
   onTestFinished(() => screenGate.resolve(screen('slow screen')()))
   let screenAsked = false
   let server: keyof typeof hosts = 'b1'
+  let reads = 0
   mountDisposable(catalogs.modules, own, {
     overrides: {
       ...dashboard.overrides,
@@ -1369,6 +1370,9 @@ test('a deploy that lands while a refresh loads its catalogs still shows the rel
       },
     },
     host: () => hosts[server],
+    onResponse: (url) => {
+      if (url.endsWith('/api/me')) reads++
+    },
   })
   await expect.poll(() => document.body.textContent).toContain('state captured')
   const { refresh, stale } = dashboard.state()
@@ -1378,8 +1382,9 @@ test('a deploy that lands while a refresh loads its catalogs still shows the rel
   const refreshing = refresh()
   await expect.poll(catalogs.asked).toBe(true)
   server = 'new-build'
+  const before = reads
   screenGate.resolve(await screen('slow screen')())
-  await tick(100)
+  await expect.poll(() => reads).toBe(before + 2)
   await catalogs.release()
   await refreshing
   await tick(100)
@@ -1397,6 +1402,7 @@ test('a saved language stays when a deploy check answers during the read after i
   let screenAsked = false
   let failNextRead = false
   let readHeld = false
+  let reads = 0
   const error = vi.spyOn(console, 'error').mockImplementation(() => {})
   onTestFinished(() => error.mockRestore())
   mountDisposable(adminModules, own, {
@@ -1408,7 +1414,9 @@ test('a saved language stays when a deploy check answers during the read after i
       },
     },
     onResponse: async (url) => {
-      if (!failNextRead || !url.endsWith('/api/me')) return
+      if (!url.endsWith('/api/me')) return
+      reads++
+      if (!failNextRead) return
       failNextRead = false
       readHeld = true
       await readGate.promise
@@ -1423,8 +1431,9 @@ test('a saved language stays when a deploy check answers during the read after i
   failNextRead = true
   const changed = setLocale('sk')
   await expect.poll(() => readHeld).toBe(true)
+  const before = reads
   screenGate.resolve(await screen('slow screen')())
-  await tick(100)
+  await expect.poll(() => reads).toBe(before + 2)
   readGate.resolve()
   await changed
   await tick(100)
@@ -1463,6 +1472,104 @@ test('a deploy check that finds another user shows that user in their language',
   navigate('/admin/nowhere')
   await expect.poll(() => me.value?.user.id).toBe(other.id)
   await expect.poll(() => document.documentElement.lang).toBe('sk')
+})
+
+test('an older refresh that settles while a newer one loads does not let a deploy check apply over it', async () => {
+  const user = await seedUser(db.url, { name: 'Probe M8', locale: 'en' })
+  const own = await hosts.b1.signIn(user.email, user.password)
+  const dashboard = capturedState()
+  const catalogs = heldCatalogs(false)
+  const screenGate = Promise.withResolvers<Awaited<ReturnType<ReturnType<typeof screen>>>>()
+  onTestFinished(() => screenGate.resolve(screen('slow screen')()))
+  const meGate = Promise.withResolvers<void>()
+  onTestFinished(() => meGate.resolve())
+  let screenAsked = false
+  let holdNextMe = false
+  let meHeld = false
+  let server: keyof typeof hosts = 'b1'
+  let reads = 0
+  mountDisposable(catalogs.modules, own, {
+    overrides: {
+      ...dashboard.overrides,
+      'users.signIn': () => {
+        screenAsked = true
+        return screenGate.promise
+      },
+    },
+    host: () => hosts[server],
+    onResponse: async (url) => {
+      if (!url.endsWith('/api/me')) return
+      reads++
+      if (!holdNextMe) return
+      holdNextMe = false
+      meHeld = true
+      await meGate.promise
+    },
+  })
+  await expect.poll(() => document.body.textContent).toContain('state captured')
+  const { refresh, stale } = dashboard.state()
+  navigate('/admin/sign-in')
+  await expect.poll(() => screenAsked).toBe(true)
+  catalogs.hold()
+  const first = refresh()
+  await expect.poll(catalogs.asked).toBe(true)
+  holdNextMe = true
+  const second = refresh()
+  await expect.poll(() => meHeld).toBe(true)
+  await catalogs.release()
+  await first
+  server = 'new-build'
+  const before = reads
+  screenGate.resolve(await screen('slow screen')())
+  await expect.poll(() => reads).toBe(before + 2)
+  meGate.resolve()
+  await second
+  await tick(150)
+  expect(stale.value).toBe(true)
+})
+
+test('a saved language stays when the read a deploy check starts after a save fails', async () => {
+  const user = await seedUser(db.url, { name: 'Probe FB', locale: 'en' })
+  const own = await hosts.b1.signIn(user.email, user.password)
+  const dashboard = capturedState()
+  const screenGate = Promise.withResolvers<Awaited<ReturnType<ReturnType<typeof screen>>>>()
+  onTestFinished(() => screenGate.resolve(screen('slow screen')()))
+  const readGate = Promise.withResolvers<void>()
+  onTestFinished(() => readGate.resolve())
+  let screenAsked = false
+  let armed = false
+  let n = 0
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+  onTestFinished(() => error.mockRestore())
+  mountDisposable(adminModules, own, {
+    overrides: {
+      ...dashboard.overrides,
+      'users.signIn': () => {
+        screenAsked = true
+        return screenGate.promise
+      },
+    },
+    onResponse: async (url) => {
+      if (!armed || !url.endsWith('/api/me')) return
+      n++
+      if (n === 1) await readGate.promise
+      if (n === 3) throw new Error('re-read failed')
+    },
+  })
+  await expect.poll(() => document.body.textContent).toContain('state captured')
+  const { setLocale, me } = dashboard.state()
+  if (!setLocale) throw new Error('the auth provider offers no language change')
+  navigate('/admin/sign-in')
+  await expect.poll(() => screenAsked).toBe(true)
+  armed = true
+  const changed = setLocale('sk')
+  await expect.poll(() => n).toBe(1)
+  screenGate.resolve(await screen('slow screen')())
+  await expect.poll(() => n).toBe(3)
+  readGate.resolve()
+  await changed
+  await expect.poll(() => document.documentElement.lang).toBe('sk')
+  expect(me.value?.locale).toBe('sk')
 })
 
 test('a sign-out sticks when the read after it fails', async () => {
