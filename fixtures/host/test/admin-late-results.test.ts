@@ -206,6 +206,61 @@ test('a language pick made while the read after an earlier save loads shows only
   expect(shown).not.toContain('en')
 })
 
+test('an earlier saved language shows when a newer save and the reads after it fail', async () => {
+  const user = await seedUser(db.url, { name: 'Failure Fallback', locale: 'sk' })
+  const jar = { cookie: await host.signIn(user.email, user.password) }
+  const first = held(isLocaleSave, 'answer')
+  let saves = 0
+  const server: typeof globalThis.fetch = async (input, init) => {
+    const request = new Request(input, init)
+    if (isLocaleSave(request) && ++saves === 2) return new Response('down', { status: 503 })
+    if (saves > 0 && request.method === 'GET' && new URL(request.url).pathname === '/api/me')
+      return new Response('down', { status: 503 })
+    return host.browserFetch(jar)(input, init)
+  }
+  const admin = mount('/admin/', first.wrap(server))
+  await expect.poll(admin.text).toContain('Prehľad')
+
+  await pickLanguage('Používateľské menu', 'Jazyk', 'English')
+  await expect.poll(async () => (await host.me(jar.cookie)).locale).toBe('en')
+  await pickLanguage('Používateľské menu', 'Jazyk', 'Slovenčina')
+  first.release()
+  await expect.poll(() => saves).toBe(2)
+  await expect.poll(admin.text).toContain('Jazyk sa nepodarilo uložiť.')
+
+  expect((await host.me(jar.cookie)).locale).toBe('en')
+  await expect.poll(() => document.documentElement.lang).toBe('en')
+})
+
+test('a language pick still queued when the admin unmounts is never saved', async () => {
+  const user = await seedUser(db.url, { name: 'Unmounted Queue', locale: 'sk' })
+  const jar = { cookie: await host.signIn(user.email, user.password) }
+  const first = held(isLocaleSave)
+  let oldSaves = 0
+  const oldServer: typeof globalThis.fetch = async (input, init) => {
+    if (isLocaleSave(new Request(input, init))) oldSaves++
+    return host.browserFetch(jar)(input, init)
+  }
+  const old = mount('/admin/', first.wrap(oldServer))
+  await expect.poll(old.text).toContain('Prehľad')
+  await pickLanguage('Používateľské menu', 'Jazyk', 'English')
+  await expect.poll(first.reached).toBe(true)
+  await pickLanguage('Používateľské menu', 'Jazyk', 'Slovenčina')
+  old.unmount()
+
+  const next = mount('/admin/', host.browserFetch(jar))
+  await expect.poll(next.text).toContain('Prehľad')
+  await pickLanguage('Používateľské menu', 'Jazyk', 'English')
+  await expect.poll(() => document.documentElement.lang).toBe('en')
+  first.release()
+  await expect.poll(first.done).toBe(true)
+  await tick(100)
+
+  expect(oldSaves).toBe(1)
+  expect((await host.me(jar.cookie)).locale).toBe('en')
+  expect(document.documentElement.lang).toBe('en')
+})
+
 test('a language save that answers after a sign-out does not keep the user signed in when reads fail', async () => {
   const user = await seedUser(db.url, { name: 'Save Then Sign-out', locale: 'sk' })
   const jar = { cookie: await host.signIn(user.email, user.password) }
