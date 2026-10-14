@@ -107,17 +107,15 @@ export const useAdminLifetime = () => {
       const settled = await settle(lifetime)
       document.body.replaceChildren()
       if (!settled)
-        throw new Error(`admin or host calls from ${lifetime.name} still pending after 5s`)
-      clean = !lifetime.unmountFailed
+        failures.push(new Error(`admin or host calls from ${lifetime.name} still pending after 5s`))
+      for (const { call, error } of lifetime.rejected) if (!call.observed) failures.push(error)
+      clean = settled && !lifetime.unmountFailed
     } finally {
       if (!clean) unfinished ??= lifetime.name
     }
-    for (const { call, error } of lifetime.rejected) if (!call.observed) failures.push(error)
-    if (failures.length > 0)
-      throw new AggregateError(
-        failures,
-        `an unmount or an unhandled tracked call from ${lifetime.name} failed`,
-      )
+    if (failures.length === 1) throw failures[0]
+    if (failures.length > 1)
+      throw new AggregateError(failures, `cleanup of ${lifetime.name} failed`)
   }
 
   beforeEach(async ({ signal, task, onTestFinished }) => {
@@ -174,11 +172,19 @@ export const useAdminLifetime = () => {
       const unmount = () => {
         if (!mounted) return
         mounted = false
+        const errors: Array<unknown> = []
+        const { errorHandler } = app.config
+        app.config.errorHandler = (error) => void errors.push(error)
         try {
           app.unmount()
         } catch (error) {
+          errors.push(error)
+        } finally {
+          app.config.errorHandler = errorHandler
+        }
+        if (errors.length > 0) {
           lifetime.unmountFailed = true
-          throw error
+          throw errors.length === 1 ? errors[0] : new AggregateError(errors, 'unmount failed')
         }
       }
       lifetime.unmounts.push(unmount)
