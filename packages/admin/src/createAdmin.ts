@@ -100,6 +100,9 @@ const toI18n = (catalog: Messages, namespace?: string): Messages => {
   return { ...labels, ...(namespace ? { [namespace]: rest } : rest) }
 }
 
+let pageLocaleSaves: Promise<void> = Promise.resolve()
+let pageSavesWaiting = 0
+
 /**
  * The admin SPA, served at `/admin`: Nuxt UI dashboard layout, nav groups and dashboard
  * widgets filtered by the user's permissions, sign-in routing through the one auth provider,
@@ -107,8 +110,6 @@ const toI18n = (catalog: Messages, namespace?: string): Messages => {
  * server does not run (missing from `/me`) are hidden, with a dev warning.
  * Mount the returned app: `createAdmin({...}).mount('#app')`.
  */
-let pageLocaleSaves: Promise<void> = Promise.resolve()
-
 export const createAdmin = (options: AdminOptions): App => {
   const routeNames = new Set([
     'dashboard',
@@ -288,6 +289,11 @@ export const createAdmin = (options: AdminOptions): App => {
     await ready
     await toSignIn()
   }
+  if (pageSavesWaiting > 0) {
+    void pageLocaleSaves
+      .then(() => (unmounted ? undefined : read()))
+      .catch((error: unknown) => console.warn(error))
+  }
   // A write's own answer may belong to an ended session or be older than another write, so the
   // shell shows what the server holds after it, read fresh.
   const afterWrite = async (
@@ -365,11 +371,15 @@ export const createAdmin = (options: AdminOptions): App => {
     const userId = me.value?.user.id
     if (!userId) return
     waitingPicks.push(userId)
+    pageSavesWaiting++
     const write = pageLocaleSaves.then(() => {
       if (unmounted) throw new Error('the admin unmounted before this language was saved')
       return save(userId)
     })
-    const picked = () => void waitingPicks.splice(waitingPicks.indexOf(userId), 1)
+    const picked = () => {
+      waitingPicks.splice(waitingPicks.indexOf(userId), 1)
+      pageSavesWaiting--
+    }
     pageLocaleSaves = write.then(picked, picked)
     await afterWrite(write, async (live) => {
       await applyLocale(locale, enabled.value, live)
