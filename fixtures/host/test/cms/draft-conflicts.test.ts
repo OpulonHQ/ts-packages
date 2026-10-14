@@ -138,6 +138,33 @@ test.each(cases)('$kind: of two simultaneous saves from one version, one wins', 
 })
 
 test.each(cases)(
+  '$kind: publishing writes the draft, so the version it was loaded at goes stale',
+  async (c) => {
+    const { path, loaded } = await load(c)
+    const saved = (await save(path, loaded.version, c.first)).body
+    const published = await publish(path, saved.version)
+    expect(published.status).toBe(200)
+    expect(published.body.version).toBe(saved.version + 1)
+
+    const stale = await save(path, saved.version, c.second)
+    expect(stale.status).toBe(409)
+    expect(stale.body).toMatchObject({ _tag: 'CmsConflict', reason: 'draft_changed' })
+    expect((await host.call<Document>('GET', path)).body).toEqual(published.body)
+  },
+)
+
+test.each(cases)('$kind: of simultaneous publishes from one version, one wins', async (c) => {
+  const { path, loaded } = await load(c)
+  const saved = (await save(path, loaded.version, c.first)).body
+  const revisions = async () =>
+    (await host.call<{ total: number }>('GET', `${path}/revisions`)).body.total
+  const before = await revisions()
+  const results = await Promise.all(Array.from({ length: 4 }, () => publish(path, saved.version)))
+  expect(results.map((r) => r.status).sort()).toEqual([200, 409, 409, 409])
+  expect(await revisions()).toBe(before + 1)
+})
+
+test.each(cases)(
   '$kind: a restore from a stale draft version is refused and changes nothing',
   async (c) => {
     const { path, loaded } = await load(c)
