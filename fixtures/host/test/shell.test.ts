@@ -287,10 +287,12 @@ const mountDisposable = (
     overrides = {},
     onRequest = () => {},
     onResponse = () => {},
+    host = () => hosts.b1,
   }: {
     overrides?: NonNullable<AdminOptions['overrides']>
     onRequest?: (url: string) => Promise<void> | void
     onResponse?: (url: string) => Promise<void> | void
+    host?: () => (typeof hosts)[keyof typeof hosts]
   } = {},
 ) => {
   let requested = false
@@ -304,7 +306,7 @@ const mountDisposable = (
       const url = String(input instanceof Request ? input.url : input)
       await onRequest(url)
       const cookie = typeof session === 'string' ? session : session()
-      const response = await hosts.b1.browserFetch({ cookie })(input, init)
+      const response = await host().browserFetch({ cookie })(input, init)
       requested = true
       await onResponse(url)
       return response
@@ -821,7 +823,7 @@ test('a deploy check does not cancel a language change that is still loading', a
   await expect.poll(catalogs.asked).toBe(true)
   const beforeCheck = checks
   screenGate.resolve(await screen('slow screen')())
-  await expect.poll(() => checks).toBe(beforeCheck + 1)
+  await expect.poll(() => checks).toBeGreaterThan(beforeCheck)
   await tick(50)
   await catalogs.release()
   await changed
@@ -1347,6 +1349,106 @@ test('an older refresh that answers with the previous user leaves the user a dep
   await refreshing
   await tick(50)
   expect(me.value?.user.id).toBe(other.id)
+})
+
+test('a deploy that lands while a refresh loads its catalogs still shows the reload notice', async () => {
+  const user = await seedUser(db.url, { name: 'Deploy During Refresh', locale: 'en' })
+  const own = await hosts.b1.signIn(user.email, user.password)
+  const dashboard = capturedState()
+  const catalogs = heldCatalogs(false)
+  const screenGate = Promise.withResolvers<Awaited<ReturnType<ReturnType<typeof screen>>>>()
+  onTestFinished(() => screenGate.resolve(screen('slow screen')()))
+  let screenAsked = false
+  let server: keyof typeof hosts = 'b1'
+  mountDisposable(catalogs.modules, own, {
+    overrides: {
+      ...dashboard.overrides,
+      'users.signIn': () => {
+        screenAsked = true
+        return screenGate.promise
+      },
+    },
+    host: () => hosts[server],
+  })
+  await expect.poll(() => document.body.textContent).toContain('state captured')
+  const { refresh, stale } = dashboard.state()
+  navigate('/admin/sign-in')
+  await expect.poll(() => screenAsked).toBe(true)
+  catalogs.hold()
+  const refreshing = refresh()
+  await expect.poll(catalogs.asked).toBe(true)
+  server = 'new-build'
+  screenGate.resolve(await screen('slow screen')())
+  await tick(100)
+  await catalogs.release()
+  await refreshing
+  await tick(100)
+  expect(stale.value).toBe(true)
+})
+
+test('a saved language stays when a deploy check answers during the read after it and that read fails', async () => {
+  const user = await seedUser(db.url, { name: 'Check Then Failed Read', locale: 'en' })
+  const own = await hosts.b1.signIn(user.email, user.password)
+  const dashboard = capturedState()
+  const screenGate = Promise.withResolvers<Awaited<ReturnType<ReturnType<typeof screen>>>>()
+  onTestFinished(() => screenGate.resolve(screen('slow screen')()))
+  const readGate = Promise.withResolvers<void>()
+  onTestFinished(() => readGate.resolve())
+  let screenAsked = false
+  let failNextRead = false
+  let readHeld = false
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+  onTestFinished(() => error.mockRestore())
+  mountDisposable(adminModules, own, {
+    overrides: {
+      ...dashboard.overrides,
+      'users.signIn': () => {
+        screenAsked = true
+        return screenGate.promise
+      },
+    },
+    onResponse: async (url) => {
+      if (!failNextRead || !url.endsWith('/api/me')) return
+      failNextRead = false
+      readHeld = true
+      await readGate.promise
+      throw new Error('read failed')
+    },
+  })
+  await expect.poll(() => document.body.textContent).toContain('state captured')
+  const { setLocale, me } = dashboard.state()
+  if (!setLocale) throw new Error('the auth provider offers no language change')
+  navigate('/admin/sign-in')
+  await expect.poll(() => screenAsked).toBe(true)
+  failNextRead = true
+  const changed = setLocale('sk')
+  await expect.poll(() => readHeld).toBe(true)
+  screenGate.resolve(await screen('slow screen')())
+  await tick(100)
+  readGate.resolve()
+  await changed
+  await tick(100)
+  expect(me.value?.locale).toBe('sk')
+  expect(document.documentElement.lang).toBe('sk')
+})
+
+test('a deploy check with no read in flight reads /me once', async () => {
+  const user = await seedUser(db.url, { name: 'One Check', locale: 'en' })
+  const own = await hosts.b1.signIn(user.email, user.password)
+  const dashboard = capturedState()
+  let reads = 0
+  mountDisposable(adminModules, own, {
+    overrides: dashboard.overrides,
+    onResponse: (url) => {
+      if (url.endsWith('/api/me')) reads++
+    },
+  })
+  await expect.poll(() => document.body.textContent).toContain('state captured')
+  const before = reads
+  navigate('/admin/nowhere')
+  await expect.poll(() => reads).toBe(before + 1)
+  await tick(200)
+  expect(reads).toBe(before + 1)
 })
 
 test('a sign-out sticks when the read after it fails', async () => {

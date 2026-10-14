@@ -49,6 +49,11 @@ export interface AdminState {
   readonly accountRoute?: string
   /** Saves and applies the user's admin locale, when the auth provider supports it. */
   readonly setLocale?: (locale: string | null) => Promise<void>
+  /** Saves the user's admin locale through `save` (e.g. a module's own API), then shows what the server holds. */
+  readonly saveLocale: (
+    locale: string | null,
+    save: (userId: string) => Promise<void>,
+  ) => Promise<void>
 }
 
 export const adminStateKey: InjectionKey<AdminState> = Symbol('@opulonjs/admin/state')

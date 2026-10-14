@@ -221,9 +221,10 @@ export const createAdmin = (options: AdminOptions): App => {
   }
 
   // The auth provider's messages are needed before sign-in, too.
+  let reading: Promise<void> | undefined
   const load = () => {
     const live = begin()
-    return getMe().then(
+    const loading = getMe().then(
       async (first) => {
         if (first === 'signedOut') {
           await loadMessages(defaultLocale, [auth], live).catch((error: unknown) =>
@@ -256,6 +257,12 @@ export const createAdmin = (options: AdminOptions): App => {
         else if (lastWrite && lastWrite.userId === me.value?.user.id) void lastWrite.apply(live)
       },
     )
+    reading = loading
+    const settle = () => {
+      if (reading === loading) reading = undefined
+    }
+    void loading.then(settle, settle)
+    return loading
   }
   let ready = load()
   const toSignIn = async () => {
@@ -341,6 +348,14 @@ export const createAdmin = (options: AdminOptions): App => {
   const providerSignOut = auth.auth?.signOut
   const providerSetLocale = auth.auth?.setLocale
   const accountRoute = auth.auth?.accountRoute
+  const saveLocale = async (locale: string | null, save: (userId: string) => Promise<void>) => {
+    const userId = me.value?.user.id
+    if (!userId) return
+    await afterWrite(save(userId), async (live) => {
+      await applyLocale(locale, enabled.value, live)
+      if (me.value && live()) me.value = { ...me.value, locale }
+    })
+  }
   const state: AdminState = {
     brand: options.brand,
     me,
@@ -358,19 +373,11 @@ export const createAdmin = (options: AdminOptions): App => {
         }
       : {}),
     ...(accountRoute ? { accountRoute } : {}),
+    saveLocale,
     ...(providerSetLocale
       ? {
-          setLocale: async (locale: string | null) => {
-            const userId = me.value?.user.id
-            if (!userId) return
-            await afterWrite(
-              providerSetLocale({ apiPrefix, fetch, userId, locale }),
-              async (live) => {
-                await applyLocale(locale, enabled.value, live)
-                if (me.value && live()) me.value = { ...me.value, locale }
-              },
-            )
-          },
+          setLocale: (locale: string | null) =>
+            saveLocale(locale, (userId) => providerSetLocale({ apiPrefix, fetch, userId, locale })),
         }
       : {}),
   }
@@ -441,7 +448,9 @@ export const createAdmin = (options: AdminOptions): App => {
     getMe().then(
       (next) => {
         if (unmounted || turn !== epoch || check !== latestCheck) return
-        // A read already in flight for the same account started after the last write, so it may still apply.
+        // A read in flight may hold an older answer, and a signed-in check carries no locale or fallback.
+        if (reading && next !== 'signedOut')
+          return void read().catch((error: unknown) => console.warn(error))
         if (next === 'signedOut' || next.user.id !== known.user.id) epoch++
         if (next === 'signedOut') {
           showSignedOut()

@@ -227,3 +227,31 @@ test.each([
     expect(document.body.textContent).toContain('Jazyk administrácie')
   },
 )
+
+test.each([
+  ['account screen', [], () => '/admin/account'],
+  ['own user screen', ['users.manage'], (id: string) => `/admin/users/${id}`],
+])(
+  'the %s saves and shows the language when the auth provider cannot save it',
+  async (_, permissions, path) => {
+    const user = await seedUser(db.url, { permissions, locale: 'en' })
+    const jar = { cookie: await host.signIn(user.email, user.password) }
+    mounted?.unmount()
+    history.replaceState(null, '', path(user.id))
+    document.body.innerHTML = '<div id="app"></div>'
+    const app = createAdmin({
+      brand,
+      modules: adminModules.map((m) =>
+        m.auth ? { ...m, auth: { ...m.auth, setLocale: undefined } } : m,
+      ),
+      buildId: 'b1',
+      fetch: host.browserFetch(jar),
+    })
+    app.mount('#app')
+    onTestFinished(() => app.unmount())
+    await expect.poll(() => button('Slovenčina')).toBeDefined()
+    button('Slovenčina')!.click()
+    await expect.poll(() => document.documentElement.lang).toBe('sk')
+    expect((await host.me(jar.cookie)).locale).toBe('sk')
+  },
+)
