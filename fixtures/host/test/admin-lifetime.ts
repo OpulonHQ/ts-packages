@@ -6,10 +6,10 @@ import { adminModules } from '../admin/modules.ts'
 /**
  * Admin journeys for one test file. When a test finishes, after its own cleanup callbacks, the
  * mounted admins unmount, the test's gates open and every call the admins or a `track`ed host
- * started settles (failing after 5s); a tracked host call that rejected, or an unmount that
- * threw, fails the test. Vitest does not cancel a timed-out test body or hook, so once a test or
- * its hooks time out, or its calls do not settle, no later test in the file runs: a late body
- * cannot reach another test's DOM or data.
+ * started settles, including calls chained within one timer tick (failing after 5s); a tracked
+ * host call that rejected, or an unmount that threw, fails the test. Vitest does not cancel a
+ * timed-out test body or hook, so once a test or its hooks time out, or its calls do not settle,
+ * no later test in the file runs: a late body cannot reach another test's DOM or data.
  */
 export const useAdminLifetime = () => {
   type Lifetime = {
