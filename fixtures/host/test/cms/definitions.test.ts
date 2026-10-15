@@ -110,3 +110,60 @@ test('references must name a defined collection; title fields must be fields', (
     }),
   ).toThrow('the title field "name" of collection "team" is not a field')
 })
+
+const templated = (
+  sections: ReadonlyArray<{ type: 'hero' | 'rich_text'; data?: Record<string, unknown> }>,
+) =>
+  defineCms({
+    sections: {
+      hero: { label: 'Hero', fields: { title: fields.text({ label: 'Title', maxLength: 20 }) } },
+    },
+    systemPages: {},
+    templates: { landing: { label: 'Landing', sections } },
+  })
+
+test('templates prefill sections in the stored shape and are kept on the definitions', () => {
+  const sections = [
+    { type: 'hero' as const, data: { title: { en: 'Welcome' } } },
+    { type: 'rich_text' as const, data: { body: { en: '<p>Hi</p>' } } },
+    { type: 'hero' as const },
+  ]
+  expect(templated(sections).templates).toEqual({ landing: { label: 'Landing', sections } })
+  expect(defineCms({ sections: {}, systemPages: {} }).templates).toEqual({})
+})
+
+test.each([
+  [
+    'an unknown section type',
+    [{ type: 'carousel' }],
+    'template "landing", section 1 names the unknown section type "carousel"',
+  ],
+  [
+    'data failing a field schema',
+    [{ type: 'hero', data: { title: { en: 'x'.repeat(21) } } }],
+    'template "landing", section 1 ("hero") has invalid data',
+  ],
+  [
+    'a localized field holding a plain value',
+    [{ type: 'rich_text' }, { type: 'hero', data: { title: 'Welcome' } }],
+    'template "landing", section 2 ("hero") has invalid data',
+  ],
+  [
+    'a field the section type does not have',
+    [{ type: 'hero', data: { subtitle: { en: 'Hi' } } }],
+    'template "landing", section 1 ("hero") has invalid data',
+  ],
+])('a template with %s fails composition', (_, sections, message) => {
+  // @ts-expect-error: an invalid template is also a type error where TypeScript can see it
+  expect(() => templated(sections)).toThrow(message)
+})
+
+test('template keys must be valid identifiers', () => {
+  expect(() =>
+    defineCms({
+      sections: {},
+      systemPages: {},
+      templates: { 'Landing Page': { label: 'Landing', sections: [] } },
+    }),
+  ).toThrow('"Landing Page" is not a valid key')
+})
