@@ -285,6 +285,17 @@ test('a URL change seen by the Navigation API ends and restarts live mode', asyn
   expect(site.title()).toBe('Live again')
 })
 
+test('a history traversal that drops ?preview ends live mode without the Navigation API', async () => {
+  const parent = inFrame()
+  const site = mount(admin)
+  await send(edited('Live draft'))
+
+  history.replaceState(null, '', '/home')
+  window.dispatchEvent(new Event('popstate'))
+  await nextTick()
+  await leftPreview(site, parent)
+})
+
 test('clearing a reactive admin origin ends live mode', async () => {
   const parent = inFrame()
   const options = reactive<{ adminOrigin: string | undefined }>({ adminOrigin: admin })

@@ -6,7 +6,7 @@ import { computed, onScopeDispose, ref, useId, useTemplateRef, watch } from 'vue
 import type { Page, PageDocument } from '../api.ts'
 import type { CmsPreviewOptions } from './context.ts'
 import { pagePreview } from '../localize.ts'
-import { cleanFields } from '../sanitize.ts'
+import { cleanFields, cleanLocaleText } from '../sanitize.ts'
 import { type AdminMessage, httpUrl, parseFrameMessage } from '../site/live-preview.ts'
 import { useCmsContext, usePages } from './use-cms.ts'
 
@@ -37,7 +37,9 @@ let ready = false
 watch(src, () => (ready = false))
 
 const saved = (draft: PageDocument): PageDocument => ({
-  ...draft,
+  locales: Object.fromEntries(
+    Object.entries(draft.locales).map(([code, own]) => [code, cleanLocaleText(own)]),
+  ),
   sections: draft.sections.map((section) => {
     const type = definitions.sections[section.type]
     return type ? { ...section, data: cleanFields(type, section.data, locales.value) } : section

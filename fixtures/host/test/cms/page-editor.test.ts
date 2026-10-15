@@ -237,6 +237,26 @@ test('rich text a custom widget types reaches the frame sanitized, as the server
   expect(live).toEqual(await serverPreview(created.id, 'en'))
 })
 
+test('the live preview is the draft as Save stores it', async () => {
+  const created = await twoHeroes()
+  const text = mountAdmin(`/admin/cms/pages/${created.id}`)
+  await expect.poll(() => input('sections.0.title.en')).toBeTruthy()
+  const posted = listen()
+  ready()
+
+  type('sections.1.note', '')
+  type('locales.en.seo.title', '  Padded title  ')
+  type('locales.en.seo.description', ` ${'d'.repeat(1200)} `)
+  await expect.poll(() => lastPreview(posted)?.seo.description.length).toBe(1000)
+  const live = lastPreview(posted)
+  expect(live!.seo.title).toBe('Padded title')
+  expect(live!.sections[1]!.data).toEqual({ count: 3 })
+
+  button('Uložiť koncept')!.click()
+  await expect.poll(text).toContain('Koncept uložený.')
+  expect(live).toEqual(await serverPreview(created.id, 'en'))
+})
+
 test('a click in the frame selects the section and focuses its field; others are ignored', async () => {
   const created = await twoHeroes()
   const [hero, stats] = created.draft.sections

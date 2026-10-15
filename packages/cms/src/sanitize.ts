@@ -1,5 +1,5 @@
 import sanitizeHtml from 'sanitize-html'
-import type { FieldGroup, Link } from './api.ts'
+import type { FieldGroup, Link, PageLocale } from './api.ts'
 import { isRecord } from './localize.ts'
 
 // The restricted rich text format (TSPACK-11): what RichTextControl's toolbar produces, nothing
@@ -34,6 +34,17 @@ export const sanitizeRichText = (html: string): string | null => {
   const clean = sanitizeHtml(html, options).trim()
   return clean === '' || clean === '<p></p>' ? null : clean
 }
+
+export const cleanLocaleText = (given: PageLocale): PageLocale => ({
+  path: given.path.trim(),
+  available: given.available,
+  seo: {
+    title: given.seo.title.trim().slice(0, 300),
+    description: given.seo.description.trim().slice(0, 1000),
+    image: given.seo.image,
+    noindex: given.seo.noindex,
+  },
+})
 
 export const present = (value: unknown) => value !== null && value !== undefined && value !== ''
 

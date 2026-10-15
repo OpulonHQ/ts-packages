@@ -12,7 +12,7 @@ import {
 } from '../api.ts'
 import { linkProblem, maxSections, uuid } from '../document-rules.ts'
 import { emptyLocale, isRecord } from '../localize.ts'
-import { cleanFields, isLink, present } from '../sanitize.ts'
+import { cleanFields, cleanLocaleText, isLink, present } from '../sanitize.ts'
 
 /** Locale-relative path: `/` or lowercase segments of letters, digits and dashes. */
 const pathPattern = /^\/(?:[\p{Ll}\p{Lo}\p{N}-]+(?:\/[\p{Ll}\p{Lo}\p{N}-]+)*)?$/u
@@ -48,7 +48,8 @@ export const cleanLocales = (
 const cleanLocale = (locale: string, given: PageLocale | undefined, withPaths = true) =>
   Effect.gen(function* () {
     if (!given) return emptyLocale()
-    const path = given.path.trim()
+    const clean = cleanLocaleText(given)
+    const path = clean.path
     if (path !== '' && !pathPattern.test(path))
       return yield* invalid(
         `The ${locale} path "${path}" must start with "/" and use lowercase letters, digits and dashes.`,
@@ -57,19 +58,10 @@ const cleanLocale = (locale: string, given: PageLocale | undefined, withPaths = 
       return yield* invalid(`The ${locale} path is longer than ${maxPathLength} characters.`)
     if (withPaths && given.available && path === '')
       return yield* invalid(`The page is available in ${locale}, so it needs a ${locale} path.`)
-    const image = given.seo.image
+    const image = clean.seo.image
     if (image !== null && !uuid.test(image))
       return yield* invalid(`The ${locale} social image is not a media item.`)
-    return {
-      path,
-      available: given.available,
-      seo: {
-        title: given.seo.title.trim().slice(0, 300),
-        description: given.seo.description.trim().slice(0, 1000),
-        image,
-        noindex: given.seo.noindex,
-      },
-    }
+    return clean
   })
 
 /** Decodes a field group's data against its fields, drops empty values and unknown locales,

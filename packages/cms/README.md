@@ -72,8 +72,10 @@ it and posts it to the frame.
    `adminOrigin` is an `http(s)` origin. It renders the draft the admin posts for the same page,
    in the language chosen in the admin, and ignores messages from any other origin or window.
    The options may be reactive: when the URL loses `?preview` or `adminOrigin` stops being
-   valid, it drops the draft, the section markers and the click handling. During SSR and
-   hydration it renders `initial` unchanged.
+   valid, it drops the draft, the section markers and the click handling. A URL change is seen
+   at once on back and forward navigation and, where the browser has the Navigation API, on
+   `pushState` and `replaceState`; elsewhere those two take effect at the next message or click.
+   During SSR and hydration it renders `initial` unchanged.
 
 3. Optionally mark the parts of a section component with the field they show. A click on a
    marked element selects the section and focuses that field's input; a click elsewhere in the
@@ -91,8 +93,8 @@ In the preview, `CmsSections` adds `data-cms-section` to each section component'
 so a section component needs a single root element to be clickable. Clicks inside sections do
 not follow links. The posted data is the unsaved draft: fields the editor has not filled are
 missing, and media and link fields hold ids and references, as in `GET /pages/:id/preview`.
-Rich text reaches the frame sanitized by the same rules the server applies on save, whichever
-widget produced it.
+The posted draft is cleaned as Save cleans it (rich text sanitized, URL links and SEO text
+trimmed, empty values dropped), whichever widget produced it.
 
 ## Sitemap limits
 

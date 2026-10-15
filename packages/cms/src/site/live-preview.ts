@@ -116,8 +116,12 @@ export const useCmsLivePreview = (
     const inPreview = computed(() => new URLSearchParams(search.value).has('preview'))
     const stillInPreview = () => (syncUrl(), inPreview.value)
     const origin = computed(() => httpUrl(options.adminOrigin)?.origin)
+    window.addEventListener('popstate', syncUrl)
     window.navigation?.addEventListener('currententrychange', syncUrl)
-    onScopeDispose(() => window.navigation?.removeEventListener('currententrychange', syncUrl))
+    onScopeDispose(() => {
+      window.removeEventListener('popstate', syncUrl)
+      window.navigation?.removeEventListener('currententrychange', syncUrl)
+    })
 
     watchEffect((onCleanup) => {
       const adminOrigin = origin.value
