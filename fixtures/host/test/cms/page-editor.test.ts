@@ -1,4 +1,4 @@
-import type { Page, PagePreview } from '@opulonjs/cms/api'
+import { fields, type Page, type PagePreview } from '@opulonjs/cms/api'
 import { cmsAdmin, type CmsAdminOptions } from '@opulonjs/cms/admin'
 import { defineComponent, h } from 'vue'
 import { expect, onTestFinished, test, vi } from 'vitest'
@@ -235,6 +235,44 @@ test('rich text a custom widget types reaches the frame sanitized, as the server
   button('Uložiť koncept')!.click()
   await expect.poll(text).toContain('Koncept uložený.')
   expect(live).toEqual(await serverPreview(created.id, 'en'))
+})
+
+test('a malformed link from a custom widget does not stop the live preview', async () => {
+  const created = await twoHeroes()
+  const Broken = defineComponent({
+    props: { name: { type: String, required: true } },
+    emits: ['update:modelValue'],
+    setup:
+      (props, { emit }) =>
+      () =>
+        h('textarea', {
+          name: props.name,
+          onInput: () => emit('update:modelValue', { type: 'url' }),
+        }),
+  })
+  const cta = fields.link({ label: 'CTA', widget: 'broken' })
+  const hero = definitions.sections.hero
+  const modules = withCms({
+    definitions: {
+      ...definitions,
+      sections: { ...definitions.sections, hero: { ...hero, fields: { ...hero.fields, cta } } },
+    },
+    widgets: { ...cmsOptions.widgets, broken: async () => ({ default: Broken }) },
+  })
+  mountAdmin(`/admin/cms/pages/${created.id}`, modules)
+  await expect.poll(() => input('sections.0.cta')).toBeTruthy()
+  const posted = listen()
+  ready()
+
+  type('sections.0.cta', 'x')
+  type('sections.0.title.en', 'After the link')
+  await expect
+    .poll(() => lastPreview(posted)?.sections[0]?.data)
+    .toEqual({
+      title: 'After the link',
+      tone: 'light',
+      cta: { type: 'url' },
+    })
 })
 
 test('the live preview is the draft as Save stores it', async () => {

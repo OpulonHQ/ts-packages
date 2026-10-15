@@ -54,7 +54,7 @@ export const isLink = (value: unknown): value is Link =>
 const cleanValue = (kind: string, value: unknown) =>
   kind === 'richText' && typeof value === 'string'
     ? sanitizeRichText(value)
-    : kind === 'link' && isLink(value) && value.type === 'url'
+    : kind === 'link' && isLink(value) && value.type === 'url' && typeof value.url === 'string'
       ? { type: 'url', url: value.url.trim() }
       : value
 
