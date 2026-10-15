@@ -29,7 +29,6 @@ const typeItems = computed(() =>
 )
 const selected = (id: string) => selection.value.kind === 'section' && selection.value.id === id
 
-/** The first filled text of a section in the default content locale. */
 const summary = (section: DraftSection) => {
   const type = definitions.sections[section.type]
   const code = contentLocales.value[0]

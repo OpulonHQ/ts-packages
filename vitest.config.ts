@@ -64,6 +64,10 @@ export default defineConfig({
           name: 'admin',
           include: adminTests,
           environment: './test/happy-dom-server.ts',
+          // The page editor's preview frame points at the fixture site, which no test serves.
+          environmentOptions: {
+            happyDOM: { settings: { navigation: { disableChildFrameNavigation: true } } },
+          },
           expect: { poll: { timeout: 5000 } },
           testTimeout: 15_000,
           globalSetup,

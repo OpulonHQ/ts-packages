@@ -12,5 +12,12 @@ export const adminModules = [
   demoAdmin,
   emailsAdmin(),
   mediaAdmin(),
-  cmsAdmin({ definitions, widgets: { color: () => import('../cms/ColorWidget.vue') } }),
+  cmsAdmin({
+    definitions,
+    widgets: { color: () => import('../cms/ColorWidget.vue') },
+    preview: {
+      url: ({ id, locale }) =>
+        `/site/?preview=${encodeURIComponent(id)}&locale=${encodeURIComponent(locale)}`,
+    },
+  }),
 ]

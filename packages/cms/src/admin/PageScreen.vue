@@ -9,7 +9,7 @@ import { UButton } from '@opulonjs/ui'
 import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
 import StatusBadge from '@opulonjs/ui/components/StatusBadge'
-import { computed, ref, shallowRef, useId, watch, useTemplateRef } from 'vue'
+import { computed, nextTick, ref, shallowRef, useId, watch, useTemplateRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { labelText, type Page, type PageDocument, type PageLocale } from '../api.ts'
 import { emptyLocale } from '../localize.ts'
@@ -17,6 +17,7 @@ import RevisionHistory from './RevisionHistory.vue'
 import FieldsForm from './FieldsForm.vue'
 import LocaleDetails from './LocaleDetails.vue'
 import PageOutline from './PageOutline.vue'
+import PreviewPane from './PreviewPane.vue'
 import ActionStatus from './ActionStatus.vue'
 import {
   type PageSelection,
@@ -47,6 +48,7 @@ const confirming = ref(false)
 const revisionPending = ref(false)
 const chosen = ref<PageSelection>()
 const inputsHeading = useId()
+const panels = useId()
 
 const locales = computed(() => pages.contentLocales.value)
 const canEdit = computed(() => pages.can('cms.pages.edit'))
@@ -59,7 +61,6 @@ useFocusReturn(
 const title = computed(() => (page.value ? pageTitle(definitions, page.value, locale.value) : ''))
 const typeLabel = (type: string) => labelText(definitions.sections[type]?.label, locale.value)
 
-// The user's last pick while it still exists, else the first section, else page settings.
 const selection = computed({
   get: (): PageSelection => {
     const sections = draft.value?.sections ?? []
@@ -75,6 +76,24 @@ const selectedIndex = computed(() => {
     ? (draft.value?.sections.findIndex((s) => s.id === current.id) ?? -1)
     : -1
 })
+
+const controls = 'input, textarea, select, button, [contenteditable="true"]'
+const firstControl = (root: Element) =>
+  [...root.querySelectorAll<HTMLElement>(controls)].find(
+    (el) => !el.matches(':disabled, [role="tab"]') && el.checkVisibility(),
+  )
+async function focusField(sectionId: string, field: string | undefined) {
+  selection.value = { kind: 'section', id: sectionId }
+  await nextTick()
+  const panel = document.getElementById(`${panels}-${sectionId}`)
+  if (!panel) return
+  const wrapper = [...panel.querySelectorAll<HTMLElement>('[data-field]')].find(
+    (el) => field !== undefined && el.dataset.field === field,
+  )
+  const control = (wrapper && firstControl(wrapper)) ?? firstControl(panel) ?? panel
+  control.focus()
+}
+
 const toDraft = (document: PageDocument): Draft => {
   // A deep, mutable copy: JSON documents only.
   const copy: Draft = {
@@ -207,6 +226,13 @@ const reload = (done = '') => run(() => pages.get(page.value!.id), done, show)
               :can-edit="canEdit"
               class="min-w-0"
             />
+            <PreviewPane
+              v-if="preview"
+              :page="page"
+              :draft="draft"
+              class="min-w-0"
+              @select="focusField"
+            />
             <section :aria-labelledby="inputsHeading" class="min-w-0 space-y-4">
               <h2 :id="inputsHeading" class="font-semibold text-highlighted">
                 {{
@@ -215,12 +241,13 @@ const reload = (done = '') => run(() => pages.get(page.value!.id), done, show)
                     : `${selectedIndex + 1}. ${typeLabel(draft.sections[selectedIndex]!.type)}`
                 }}
               </h2>
-              <div v-show="selection.kind === 'page'" tabindex="-1">
+              <div v-show="selection.kind === 'page'" :id="`${panels}-page`" tabindex="-1">
                 <LocaleDetails :value="draft.locales" :locales="locales" :disabled="locked" />
               </div>
               <div
                 v-for="(section, index) in draft.sections"
                 v-show="index === selectedIndex"
+                :id="`${panels}-${section.id}`"
                 :key="section.id"
                 tabindex="-1"
               >
