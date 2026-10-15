@@ -91,8 +91,8 @@ In the preview, `CmsSections` adds `data-cms-section` to each section component'
 so a section component needs a single root element to be clickable. Clicks inside sections do
 not follow links. The posted data is the unsaved draft: fields the editor has not filled are
 missing, and media and link fields hold ids and references, as in `GET /pages/:id/preview`.
-Rich text that was saved is sanitized by the server; text the editor types comes from the admin's
-editor and is shown only in that editor's own preview.
+Rich text reaches the frame sanitized by the same rules the server applies on save, whichever
+widget produced it.
 
 ## Sitemap limits
 

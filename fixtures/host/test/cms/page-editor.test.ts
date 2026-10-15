@@ -1,5 +1,6 @@
 import type { Page, PagePreview } from '@opulonjs/cms/api'
 import { cmsAdmin } from '@opulonjs/cms/admin'
+import { defineComponent, h } from 'vue'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import { adminModules } from '../../admin/modules.ts'
 import { definitions } from '../../cms/definitions.ts'
@@ -182,6 +183,64 @@ test('stored rich text reaches the frame sanitized', async () => {
   const posted = listen()
   ready()
   expect(lastPreview(posted)!.sections[0]!.data.body).toBe('<p>Safe</p><p>a</p>')
+})
+
+test('rich text a custom widget types reaches the frame sanitized, as the server stores it', async () => {
+  const created = (
+    await host.create(
+      page({ en: `/raw-${crypto.randomUUID()}`, it: `/grezzo-${crypto.randomUUID()}` }, [
+        section('rich_text', { body: { en: '<p>Safe</p>' } }),
+      ]),
+    )
+  ).body
+  const RawHtml = defineComponent({
+    props: { name: { type: String, required: true } },
+    emits: ['update:modelValue'],
+    setup:
+      (props, { emit }) =>
+      () =>
+        h('textarea', {
+          name: props.name,
+          onInput: (event: Event) =>
+            emit('update:modelValue', (event.target as HTMLTextAreaElement).value),
+        }),
+  })
+  const body = definitions.sections.rich_text.fields.body
+  const rawDefinitions = {
+    ...definitions,
+    sections: {
+      ...definitions.sections,
+      rich_text: {
+        ...definitions.sections.rich_text,
+        fields: { body: { ...body, widget: 'raw' } },
+      },
+    },
+  }
+  const modules = adminModules.map((m) =>
+    m.id === 'cms'
+      ? cmsAdmin({
+          definitions: rawDefinitions,
+          widgets: {
+            color: () => import('../../cms/ColorWidget.vue'),
+            raw: async () => ({ default: RawHtml }),
+          },
+          preview: { url: ({ id, locale }) => `/site/?preview=${id}&locale=${locale}` },
+        })
+      : m,
+  )
+  const text = mountAdmin(`/admin/cms/pages/${created.id}`, modules)
+  await expect.poll(() => input('sections.0.body.en')).toBeTruthy()
+  const posted = listen()
+  ready()
+
+  const hostile = '<p>Hi<img src="x" onerror="alert(1)"></p><script>alert(2)</script>'
+  type('sections.0.body.en', hostile)
+  await expect.poll(() => lastPreview(posted)?.sections[0]?.data.body).toBe('<p>Hi</p>')
+  const live = lastPreview(posted)
+
+  button('Uložiť koncept')!.click()
+  await expect.poll(text).toContain('Koncept uložený.')
+  expect(live).toEqual(await serverPreview(created.id, 'en'))
 })
 
 test('a click in the frame selects the section and focuses its field; others are ignored', async () => {

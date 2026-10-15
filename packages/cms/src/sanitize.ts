@@ -1,7 +1,8 @@
 import sanitizeHtml from 'sanitize-html'
 
 // The restricted rich text format (TSPACK-11): what RichTextControl's toolbar produces, nothing
-// else. sanitize-html parses with htmlparser2 (no DOM), so it runs on Workers.
+// else. sanitize-html parses with htmlparser2 (no DOM), so the server on Workers and the admin's
+// live preview run the same code.
 const options: sanitizeHtml.IOptions = {
   allowedTags: [
     'p',

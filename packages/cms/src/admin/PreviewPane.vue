@@ -5,7 +5,8 @@ import FieldSelect from '@opulonjs/ui/components/Field/Select'
 import { computed, onScopeDispose, ref, useId, useTemplateRef, watch } from 'vue'
 import type { Page, PageDocument } from '../api.ts'
 import type { CmsPreviewOptions } from './context.ts'
-import { pagePreview } from '../localize.ts'
+import { isRecord, pagePreview } from '../localize.ts'
+import { sanitizeRichText } from '../sanitize.ts'
 import { type AdminMessage, httpUrl, parseFrameMessage } from '../site/live-preview.ts'
 import { useCmsContext, usePages } from './use-cms.ts'
 
@@ -35,6 +36,23 @@ const src = computed(() => target.value?.href)
 let ready = false
 watch(src, () => (ready = false))
 
+const clean = (value: unknown) => (typeof value === 'string' ? sanitizeRichText(value) : value)
+const sanitized = (draft: PageDocument): PageDocument => ({
+  ...draft,
+  sections: draft.sections.map((section) => {
+    const data = { ...section.data }
+    for (const [name, field] of Object.entries(definitions.sections[section.type]?.fields ?? {})) {
+      const value = data[name]
+      if (field.kind !== 'richText' || value === undefined) continue
+      data[name] =
+        field.localized && isRecord(value)
+          ? Object.fromEntries(Object.entries(value).map(([code, v]) => [code, clean(v)]))
+          : clean(value)
+    }
+    return { ...section, data }
+  }),
+})
+
 let timer: ReturnType<typeof setTimeout> | undefined
 const send = () => {
   clearTimeout(timer)
@@ -45,7 +63,7 @@ const send = () => {
     preview: pagePreview(
       definitions,
       locales.value,
-      { id: props.page.id, draft: props.draft },
+      { id: props.page.id, draft: sanitized(props.draft) },
       locale.value,
     ),
   } satisfies AdminMessage

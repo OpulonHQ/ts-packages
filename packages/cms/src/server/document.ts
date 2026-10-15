@@ -13,7 +13,7 @@ import {
 } from '../api.ts'
 import { linkProblem, maxSections, uuid } from '../document-rules.ts'
 import { emptyLocale, isRecord } from '../localize.ts'
-import { sanitizeRichText } from './sanitize.ts'
+import { sanitizeRichText } from '../sanitize.ts'
 
 /** Locale-relative path: `/` or lowercase segments of letters, digits and dashes. */
 const pathPattern = /^\/(?:[\p{Ll}\p{Lo}\p{N}-]+(?:\/[\p{Ll}\p{Lo}\p{N}-]+)*)?$/u
