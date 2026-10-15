@@ -1,5 +1,19 @@
 // The admin's live preview, both directions of its postMessage wire format and the site side.
 // Effect-free: `vue` and type imports only.
+import {
+  computed,
+  type ComputedRef,
+  type InjectionKey,
+  type MaybeRefOrGetter,
+  onMounted,
+  onScopeDispose,
+  provide,
+  readonly,
+  type Ref,
+  ref,
+  shallowRef,
+  toValue,
+} from 'vue'
 import type { PagePreview } from '../api.ts'
 
 /** Admin -> preview frame: the unsaved draft as the site renders it. */
@@ -59,4 +73,82 @@ export const parseFrameMessage = (data: unknown): FrameMessage | undefined => {
   return data.field === undefined
     ? { type: 'opulon:cms:select', sectionId: data.sectionId }
     : { type: 'opulon:cms:select', sectionId: data.sectionId, field: data.field }
+}
+
+/** Whether `CmsSections` renders inside an active live preview (it then marks section roots). */
+export const liveKey: InjectionKey<Readonly<Ref<boolean>>> = Symbol('opulon:cms:live')
+
+export interface CmsLivePreviewOptions {
+  /** The admin's origin; without an http(s) one the preview never goes live. */
+  readonly adminOrigin: string | undefined
+}
+
+const httpOrigin = (value: string | undefined) => {
+  if (value === undefined || !URL.canParse(value)) return undefined
+  const url = new URL(value)
+  return url.protocol === 'http:' || url.protocol === 'https:' ? url.origin : undefined
+}
+
+const elementOf = (target: EventTarget | null) =>
+  target instanceof Element ? target : target instanceof Node ? target.parentElement : null
+
+/**
+ * The page preview to render: `initial`, replaced by the admin's unsaved draft of the same page
+ * and locale while the page runs framed in the admin with `?preview` in its URL. A click on a
+ * section (marked by `CmsSections`) or on a part marked `data-cms-field="<field>"` selects it in
+ * the admin instead of acting. Server rendering and hydration see `initial` only.
+ */
+export const useCmsLivePreview = (
+  initial: MaybeRefOrGetter<PagePreview | null | undefined>,
+  options: CmsLivePreviewOptions,
+): ComputedRef<PagePreview | undefined> => {
+  const live = ref(false)
+  const received = shallowRef<PagePreview>()
+  provide(liveKey, readonly(live))
+  const preview = computed(() => {
+    const base = toValue(initial) ?? undefined
+    const next = received.value
+    return next && (!base || (next.id === base.id && next.locale === base.locale)) ? next : base
+  })
+
+  onMounted(() => {
+    const origin = httpOrigin(options.adminOrigin)
+    const admin = window.parent
+    if (!origin || admin === window || !new URLSearchParams(location.search).has('preview')) return
+    const post = (message: FrameMessage) => admin.postMessage(message, origin)
+
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== origin || event.source !== admin) return
+      const message = parseAdminMessage(event.data)
+      if (message) received.value = message.preview
+    }
+    const onClick = (event: Event) => {
+      const target = elementOf(event.target)
+      const section = target?.closest('[data-cms-section]')
+      const sectionId = section?.getAttribute('data-cms-section')
+      if (!target || !section || !sectionId) return
+      if (!preview.value?.sections.some((s) => s.id === sectionId)) return
+      const field = target.closest('[data-cms-field]')
+      const name = field && section.contains(field) ? field.getAttribute('data-cms-field') : null
+      event.preventDefault()
+      event.stopPropagation()
+      post(
+        name
+          ? { type: 'opulon:cms:select', sectionId, field: name }
+          : { type: 'opulon:cms:select', sectionId },
+      )
+    }
+
+    window.addEventListener('message', onMessage)
+    document.addEventListener('click', onClick, true)
+    live.value = true
+    onScopeDispose(() => {
+      window.removeEventListener('message', onMessage)
+      document.removeEventListener('click', onClick, true)
+      live.value = false
+    })
+    post({ type: 'opulon:cms:ready' })
+  })
+
+  return preview
 }

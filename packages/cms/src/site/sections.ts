@@ -1,5 +1,6 @@
-import { type Component, defineComponent, h, type PropType, warn } from 'vue'
+import { type Component, defineComponent, h, inject, type PropType, warn } from 'vue'
 import type { PublicData } from '../api.ts'
+import { liveKey } from './live-preview.ts'
 import { CmsRichText } from './rich-text.ts'
 
 /** Section types of a host's cms definitions (`typeof definitions`). */
@@ -35,6 +36,8 @@ export interface CmsSection {
 /**
  * Renders a page's sections in order, each as its type's component with a `data` prop. An
  * unknown type (a section type the site does not render yet) warns in dev and is skipped.
+ * In a live preview (`useCmsLivePreview`) each section's root element gets
+ * `data-cms-section="<id>"`, so a section component needs a single root to be selectable.
  */
 export const CmsSections = defineComponent({
   name: 'CmsSections',
@@ -42,11 +45,20 @@ export const CmsSections = defineComponent({
     sections: { type: Array as PropType<ReadonlyArray<CmsSection>>, required: true },
     components: { type: Object as PropType<SectionComponentMap>, required: true },
   },
-  setup: (props) => () =>
-    props.sections.map((section) => {
-      const component = props.components[section.type]
-      if (component) return h(component, { key: section.id, data: section.data })
-      warn(`CmsSections: no component for section type "${section.type}"`)
-      return null
-    }),
+  setup: (props) => {
+    const live = inject(liveKey, undefined)
+    return () =>
+      props.sections.map((section) => {
+        const component = props.components[section.type]
+        if (component)
+          return h(
+            component,
+            live?.value
+              ? { key: section.id, data: section.data, 'data-cms-section': section.id }
+              : { key: section.id, data: section.data },
+          )
+        warn(`CmsSections: no component for section type "${section.type}"`)
+        return null
+      })
+  },
 })
