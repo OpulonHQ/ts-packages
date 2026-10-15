@@ -35,6 +35,10 @@ export interface CmsWidgetProps {
   disabled?: boolean
 }
 
+/** What the page editor's inputs pane shows: the page's own settings or one section. */
+export type PageSelection =
+  { readonly kind: 'page' } | { readonly kind: 'section'; readonly id: string }
+
 export const useCmsContext = () => {
   const context = inject(cmsContextKey)
   if (!context) throw new Error('cms screens must be mounted through cmsAdmin()')
