@@ -72,7 +72,9 @@ const selectedIndex = computed(() => {
     : -1
 })
 
-const usable = (el: HTMLElement) => !el.matches(':disabled') && el.checkVisibility?.() !== false
+const usable = (el: HTMLElement) =>
+  !el.matches(':disabled, [tabindex="-1"], [aria-hidden="true"]') &&
+  el.checkVisibility?.() !== false
 const firstControl = (root: Element) =>
   [...root.querySelectorAll<HTMLElement>('input, textarea, select, [contenteditable="true"]')].find(
     usable,

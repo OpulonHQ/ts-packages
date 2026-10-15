@@ -278,6 +278,23 @@ test('a click on rich text in the frame focuses its editor, not its toolbar', as
   await expect.poll(() => document.activeElement?.getAttribute('contenteditable')).toBe('true')
 })
 
+test('a click on a select or a switch in the frame focuses its control', async () => {
+  const created = await twoHeroes()
+  const [hero, stats] = created.draft.sections
+  mountAdmin(`/admin/cms/pages/${created.id}`)
+  await expect.poll(() => input('sections.0.title.en')).toBeTruthy()
+
+  select(hero!.id, 'tone')
+  await expect.poll(() => document.activeElement?.getAttribute('aria-haspopup')).toBe('listbox')
+  expect(document.activeElement?.closest('[data-field]')?.getAttribute('data-field')).toBe('tone')
+
+  select(stats!.id, 'visible')
+  await expect.poll(() => document.activeElement?.getAttribute('role')).toBe('switch')
+  expect(document.activeElement?.closest('[data-field]')?.getAttribute('data-field')).toBe(
+    'visible',
+  )
+})
+
 test('a preview URL without the language still gets the chosen language', async () => {
   const created = await twoHeroes()
   const modules = adminModules.map((m) =>

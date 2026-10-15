@@ -50,6 +50,10 @@ export default async (ctx) => {
   await frame.locator('[data-cms-field="note"]').filter({ hasText: 'Stats note typed after click' }).waitFor()
   check(true, 'typing into the focused input updates the frame')
 
+  await frame.locator('[data-cms-field="tone"]').click()
+  await page.waitForFunction(() => document.activeElement?.getAttribute('aria-haspopup') === 'listbox' && document.activeElement.closest('[data-field]')?.getAttribute('data-field') === 'tone')
+  check(true, 'clicking the hero tone in the frame focuses the Tone select')
+
   await outline.getByRole('button', { name: /^1\. Hero/ }).focus()
   await page.keyboard.press('Enter')
   await inputs.waitFor()
