@@ -42,6 +42,8 @@ export default async (ctx) => {
 
   for (const editor of editors) {
     await page.goto(`${base}/admin/cms${editor.path}`)
+    // The page editor opens on its first section; the SEO title is under Page settings.
+    if (editor.kind === 'page') await page.getByRole('button', { name: 'Page settings', exact: true }).click()
     const field = page.locator(`input[name="${editor.field}"]`)
     await field.waitFor()
     await field.fill(editor.value)
