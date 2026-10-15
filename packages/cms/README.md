@@ -1,5 +1,97 @@
 # @opulonjs/cms
 
+## Keep a section type next to its component
+
+A section type's fields are registered once, in `defineCms({ sections })`. The admin builds the
+section's form from them and the server validates against them, so there is no second
+registration in the component. To keep the two in one place, export the `SectionType` object
+from a file next to the component and import it into your definitions:
+
+```ts
+// site/sections/hero.ts
+import { fields, type SectionType } from '@opulonjs/cms/api'
+
+export const hero = {
+  label: { en: 'Hero', sk: 'Úvodný blok' },
+  fields: {
+    title: fields.text({ label: 'Title', required: true }),
+    tone: fields.select({ label: 'Tone', options: [{ value: 'dark', label: 'Dark' }] }),
+  },
+} satisfies SectionType
+```
+
+```ts
+// cms/definitions.ts
+import { defineCms } from '@opulonjs/cms/api'
+import { hero } from '../site/sections/hero.ts'
+
+export const definitions = defineCms({ sections: { hero }, systemPages: {} })
+```
+
+`Hero.vue` sits next to `hero.ts` and receives the localized data as its `data` prop.
+
+## Live preview
+
+The page editor can show the host site's page in a frame and update it as the editor types,
+before anything is saved. The admin computes the draft as `GET /pages/:id/preview` would return
+it and posts it to the frame.
+
+1. In the admin, tell `cmsAdmin` where a page's preview lives. The URL is absolute or relative to
+   the admin; the admin posts only to its origin and accepts messages only from it.
+
+   ```ts
+   cmsAdmin({
+     definitions,
+     preview: {
+       url: ({ id, path, locale }) =>
+         `https://www.example.com${path}?preview=${id}&locale=${locale}`,
+     },
+   })
+   ```
+
+   Without `preview` the editor shows the section list and the inputs only. `path` is the saved
+   path of that locale, so typing a new path does not reload the frame.
+
+2. On the site's preview route, read the draft as today and pass it through `useCmsLivePreview`
+   in the component that renders `CmsSections` (or a parent of it):
+
+   ```vue
+   <script setup lang="ts">
+   import { CmsSections, useCmsLivePreview } from '@opulonjs/cms/site'
+
+   const { data } = await useAsyncData(() => cms.previewPage(id, locale))
+   const preview = useCmsLivePreview(data, { adminOrigin: 'https://admin.example.com' })
+   </script>
+
+   <template>
+     <CmsSections v-if="preview" :sections="preview.sections" :components="components" />
+   </template>
+   ```
+
+   The composable does nothing unless the page runs in a frame, its URL has `?preview` and
+   `adminOrigin` is an `http(s)` origin. It renders the draft the admin posts for the same page
+   and locale, and ignores messages from any other origin or window. During SSR and hydration
+   it renders `initial` unchanged.
+
+3. Optionally mark the parts of a section component with the field they show. A click on a
+   marked element selects the section and focuses that field's input; a click elsewhere in the
+   section focuses its first input.
+
+   ```vue
+   <template>
+     <section>
+       <h1 data-cms-field="title">{{ data.title }}</h1>
+     </section>
+   </template>
+   ```
+
+In the preview, `CmsSections` adds `data-cms-section` to each section component's root element,
+so a section component needs a single root element to be clickable. Clicks inside sections do
+not follow links. The posted data is the unsaved draft: fields the editor has not filled are
+missing, and media and link fields hold ids and references, as in `GET /pages/:id/preview`.
+Rich text that was saved is sanitized by the server; text the editor types comes from the admin's
+editor and is shown only in that editor's own preview.
+
 ## Sitemap limits
 
 The public `GET <apiPrefix>/cms/sitemap.xml` index links the files served by
