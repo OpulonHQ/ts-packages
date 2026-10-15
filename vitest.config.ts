@@ -26,6 +26,8 @@ const adminTests = [
   'fixtures/host/test/cms/editor-failed.test.ts',
   'fixtures/host/test/cms/reference-paging-admin.test.ts',
   'fixtures/host/test/cms/cms-sections.test.ts',
+  'fixtures/host/test/cms/site-live-preview.test.ts',
+  'fixtures/host/test/cms/page-editor.test.ts',
 ]
 
 export default defineConfig({
