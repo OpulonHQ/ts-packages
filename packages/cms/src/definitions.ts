@@ -3,6 +3,7 @@
 // and the admin's generated forms come from the same field definitions: section types,
 // collections and site settings all use `Field`.
 import { Schema } from 'effect'
+import { linkProblem, maxSections } from './document-rules.ts'
 
 /** Admin text: one string, or one per admin locale (`{ en: 'Title', sk: 'Nadpis' }`). */
 export type Label = string | Readonly<Record<string, string>>
@@ -283,7 +284,11 @@ export const defineCms = <
   for (const [key, collection] of Object.entries(collections))
     if (collection.titleField !== undefined && !(collection.titleField in collection.fields))
       fail(`the title field "${collection.titleField}" of collection "${key}" is not a field.`)
-  for (const [key, template] of Object.entries(templates))
+  for (const [key, template] of Object.entries(templates)) {
+    if (template.sections.length > maxSections)
+      fail(
+        `template "${key}" has ${template.sections.length} sections; a page holds at most ${maxSections}.`,
+      )
     template.sections.forEach(({ type, data = {} }, index) => {
       const owner = `template "${key}", section ${index + 1}`
       const sectionType = Object.hasOwn(sections, type) ? sections[type] : undefined
@@ -297,7 +302,16 @@ export const defineCms = <
           `${owner} ("${type}") has invalid data: ${error instanceof Error ? error.message : String(error)}`,
         )
       }
+      for (const [name, field] of Object.entries(sectionType.fields)) {
+        const value = data[name]
+        if (field.kind !== 'link' || typeof value !== 'object' || value === null) continue
+        for (const link of field.localized ? Object.values(value) : [value]) {
+          const problem = Schema.is(Link)(link) ? linkProblem({ systemPages }, link) : undefined
+          if (problem) fail(`${owner} ("${type}") field "${name}": ${problem}`)
+        }
+      }
     })
+  }
   return { sections, systemPages, collections, settings, menus, templates } satisfies CmsDefinitions
 }
 

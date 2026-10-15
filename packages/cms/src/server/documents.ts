@@ -17,7 +17,7 @@ import {
   revisionPageSize,
 } from '../api.ts'
 import { cacheTags } from './cache.ts'
-import { uuid } from './document.ts'
+import { uuid } from '../document-rules.ts'
 import { Redirects } from './redirects.ts'
 
 /** What `cms.document.kind` holds; `key` names the system page, collection or menu. */

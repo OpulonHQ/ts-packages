@@ -23,7 +23,8 @@ import {
 } from '../api.ts'
 import { cacheTags } from './cache.ts'
 import { parseCsv } from './csv.ts'
-import { maxPathLength, uuid } from './document.ts'
+import { uuid } from '../document-rules.ts'
+import { maxPathLength } from './document.ts'
 
 /** Starts with one `/` (not `//`); no whitespace, control characters, `\`, query or fragment. */
 const pathPattern = /^\/(?!\/)[^\s?#\\\p{Cc}]*$/u

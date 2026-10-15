@@ -11,12 +11,11 @@ import {
   type SectionType,
   sectionDataSchema,
 } from '../api.ts'
+import { linkProblem, maxSections, uuid } from '../document-rules.ts'
 import { sanitizeRichText } from './sanitize.ts'
 
-export const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 /** Locale-relative path: `/` or lowercase segments of letters, digits and dashes. */
 const pathPattern = /^\/(?:[\p{Ll}\p{Lo}\p{N}-]+(?:\/[\p{Ll}\p{Lo}\p{N}-]+)*)?$/u
-const maxSections = 200
 /** Characters of a locale-relative path, for pages, items and redirects alike: what a write
  *  accepts, `resolve` answers (after the locale prefix). */
 export const maxPathLength = 1024
@@ -51,27 +50,6 @@ export const cleanLocales = (
     }
     return out
   })
-
-/** URLs a link may hold: http(s), mailto, tel, a site-relative path or a fragment. */
-const urlPattern = /^(?:https?:\/\/|mailto:|tel:|\/(?!\/)|#)\S*$/i
-
-/** Why a link is refused, or undefined. Targets are checked for shape, not existence: the
- *  Read API resolves a link whose target is gone or unpublished to no href. */
-export const linkProblem = (definitions: CmsDefinitions, link: Link): string | undefined => {
-  switch (link.type) {
-    case 'page':
-    case 'item':
-      return uuid.test(link.id) ? undefined : `The link points at no ${link.type}.`
-    case 'system':
-      return Object.hasOwn(definitions.systemPages, link.key)
-        ? undefined
-        : `The link points at the unknown system page "${link.key}".`
-    case 'url':
-      return urlPattern.test(link.url.trim())
-        ? undefined
-        : `The link URL "${link.url}" must start with https://, mailto:, tel: or "/".`
-  }
-}
 
 const cleanLocale = (locale: string, given: PageLocale | undefined, withPaths = true) =>
   Effect.gen(function* () {

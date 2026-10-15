@@ -113,11 +113,18 @@ test('references must name a defined collection; title fields must be fields', (
 
 const hostSections: Record<string, SectionType> = {
   hero: { label: 'Hero', fields: { title: fields.text({ label: 'Title', maxLength: 20 }) } },
+  cta: {
+    label: 'Call to action',
+    fields: {
+      link: fields.link({ label: 'Link' }),
+      links: fields.link({ label: 'Links', localized: true }),
+    },
+  },
 }
 const templated = (sections: PageTemplate['sections']) =>
   defineCms({
     sections: hostSections,
-    systemPages: {},
+    systemPages: { home: { label: 'Home', paths: { en: '/' } } },
     templates: { landing: { label: 'Landing', sections } },
   })
 
@@ -126,6 +133,14 @@ test('templates prefill sections in the stored shape and are kept on the definit
     { type: 'hero', data: { title: { en: 'Welcome' } } },
     { type: 'rich_text', data: { body: { en: '<p>Hi</p>' } } },
     { type: 'hero' },
+    {
+      type: 'cta',
+      data: {
+        link: { type: 'system', key: 'home' },
+        links: { en: { type: 'url', url: 'https://example.com' }, sk: null },
+      },
+    },
+    ...Array.from({ length: 196 }, () => ({ type: 'hero' })),
   ]
   expect(templated(sections).templates).toEqual({ landing: { label: 'Landing', sections } })
   expect(defineCms({ sections: {}, systemPages: {} }).templates).toEqual({})
@@ -151,6 +166,26 @@ test.each([
     'a field the section type does not have',
     [{ type: 'hero', data: { subtitle: { en: 'Hi' } } }],
     'template "landing", section 1 ("hero") has invalid data',
+  ],
+  [
+    'more sections than a page holds',
+    Array.from({ length: 201 }, () => ({ type: 'hero' })),
+    'template "landing" has 201 sections; a page holds at most 200',
+  ],
+  [
+    'a URL link without an allowed prefix',
+    [{ type: 'cta', data: { link: { type: 'url', url: 'javascript:alert(1)' } } }],
+    'template "landing", section 1 ("cta") field "link": The link URL "javascript:alert(1)" must start with',
+  ],
+  [
+    'a link to an unknown system page',
+    [{ type: 'rich_text' }, { type: 'cta', data: { link: { type: 'system', key: 'blog' } } }],
+    'template "landing", section 2 ("cta") field "link": The link points at the unknown system page "blog".',
+  ],
+  [
+    'a localized page link whose id is not a uuid',
+    [{ type: 'cta', data: { links: { en: { type: 'page', id: 'about' } } } }],
+    'template "landing", section 1 ("cta") field "links": The link points at no page.',
   ],
 ])('a template with %s fails composition', (_, sections, message) => {
   expect(() => templated(sections)).toThrow(message)
