@@ -122,13 +122,12 @@ function add() {
         </template>
       </li>
     </ol>
-    <div v-if="canEdit" class="flex items-end gap-2">
+    <div v-if="canEdit" class="space-y-2">
       <FieldSelect
         v-model="newType"
         name="newSection"
         :label="t('cms.page.sectionType')"
         :items="typeItems"
-        class="min-w-0 flex-1"
       />
       <UButton
         icon="i-lucide-plus"
@@ -136,6 +135,7 @@ function add() {
         variant="outline"
         :label="t('cms.page.addSection')"
         :disabled="!newType"
+        block
         @click="add"
       />
     </div>
