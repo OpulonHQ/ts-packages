@@ -10,7 +10,9 @@ import { type AdminMessage, httpUrl, parseFrameMessage } from '../site/live-prev
 import { useCmsContext, usePages } from './use-cms.ts'
 
 const props = defineProps<{ page: Page; draft: PageDocument; url: CmsPreviewOptions['url'] }>()
-const emit = defineEmits<{ select: [sectionId: string, field: string | undefined] }>()
+const emit = defineEmits<{
+  select: [sectionId: string, field: string | undefined, locale: string]
+}>()
 
 const { t, locale: adminLocale } = useI18n()
 const { definitions } = useCmsContext()
@@ -75,6 +77,7 @@ const onMessage = (event: MessageEvent) => {
       'select',
       section.id,
       field !== undefined && Object.hasOwn(fields, field) ? field : undefined,
+      locale.value,
     )
   }
 }

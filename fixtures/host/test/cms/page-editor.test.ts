@@ -226,6 +226,43 @@ test('a click in the frame selects the section and focuses its field; others are
   }
 })
 
+test('a click in the Italian preview edits and saves the Italian text', async () => {
+  const created = await twoHeroes()
+  const [hero, stats] = created.draft.sections
+  const text = mountAdmin(`/admin/cms/pages/${created.id}`)
+  await expect.poll(() => input('sections.0.title.en')).toBeTruthy()
+  const titleField = () => document.querySelector('[data-field="title"]')!
+  const titleTab = () =>
+    titleField().querySelector('[role="tab"][aria-selected="true"]')?.textContent?.trim()
+  await pick(region('Náhľad')!, 'Taliančina')
+  await expect.poll(() => frame()?.src).toContain('locale=it')
+
+  // The closing language list hands focus back after a tick; click until focus stays.
+  await expect.poll(() => (select(hero!.id, 'title'), focused())).toBe('sections.0.title.it')
+  expect(titleTab()).toBe('Taliančina')
+
+  const english = [...titleField().querySelectorAll('[role="tab"]')].find(
+    (tab) => tab.textContent?.trim() === 'Angličtina',
+  )!
+  english.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }))
+  await expect.poll(titleTab).toBe('Angličtina')
+  select(stats!.id, 'note')
+  await expect.poll(focused).toBe('sections.1.note')
+  select(hero!.id)
+  await expect.poll(focused).toBe('sections.0.title.it')
+  expect(titleTab()).toBe('Taliančina')
+  const typing = document.activeElement as HTMLInputElement
+  typing.value = 'Titolo dal riquadro'
+  typing.dispatchEvent(new Event('input'))
+
+  button('Uložiť koncept')!.click()
+  await expect.poll(text).toContain('Koncept uložený.')
+  expect((await stored(created.id)).draft.sections[0]!.data.title).toEqual({
+    en: 'First',
+    it: 'Titolo dal riquadro',
+  })
+})
+
 test('the outline selects, moves, removes and adds sections', async () => {
   const created = await twoHeroes()
   mountAdmin(`/admin/cms/pages/${created.id}`)

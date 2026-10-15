@@ -5,6 +5,7 @@
  */
 import { useI18n } from '@opulonjs/admin'
 import LocaleTabs from '@opulonjs/ui/components/LocaleTabs'
+import { reactive } from 'vue'
 import { type FieldGroup, labelText } from '../api.ts'
 import FieldControl from './FieldControl.vue'
 
@@ -18,6 +19,10 @@ defineProps<{
 }>()
 
 const { locale } = useI18n()
+const shownLocales = reactive<Record<string, string>>({})
+defineExpose({
+  showLocale: (field: string, code: string) => (shownLocales[field] = code),
+})
 
 /** A localized field's `{ [locale]: value }`, created on first use. */
 const localized = (data: Record<string, unknown>, field: string) => {
@@ -34,7 +39,7 @@ const localized = (data: Record<string, unknown>, field: string) => {
         <legend class="text-sm font-medium text-highlighted">
           {{ labelText(field.label, locale) }}
         </legend>
-        <LocaleTabs :locales="locales">
+        <LocaleTabs v-model="shownLocales[key]" :locales="locales">
           <template v-for="code in locales" :key="code" #[code]>
             <FieldControl
               v-model="localized(data, String(key))[code]"

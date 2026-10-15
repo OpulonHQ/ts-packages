@@ -19,6 +19,8 @@ const props = defineProps<{
   /** Tab labels by locale code; default: the language's name in the admin locale. */
   labels?: Readonly<Record<string, string>>
 }>()
+/** The locale whose tab is shown; default: the first. */
+const shown = defineModel<string>()
 
 const { code } = useLocale()
 const items = computed<TabsItem[]>(() => {
@@ -32,6 +34,7 @@ const items = computed<TabsItem[]>(() => {
 
 <template>
   <UTabs
+    v-model="shown"
     :items="items"
     :default-value="locales[0]"
     :unmount-on-hide="false"

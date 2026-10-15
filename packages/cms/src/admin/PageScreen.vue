@@ -4,7 +4,7 @@ import { UButton } from '@opulonjs/ui'
 import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
 import StatusBadge from '@opulonjs/ui/components/StatusBadge'
-import { computed, nextTick, ref, shallowRef, useId, watch, useTemplateRef } from 'vue'
+import { computed, ref, shallowRef, useId, watch, useTemplateRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { labelText, type Page, type PageDocument, type PageLocale } from '../api.ts'
 import { emptyLocale } from '../localize.ts'
@@ -49,6 +49,7 @@ const locales = computed(() => pages.contentLocales.value)
 const canEdit = computed(() => pages.can('cms.pages.edit'))
 const locked = computed(() => !canEdit.value || pending.value || revisionPending.value)
 const form = useTemplateRef<HTMLFormElement>('form')
+const sectionForms = useTemplateRef('sectionForms')
 useFocusReturn(
   () => pending.value || revisionPending.value,
   () => form.value,
@@ -73,23 +74,25 @@ const selectedIndex = computed(() => {
 })
 
 const usable = (el: HTMLElement) =>
-  !el.matches(':disabled, [tabindex="-1"], [aria-hidden="true"]') &&
+  !el.matches(':disabled, [tabindex="-1"], [aria-hidden="true"], [hidden] *') &&
   el.checkVisibility?.() !== false
 const firstControl = (root: Element) =>
   [...root.querySelectorAll<HTMLElement>('input, textarea, select, [contenteditable="true"]')].find(
     usable,
   ) ?? [...root.querySelectorAll<HTMLElement>('button:not([role="tab"])')].find(usable)
-async function focusField(sectionId: string, field: string | undefined) {
-  selection.value = { kind: 'section', id: sectionId }
-  await nextTick()
+async function focusField(sectionId: string, field: string | undefined, contentLocale: string) {
   const panel = document.getElementById(`${panels}-${sectionId}`)
+  const type = draft.value?.sections.find((s) => s.id === sectionId)?.type
+  const name = field ?? Object.keys((type && definitions.sections[type]?.fields) ?? {})[0]
   if (!panel) return
-  const wrapper =
-    field === undefined
-      ? undefined
-      : [...panel.querySelectorAll<HTMLElement>('[data-field]')].find(
-          (el) => el.dataset.field === field,
-        )
+  selection.value = { kind: 'section', id: sectionId }
+  if (name !== undefined)
+    sectionForms.value?.find((f) => panel.contains(f?.$el))?.showLocale(name, contentLocale)
+  // A locale tab's panel is shown a few ticks after its tab is chosen.
+  await new Promise(requestAnimationFrame)
+  const wrapper = [...panel.querySelectorAll<HTMLElement>('[data-field]')].find(
+    (el) => el.dataset.field === name,
+  )
   const control = (wrapper && firstControl(wrapper)) ?? firstControl(panel) ?? panel
   control.focus()
 }
@@ -254,6 +257,7 @@ const reload = (done = '') => run(() => pages.get(page.value!.id), done, show)
               >
                 <FieldsForm
                   v-if="definitions.sections[section.type]"
+                  ref="sectionForms"
                   v-model:data="section.data"
                   :group="definitions.sections[section.type]!"
                   :locales="locales"
