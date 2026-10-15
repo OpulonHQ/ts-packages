@@ -1,7 +1,3 @@
-// Page editor in three panes with the live preview (TSPACK-73): the frame shows unsaved edits,
-// a click in the frame focuses the field's input, the panes stack at phone width, and Save and
-// Publish still store what is on screen.
-// ui.sh journeys/cms-live-preview.mjs (VERIFY_VIDEO=1 for a recording)
 import signedIn from './signed-in.mjs'
 
 export default async (ctx) => {

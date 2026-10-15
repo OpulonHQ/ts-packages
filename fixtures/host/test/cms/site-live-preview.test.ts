@@ -8,7 +8,6 @@ import { createApp, defineComponent, h, nextTick, type PropType } from 'vue'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import type { definitions } from '../../cms/definitions.ts'
 
-// Runs in the `admin` vitest project (happy-dom): the site side of the admin's live preview.
 const admin = 'https://admin.test'
 
 const data = { type: Object as PropType<Record<string, unknown>>, required: true } as const

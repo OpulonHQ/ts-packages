@@ -18,7 +18,6 @@ import { server } from './server/opulon.ts'
 
 export interface Env {
   readonly HYPERDRIVE: { readonly connectionString: string }
-  /** Static assets (fixtures/host/public): the admin build in public/admin, the site in public/site. */
   readonly ASSETS: AssetsBinding
   /** R2 bucket holding media originals. */
   readonly MEDIA_BUCKET: R2BucketLike
@@ -36,7 +35,6 @@ const withCacheControl = (response: Response, value: string) => {
   return copy
 }
 
-/** The admin's live preview target (site/, built into public/site): the client-rendered shell. */
 const serveSite = async (request: Request, assets: AssetsBinding) => {
   const url = new URL(request.url)
   if (url.pathname !== '/site' && !url.pathname.startsWith('/site/')) return undefined
@@ -65,8 +63,6 @@ export const hostWorker = (mailer: Layer.Layer<Mailer> = Mailer.log) => {
   })
   return {
     ...opulon,
-    // The preview site (only /site/**), the admin SPA (only /admin/**), media originals (only
-    // /media/**), then the composed API.
     async fetch(request: Request, env: Env, ctx: WorkerContext): Promise<Response> {
       return (
         (await serveSite(request, env.ASSETS)) ??

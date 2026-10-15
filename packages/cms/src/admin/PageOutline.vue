@@ -1,8 +1,4 @@
 <script setup lang="ts">
-/**
- * The page editor's left pane: page settings, then the ordered sections to select, move,
- * remove and add. Edits `sections` in place.
- */
 import { useI18n } from '@opulonjs/admin'
 import { UButton } from '@opulonjs/ui'
 import FieldSelect from '@opulonjs/ui/components/Field/Select'

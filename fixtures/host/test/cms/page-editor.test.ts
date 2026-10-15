@@ -6,7 +6,6 @@ import { definitions } from '../../cms/definitions.ts'
 import { useAdminLifetime } from '../admin-lifetime.ts'
 import { page, section, useCmsHost } from './helpers.ts'
 
-// Runs in the `admin` vitest project (happy-dom); the test plays the preview frame's side.
 const admin = useAdminLifetime()
 const host = admin.track(useCmsHost())
 
@@ -41,7 +40,6 @@ const inputsHeading = () =>
 const frame = () => document.querySelector('iframe')
 const focused = () => document.activeElement?.getAttribute('name')
 
-/** Replaces the current frame's `postMessage`; returns what the admin posts to it. */
 const listen = () => vi.spyOn(frame()!.contentWindow!, 'postMessage').mockImplementation(() => {})
 const previews = (posted: ReturnType<typeof listen>) =>
   posted.mock.calls.flatMap(([message, origin]) =>
@@ -61,7 +59,6 @@ const ready = () => fromFrame({ type: 'opulon:cms:ready' })
 const select = (sectionId: string, field?: string) =>
   fromFrame({ type: 'opulon:cms:select', sectionId, ...(field === undefined ? {} : { field }) })
 
-/** Picks `option` in the one select menu inside `root`. */
 const pick = async (root: ParentNode, option: string) => {
   root.querySelector<HTMLElement>('[aria-haspopup="listbox"]')!.click()
   const item = () =>

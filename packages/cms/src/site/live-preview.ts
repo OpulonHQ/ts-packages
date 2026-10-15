@@ -1,5 +1,3 @@
-// The admin's live preview, both directions of its postMessage wire format and the site side.
-// Effect-free: `vue` and type imports only.
 import {
   computed,
   type ComputedRef,
@@ -56,7 +54,6 @@ const parsePreview = (value: unknown): PagePreview | undefined => {
   }
 }
 
-/** A message a preview frame received, if it is a well-formed `AdminMessage`. */
 const parseAdminMessage = (data: unknown): AdminMessage | undefined => {
   if (!isRecord(data) || data.type !== 'opulon:cms:preview') return undefined
   const preview = parsePreview(data.preview)

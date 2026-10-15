@@ -9,8 +9,6 @@ import {
 import { createApp, defineComponent, h, type PropType, shallowRef } from 'vue'
 import type { definitions } from '../cms/definitions.ts'
 
-// The admin's live preview target: /site/?preview=<page id>&locale=<locale>, framed by the
-// page editor on the same origin, so the editor's session cookie loads the draft.
 const text = (value: unknown) =>
   typeof value === 'string' || typeof value === 'number' ? String(value) : ''
 

@@ -1,5 +1,3 @@
-// Client-safe, no runtime imports: the server (Read API, preview) and the admin's live preview
-// localize documents with the same code.
 import type {
   CmsDefinitions,
   FieldGroup,
@@ -48,10 +46,6 @@ const localizeSection = (
   return type ? { ...section, data: localizeData(type, section.data, locale, fallback) } : section
 }
 
-/**
- * A page's draft as a site renders it in one locale: the requested content locale, else the
- * default (the first of `locales`), localized fields falling back to the default.
- */
 export const pagePreview = (
   definitions: CmsDefinitions,
   locales: ReadonlyArray<string>,

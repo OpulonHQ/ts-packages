@@ -1,8 +1,4 @@
 <script setup lang="ts">
-/**
- * The page editor's live preview: the host site's page in a frame, sent the unsaved draft as
- * the site renders it. A click in the frame comes back as `select`.
- */
 import { useI18n } from '@opulonjs/admin'
 import { languageName, UButton } from '@opulonjs/ui'
 import FieldSelect from '@opulonjs/ui/components/Field/Select'
