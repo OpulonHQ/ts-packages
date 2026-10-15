@@ -213,13 +213,13 @@ const reload = (done = '') => run(() => pages.get(page.value!.id), done, show)
 
       <ActionStatus :status="status" @reload="reload()" />
 
-      <form ref="form" tabindex="-1" :aria-label="title" @submit.prevent="save">
+      <form ref="form" tabindex="-1" :aria-label="title" class="@container" @submit.prevent="save">
         <fieldset :disabled="pending || revisionPending" class="min-w-0">
           <div
             class="grid grid-cols-1 gap-4"
             :class="
               preview
-                ? 'lg:grid-cols-[16rem_minmax(0,1fr)_22rem]'
+                ? '@2xl:grid-cols-[20rem_minmax(0,1fr)] @5xl:grid-cols-[16rem_minmax(0,1fr)_22rem]'
                 : 'md:grid-cols-[16rem_minmax(0,1fr)]'
             "
           >
@@ -234,7 +234,7 @@ const reload = (done = '') => run(() => pages.get(page.value!.id), done, show)
               :page="page"
               :url="preview.url"
               :draft="draft"
-              class="min-w-0"
+              class="min-w-0 @2xl:col-start-2 @2xl:row-span-2 @2xl:row-start-1 @5xl:row-span-1"
               @select="focusField"
             />
             <section :aria-labelledby="inputsHeading" class="min-w-0 space-y-4">
