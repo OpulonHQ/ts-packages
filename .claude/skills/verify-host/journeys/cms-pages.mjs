@@ -1,4 +1,4 @@
-// New page -> path, available, SEO title -> Save draft -> Publish -> the Read API serves it.
+// New page -> Blank page -> path, available, SEO title -> Save draft -> Publish -> the Read API serves it.
 // ui.sh journeys/cms-pages.mjs email=<user with cms rights> password=<password>
 import signedIn from './signed-in.mjs'
 
@@ -10,6 +10,7 @@ export default async (ctx) => {
   await page.goto(`${base}/admin/cms/pages`)
   const create = page.waitForResponse((r) => r.url().endsWith('/api/cms/pages') && r.request().method() === 'POST')
   await page.getByRole('button', { name: 'New page' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: /^Blank page/ }).click()
   check((await create).status() === 200, 'New page: POST /api/cms/pages 200')
   await page.waitForURL(/\/admin\/cms\/pages\/[0-9a-f-]{36}/)
   const id = page.url().split('/').pop()
