@@ -1,6 +1,3 @@
-// New page -> pick the fixture's `Landing page` template -> the editor shows its sections and
-// values -> path, available -> Save draft -> Publish -> the Read API serves the template's sections.
-// ui.sh journeys/cms-page-templates.mjs email=<user with cms rights> password=<password>
 import signedIn from './signed-in.mjs'
 
 export default async (ctx) => {

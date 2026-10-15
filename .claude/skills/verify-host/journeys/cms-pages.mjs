@@ -1,4 +1,3 @@
-// New page -> Blank page -> path, available, SEO title -> Save draft -> Publish -> the Read API serves it.
 // ui.sh journeys/cms-pages.mjs email=<user with cms rights> password=<password>
 import signedIn from './signed-in.mjs'
 

@@ -1,6 +1,3 @@
-// Type-level test, checked by `pnpm typecheck`: the components map must cover every section
-// type of the host's definitions (`rich_text` defaults to the shipped component), and page
-// templates may only name section types of their definitions.
 import { defineCms } from '@opulonjs/cms/api'
 import { CmsRichText, sectionComponents } from '@opulonjs/cms/site'
 import { defineComponent } from 'vue'

@@ -1,4 +1,4 @@
-import { defineCms, fields } from '@opulonjs/cms/api'
+import { defineCms, fields, type PageTemplate, type SectionType } from '@opulonjs/cms/api'
 import { expect, test } from 'vitest'
 import { page, section, useCmsHost } from './helpers.ts'
 
@@ -111,22 +111,21 @@ test('references must name a defined collection; title fields must be fields', (
   ).toThrow('the title field "name" of collection "team" is not a field')
 })
 
-const templated = (
-  sections: ReadonlyArray<{ type: 'hero' | 'rich_text'; data?: Record<string, unknown> }>,
-) =>
+const hostSections: Record<string, SectionType> = {
+  hero: { label: 'Hero', fields: { title: fields.text({ label: 'Title', maxLength: 20 }) } },
+}
+const templated = (sections: PageTemplate['sections']) =>
   defineCms({
-    sections: {
-      hero: { label: 'Hero', fields: { title: fields.text({ label: 'Title', maxLength: 20 }) } },
-    },
+    sections: hostSections,
     systemPages: {},
     templates: { landing: { label: 'Landing', sections } },
   })
 
 test('templates prefill sections in the stored shape and are kept on the definitions', () => {
   const sections = [
-    { type: 'hero' as const, data: { title: { en: 'Welcome' } } },
-    { type: 'rich_text' as const, data: { body: { en: '<p>Hi</p>' } } },
-    { type: 'hero' as const },
+    { type: 'hero', data: { title: { en: 'Welcome' } } },
+    { type: 'rich_text', data: { body: { en: '<p>Hi</p>' } } },
+    { type: 'hero' },
   ]
   expect(templated(sections).templates).toEqual({ landing: { label: 'Landing', sections } })
   expect(defineCms({ sections: {}, systemPages: {} }).templates).toEqual({})
@@ -154,7 +153,6 @@ test.each([
     'template "landing", section 1 ("hero") has invalid data',
   ],
 ])('a template with %s fails composition', (_, sections, message) => {
-  // @ts-expect-error: an invalid template is also a type error where TypeScript can see it
   expect(() => templated(sections)).toThrow(message)
 })
 
