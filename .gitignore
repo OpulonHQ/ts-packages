@@ -7,6 +7,7 @@ dist/
 # Deploy copy of a wrangler config with real ids (public repo).
 wrangler.deploy.jsonc
 fixtures/host/public/admin/
+fixtures/host/public/site/
 .vitest/
 .nuxt/
 .output/

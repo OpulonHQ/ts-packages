@@ -9,6 +9,7 @@ source "$(dirname "$0")/../../../.claude/skills/verify-host/scripts/env.sh"
 host="$root/fixtures/host"
 
 [ -f "$host/public/admin/index.html" ] || { echo "verify-host: run pnpm build first" >&2; exit 1; }
+[ -f "$host/public/site/index.html" ] || { echo "verify-host: run pnpm build first" >&2; exit 1; }
 [ -f "$root/packages/core/dist/cli.mjs" ] || { echo "verify-host: run pnpm build first" >&2; exit 1; }
 
 psql "$admin_url" -tAc "select 1 from pg_database where datname = '$db'" | grep -q 1 ||

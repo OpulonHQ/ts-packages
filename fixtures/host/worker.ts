@@ -18,7 +18,7 @@ import { server } from './server/opulon.ts'
 
 export interface Env {
   readonly HYPERDRIVE: { readonly connectionString: string }
-  /** Static assets (fixtures/host/public); the admin build lands in public/admin. */
+  /** Static assets (fixtures/host/public): the admin build in public/admin, the site in public/site. */
   readonly ASSETS: AssetsBinding
   /** R2 bucket holding media originals. */
   readonly MEDIA_BUCKET: R2BucketLike
@@ -28,6 +28,25 @@ export interface Env {
   readonly USERS_BASE_URL: string
   /** Signs session cookies (a secret: `wrangler secret put`). */
   readonly USERS_AUTH_SECRET: string
+}
+
+const withCacheControl = (response: Response, value: string) => {
+  const copy = new Response(response.body, response)
+  copy.headers.set('cache-control', value)
+  return copy
+}
+
+/** The admin's live preview target (site/, built into public/site): the client-rendered shell. */
+const serveSite = async (request: Request, assets: AssetsBinding) => {
+  const url = new URL(request.url)
+  if (url.pathname !== '/site' && !url.pathname.startsWith('/site/')) return undefined
+  if (request.method !== 'GET' && request.method !== 'HEAD') return undefined
+  if (url.pathname.startsWith('/site/assets/')) {
+    const file = await assets.fetch(request)
+    return file.ok ? withCacheControl(file, 'public, max-age=31536000, immutable') : file
+  }
+  const index = await assets.fetch(new Request(new URL('/site/index.html', url), request))
+  return withCacheControl(index, 'no-store')
 }
 
 /** The fixture Worker with a given Mailer; tests pass `captureMailer().layer`. */
@@ -46,9 +65,11 @@ export const hostWorker = (mailer: Layer.Layer<Mailer> = Mailer.log) => {
   })
   return {
     ...opulon,
-    // The admin SPA (only /admin/**), media originals (only /media/**), then the composed API.
+    // The preview site (only /site/**), the admin SPA (only /admin/**), media originals (only
+    // /media/**), then the composed API.
     async fetch(request: Request, env: Env, ctx: WorkerContext): Promise<Response> {
       return (
+        (await serveSite(request, env.ASSETS)) ??
         (await serveAdmin(request, env.ASSETS)) ??
         (await serveMedia(request, r2MediaStorage(env.MEDIA_BUCKET))) ??
         opulon.fetch(request, env, ctx)

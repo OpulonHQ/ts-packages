@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Page preview</title>
+    <style>
+      body {
+        margin: 0;
+        font:
+          16px/1.5 system-ui,
+          sans-serif;
+        color: #1c1917;
+      }
+      section,
+      [role='alert'] {
+        padding: 2rem 1.5rem;
+      }
+      [data-cms-section] {
+        cursor: pointer;
+      }
+      [data-cms-section]:hover {
+        outline: 2px solid #2563eb;
+        outline-offset: -2px;
+      }
+      .hero-dark {
+        background: #1c1917;
+        color: #fafaf9;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
