@@ -49,7 +49,7 @@ const locales = computed(() => pages.contentLocales.value)
 const canEdit = computed(() => pages.can('cms.pages.edit'))
 const locked = computed(() => !canEdit.value || pending.value || revisionPending.value)
 const form = useTemplateRef<HTMLFormElement>('form')
-const sectionForms = useTemplateRef('sectionForms')
+const shownLocales = ref<Record<string, Readonly<Record<string, string>>>>({})
 useFocusReturn(
   () => pending.value || revisionPending.value,
   () => form.value,
@@ -82,16 +82,14 @@ const firstControl = (root: Element) =>
   ) ?? [...root.querySelectorAll<HTMLElement>('button:not([role="tab"])')].find(usable)
 async function focusField(sectionId: string, field: string | undefined, contentLocale: string) {
   const panel = document.getElementById(`${panels}-${sectionId}`)
-  const type = draft.value?.sections.find((s) => s.id === sectionId)?.type
-  const name = field ?? Object.keys((type && definitions.sections[type]?.fields) ?? {})[0]
   if (!panel) return
   selection.value = { kind: 'section', id: sectionId }
-  if (name !== undefined)
-    sectionForms.value?.find((f) => panel.contains(f?.$el))?.showLocale(name, contentLocale)
+  if (field !== undefined)
+    shownLocales.value[sectionId] = { ...shownLocales.value[sectionId], [field]: contentLocale }
   // A locale tab's panel is shown a few ticks after its tab is chosen.
   await new Promise(requestAnimationFrame)
   const wrapper = [...panel.querySelectorAll<HTMLElement>('[data-field]')].find(
-    (el) => el.dataset.field === name,
+    (el) => el.dataset.field === field,
   )
   const control = (wrapper && firstControl(wrapper)) ?? firstControl(panel) ?? panel
   control.focus()
@@ -257,7 +255,7 @@ const reload = (done = '') => run(() => pages.get(page.value!.id), done, show)
               >
                 <FieldsForm
                   v-if="definitions.sections[section.type]"
-                  ref="sectionForms"
+                  v-model:shown-locales="shownLocales[section.id]"
                   v-model:data="section.data"
                   :group="definitions.sections[section.type]!"
                   :locales="locales"

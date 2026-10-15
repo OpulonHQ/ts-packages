@@ -6,7 +6,7 @@ import {
   useCmsLivePreview,
 } from '@opulonjs/cms/site'
 import { createApp, defineComponent, type FunctionalComponent, h, nextTick, reactive } from 'vue'
-import { expect, type Mock, onTestFinished, test, vi } from 'vitest'
+import { expect, onTestFinished, test, vi } from 'vitest'
 import type { definitions } from '../../cms/definitions.ts'
 
 const admin = 'https://admin.test'
@@ -243,7 +243,7 @@ test('after unmount, messages and clicks do nothing', async () => {
   expect(parent.postMessage).not.toHaveBeenCalled()
 })
 
-const leftPreview = async (site: ReturnType<typeof mount>, parent: { postMessage: Mock }) => {
+const leftPreview = async (site: ReturnType<typeof mount>, parent: ReturnType<typeof inFrame>) => {
   expect(site.title()).toBe('Welcome')
   expect(site.el.querySelector('[data-cms-section]')).toBeNull()
   parent.postMessage.mockClear()
@@ -287,7 +287,7 @@ test('a URL change seen by the Navigation API ends and restarts live mode', asyn
 
 test('clearing a reactive admin origin ends live mode', async () => {
   const parent = inFrame()
-  const options = reactive<CmsLivePreviewOptions>({ adminOrigin: admin })
+  const options = reactive<{ adminOrigin: string | undefined }>({ adminOrigin: admin })
   const site = mount(options)
   await send(edited('Live draft'))
   expect(site.title()).toBe('Live draft')

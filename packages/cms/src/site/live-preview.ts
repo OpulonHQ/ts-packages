@@ -114,6 +114,7 @@ export const useCmsLivePreview = (
     const search = ref(location.search)
     const syncUrl = () => (search.value = location.search)
     const inPreview = computed(() => new URLSearchParams(search.value).has('preview'))
+    const stillInPreview = () => (syncUrl(), inPreview.value)
     const origin = computed(() => httpUrl(options.adminOrigin)?.origin)
     window.navigation?.addEventListener('currententrychange', syncUrl)
     onScopeDispose(() => window.navigation?.removeEventListener('currententrychange', syncUrl))
@@ -124,17 +125,16 @@ export const useCmsLivePreview = (
       const post = (message: FrameMessage) => admin.postMessage(message, adminOrigin)
 
       const onMessage = (event: MessageEvent) => {
-        syncUrl()
-        if (!inPreview.value || event.origin !== adminOrigin || event.source !== admin) return
+        if (!stillInPreview() || event.origin !== adminOrigin || event.source !== admin) return
         const message = parseAdminMessage(event.data)
         if (message && samePage(message.preview)) received.value = message.preview
       }
       const onClick = (event: Event) => {
-        syncUrl()
+        if (!stillInPreview()) return
         const target = elementOf(event.target)
         const section = target?.closest('[data-cms-section]')
         const sectionId = section?.getAttribute('data-cms-section')
-        if (!inPreview.value || !target || !section || !sectionId) return
+        if (!target || !section || !sectionId) return
         if (!preview.value?.sections.some((s) => s.id === sectionId)) return
         const field = target.closest('[data-cms-field]')
         const name = field && section.contains(field) ? field.getAttribute('data-cms-field') : null

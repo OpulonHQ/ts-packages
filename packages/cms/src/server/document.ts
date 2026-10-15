@@ -4,7 +4,6 @@ import {
   type CmsDefinitions,
   type FieldGroup,
   labelText,
-  type Link,
   type PageDocument,
   type PageLocale,
   type Section,
@@ -13,7 +12,7 @@ import {
 } from '../api.ts'
 import { linkProblem, maxSections, uuid } from '../document-rules.ts'
 import { emptyLocale, isRecord } from '../localize.ts'
-import { sanitizeRichText } from '../sanitize.ts'
+import { cleanFields, isLink, present } from '../sanitize.ts'
 
 /** Locale-relative path: `/` or lowercase segments of letters, digits and dashes. */
 const pathPattern = /^\/(?:[\p{Ll}\p{Lo}\p{N}-]+(?:\/[\p{Ll}\p{Lo}\p{N}-]+)*)?$/u
@@ -73,10 +72,6 @@ const cleanLocale = (locale: string, given: PageLocale | undefined, withPaths = 
     }
   })
 
-const present = (value: unknown) => value !== null && value !== undefined && value !== ''
-
-const isLink = (value: unknown): value is Link => isRecord(value) && typeof value.type === 'string'
-
 /** Decodes a field group's data against its fields, drops empty values and unknown locales,
  *  checks links and sanitizes rich text. */
 export const cleanData = (
@@ -98,30 +93,7 @@ export const cleanData = (
         if (problem) return yield* invalid(`"${labelText(field.label, 'en')}": ${problem}`)
       }
     }
-    const clean = (kind: string, value: unknown) =>
-      kind === 'richText' && typeof value === 'string'
-        ? sanitizeRichText(value)
-        : kind === 'link' && isLink(value) && value.type === 'url'
-          ? { type: 'url', url: value.url.trim() }
-          : value
-    const out: Record<string, unknown> = {}
-    for (const [name, field] of Object.entries(type.fields)) {
-      const value = decoded[name]
-      if (!present(value)) continue
-      if (field.localized) {
-        const values = Object.fromEntries(
-          Object.entries(isRecord(value) ? value : {})
-            .filter(([locale]) => locales.includes(locale))
-            .map(([locale, v]) => [locale, clean(field.kind, v)])
-            .filter(([, v]) => present(v)),
-        )
-        if (Object.keys(values).length > 0) out[name] = values
-      } else {
-        const v = clean(field.kind, value)
-        if (present(v)) out[name] = v
-      }
-    }
-    return out
+    return cleanFields(type, decoded, locales)
   })
 
 /**

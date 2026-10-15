@@ -5,8 +5,8 @@ import FieldSelect from '@opulonjs/ui/components/Field/Select'
 import { computed, onScopeDispose, ref, useId, useTemplateRef, watch } from 'vue'
 import type { Page, PageDocument } from '../api.ts'
 import type { CmsPreviewOptions } from './context.ts'
-import { isRecord, pagePreview } from '../localize.ts'
-import { sanitizeRichText } from '../sanitize.ts'
+import { pagePreview } from '../localize.ts'
+import { cleanFields } from '../sanitize.ts'
 import { type AdminMessage, httpUrl, parseFrameMessage } from '../site/live-preview.ts'
 import { useCmsContext, usePages } from './use-cms.ts'
 
@@ -36,20 +36,11 @@ const src = computed(() => target.value?.href)
 let ready = false
 watch(src, () => (ready = false))
 
-const clean = (value: unknown) => (typeof value === 'string' ? sanitizeRichText(value) : value)
-const sanitized = (draft: PageDocument): PageDocument => ({
+const saved = (draft: PageDocument): PageDocument => ({
   ...draft,
   sections: draft.sections.map((section) => {
-    const data = { ...section.data }
-    for (const [name, field] of Object.entries(definitions.sections[section.type]?.fields ?? {})) {
-      const value = data[name]
-      if (field.kind !== 'richText' || value === undefined) continue
-      data[name] =
-        field.localized && isRecord(value)
-          ? Object.fromEntries(Object.entries(value).map(([code, v]) => [code, clean(v)]))
-          : clean(value)
-    }
-    return { ...section, data }
+    const type = definitions.sections[section.type]
+    return type ? { ...section, data: cleanFields(type, section.data, locales.value) } : section
   }),
 })
 
@@ -63,7 +54,7 @@ const send = () => {
     preview: pagePreview(
       definitions,
       locales.value,
-      { id: props.page.id, draft: sanitized(props.draft) },
+      { id: props.page.id, draft: saved(props.draft) },
       locale.value,
     ),
   } satisfies AdminMessage
@@ -94,7 +85,7 @@ const onMessage = (event: MessageEvent) => {
     emit(
       'select',
       section.id,
-      field !== undefined && Object.hasOwn(fields, field) ? field : undefined,
+      field !== undefined && Object.hasOwn(fields, field) ? field : Object.keys(fields)[0],
       locale.value,
     )
   }

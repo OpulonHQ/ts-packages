@@ -36,15 +36,15 @@ export default async (ctx) => {
 
   for (const width of [1024, 1280]) {
     await page.setViewportSize({ width, height: 800 })
-    const [p, i, f, s] = [
+    const [pane, form, frameBox, select] = [
       await preview.boundingBox(),
       await inputs.boundingBox(),
       await iframe.boundingBox(),
       await preview.locator('[aria-haspopup="listbox"]').boundingBox(),
     ]
     const apart = (a, b) => a.x + a.width <= b.x + 1 || b.x + b.width <= a.x + 1 || a.y + a.height <= b.y + 1 || b.y + b.height <= a.y + 1
-    check(f.width >= 320, `${width}px: preview frame ${Math.round(f.width)}px wide`)
-    check(apart(p, i) && apart(s, i), `${width}px: preview and its language select stay clear of the inputs`)
+    check(frameBox.width >= 320, `${width}px: preview frame ${Math.round(frameBox.width)}px wide`)
+    check(apart(pane, form) && apart(select, form), `${width}px: preview and its language select stay clear of the inputs`)
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
     check(overflow <= 0, `${width}px: no horizontal scroll (overflow ${overflow}px)`)
     await shot(`layout-${width}`)

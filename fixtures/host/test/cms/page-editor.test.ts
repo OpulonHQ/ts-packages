@@ -1,8 +1,8 @@
 import type { Page, PagePreview } from '@opulonjs/cms/api'
-import { cmsAdmin } from '@opulonjs/cms/admin'
+import { cmsAdmin, type CmsAdminOptions } from '@opulonjs/cms/admin'
 import { defineComponent, h } from 'vue'
 import { expect, onTestFinished, test, vi } from 'vitest'
-import { adminModules } from '../../admin/modules.ts'
+import { adminModules, cmsOptions } from '../../admin/modules.ts'
 import { definitions } from '../../cms/definitions.ts'
 import { useAdminLifetime } from '../admin-lifetime.ts'
 import { page, section, useCmsHost } from './helpers.ts'
@@ -12,6 +12,8 @@ const host = admin.track(useCmsHost())
 
 const mountAdmin = (path: string, modules = adminModules) =>
   admin.mount(path, { fetch: host.fetch, modules })
+const withCms = (options: Partial<CmsAdminOptions>) =>
+  adminModules.map((m) => (m.id === 'cms' ? cmsAdmin({ ...cmsOptions, ...options }) : m))
 
 const button = (label: string, root: ParentNode = document) =>
   [...root.querySelectorAll('button')].find(
@@ -216,18 +218,10 @@ test('rich text a custom widget types reaches the frame sanitized, as the server
       },
     },
   }
-  const modules = adminModules.map((m) =>
-    m.id === 'cms'
-      ? cmsAdmin({
-          definitions: rawDefinitions,
-          widgets: {
-            color: () => import('../../cms/ColorWidget.vue'),
-            raw: async () => ({ default: RawHtml }),
-          },
-          preview: { url: ({ id, locale }) => `/site/?preview=${id}&locale=${locale}` },
-        })
-      : m,
-  )
+  const modules = withCms({
+    definitions: rawDefinitions,
+    widgets: { ...cmsOptions.widgets, raw: async () => ({ default: RawHtml }) },
+  })
   const text = mountAdmin(`/admin/cms/pages/${created.id}`, modules)
   await expect.poll(() => input('sections.0.body.en')).toBeTruthy()
   const posted = listen()
@@ -393,15 +387,7 @@ test('a click on a select or a switch in the frame focuses its control', async (
 
 test('a preview URL without the language still gets the chosen language', async () => {
   const created = await twoHeroes()
-  const modules = adminModules.map((m) =>
-    m.id === 'cms'
-      ? cmsAdmin({
-          definitions,
-          widgets: { color: () => import('../../cms/ColorWidget.vue') },
-          preview: { url: ({ id }) => `/site/?preview=${id}` },
-        })
-      : m,
-  )
+  const modules = withCms({ preview: { url: ({ id }) => `/site/?preview=${id}` } })
   mountAdmin(`/admin/cms/pages/${created.id}`, modules)
   await expect.poll(() => input('sections.0.title.en')).toBeTruthy()
   const shell = frame()
@@ -417,11 +403,7 @@ test('a preview URL without the language still gets the chosen language', async 
 
 test('without a preview the editor has two panes', async () => {
   const created = await twoHeroes()
-  const modules = adminModules.map((m) =>
-    m.id === 'cms'
-      ? cmsAdmin({ definitions, widgets: { color: () => import('../../cms/ColorWidget.vue') } })
-      : m,
-  )
+  const modules = withCms({ preview: undefined })
   mountAdmin(`/admin/cms/pages/${created.id}`, modules)
   await expect.poll(() => input('sections.0.title.en')).toBeTruthy()
   expect(frame()).toBeNull()
