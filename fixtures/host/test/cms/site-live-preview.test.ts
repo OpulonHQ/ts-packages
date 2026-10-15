@@ -4,24 +4,19 @@ import {
   sectionComponents,
   useCmsLivePreview,
 } from '@opulonjs/cms/site'
-import { createApp, defineComponent, h, nextTick, type PropType } from 'vue'
+import { createApp, defineComponent, type FunctionalComponent, h, nextTick } from 'vue'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import type { definitions } from '../../cms/definitions.ts'
 
 const admin = 'https://admin.test'
 
-const data = { type: Object as PropType<Record<string, unknown>>, required: true } as const
-const components = sectionComponents<typeof definitions>({
-  hero: defineComponent({
-    props: { data },
-    setup: (props) => () =>
-      h('section', [h('h1', { 'data-cms-field': 'title' }, String(props.data['title'])), 'tone']),
-  }),
-  stats: defineComponent({
-    props: { data },
-    setup: (props) => () => h('p', String(props.data['note'])),
-  }),
-})
+type SectionProps = { data: Record<string, unknown> }
+const Hero: FunctionalComponent<SectionProps> = (props) =>
+  h('section', [h('h1', { 'data-cms-field': 'title' }, String(props.data['title'])), 'tone'])
+Hero.props = ['data']
+const Stats: FunctionalComponent<SectionProps> = (props) => h('p', String(props.data['note']))
+Stats.props = ['data']
+const components = sectionComponents<typeof definitions>({ hero: Hero, stats: Stats })
 
 const initial: PagePreview = {
   id: 'page-1',
