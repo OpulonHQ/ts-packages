@@ -11,6 +11,7 @@ import {
   ref,
   shallowRef,
   toValue,
+  watchEffect,
 } from 'vue'
 import type { PagePreview } from '../api.ts'
 import { isRecord } from '../localize.ts'
@@ -87,9 +88,10 @@ const elementOf = (target: EventTarget | null) =>
 /**
  * The page preview to render: `initial`, replaced by the admin's unsaved draft of the same page
  * (in the language the admin previews) while the page runs framed in the admin with `?preview`
- * in its URL. A click on a
- * section (marked by `CmsSections`) or on a part marked `data-cms-field="<field>"` selects it in
- * the admin instead of acting. Server rendering and hydration see `initial` only.
+ * in its URL. A click on a section (marked by `CmsSections`) or on a part marked
+ * `data-cms-field="<field>"` selects it in the admin instead of acting. Live mode ends, and the
+ * draft is dropped, when the URL loses `?preview` or `options` (which may be reactive) loses its
+ * admin origin. Server rendering and hydration see `initial` only.
  */
 export const useCmsLivePreview = (
   initial: MaybeRefOrGetter<PagePreview | null | undefined>,
@@ -107,38 +109,51 @@ export const useCmsLivePreview = (
   )
 
   onMounted(() => {
-    const origin = httpUrl(options.adminOrigin)?.origin
     const admin = window.parent
-    if (!origin || admin === window || !new URLSearchParams(location.search).has('preview')) return
-    const post = (message: FrameMessage) => admin.postMessage(message, origin)
+    if (admin === window) return
+    const search = ref(location.search)
+    const syncUrl = () => (search.value = location.search)
+    const inPreview = computed(() => new URLSearchParams(search.value).has('preview'))
+    const origin = computed(() => httpUrl(options.adminOrigin)?.origin)
+    window.navigation?.addEventListener('currententrychange', syncUrl)
+    onScopeDispose(() => window.navigation?.removeEventListener('currententrychange', syncUrl))
 
-    const onMessage = (event: MessageEvent) => {
-      if (event.origin !== origin || event.source !== admin) return
-      const message = parseAdminMessage(event.data)
-      if (message && samePage(message.preview)) received.value = message.preview
-    }
-    const onClick = (event: Event) => {
-      const target = elementOf(event.target)
-      const section = target?.closest('[data-cms-section]')
-      const sectionId = section?.getAttribute('data-cms-section')
-      if (!target || !section || !sectionId) return
-      if (!preview.value?.sections.some((s) => s.id === sectionId)) return
-      const field = target.closest('[data-cms-field]')
-      const name = field && section.contains(field) ? field.getAttribute('data-cms-field') : null
-      event.preventDefault()
-      event.stopPropagation()
-      post({ type: 'opulon:cms:select', sectionId, field: name ?? undefined })
-    }
+    watchEffect((onCleanup) => {
+      const adminOrigin = origin.value
+      if (!adminOrigin || !inPreview.value) return
+      const post = (message: FrameMessage) => admin.postMessage(message, adminOrigin)
 
-    window.addEventListener('message', onMessage)
-    document.addEventListener('click', onClick, true)
-    live.value = true
-    onScopeDispose(() => {
-      window.removeEventListener('message', onMessage)
-      document.removeEventListener('click', onClick, true)
-      live.value = false
+      const onMessage = (event: MessageEvent) => {
+        syncUrl()
+        if (!inPreview.value || event.origin !== adminOrigin || event.source !== admin) return
+        const message = parseAdminMessage(event.data)
+        if (message && samePage(message.preview)) received.value = message.preview
+      }
+      const onClick = (event: Event) => {
+        syncUrl()
+        const target = elementOf(event.target)
+        const section = target?.closest('[data-cms-section]')
+        const sectionId = section?.getAttribute('data-cms-section')
+        if (!inPreview.value || !target || !section || !sectionId) return
+        if (!preview.value?.sections.some((s) => s.id === sectionId)) return
+        const field = target.closest('[data-cms-field]')
+        const name = field && section.contains(field) ? field.getAttribute('data-cms-field') : null
+        event.preventDefault()
+        event.stopPropagation()
+        post({ type: 'opulon:cms:select', sectionId, field: name ?? undefined })
+      }
+
+      window.addEventListener('message', onMessage)
+      document.addEventListener('click', onClick, true)
+      live.value = true
+      onCleanup(() => {
+        window.removeEventListener('message', onMessage)
+        document.removeEventListener('click', onClick, true)
+        received.value = undefined
+        live.value = false
+      })
+      post({ type: 'opulon:cms:ready' })
     })
-    post({ type: 'opulon:cms:ready' })
   })
 
   return preview

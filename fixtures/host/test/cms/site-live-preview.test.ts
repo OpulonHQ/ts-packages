@@ -1,11 +1,12 @@
 import {
+  type CmsLivePreviewOptions,
   CmsSections,
   type PagePreview,
   sectionComponents,
   useCmsLivePreview,
 } from '@opulonjs/cms/site'
-import { createApp, defineComponent, type FunctionalComponent, h, nextTick } from 'vue'
-import { expect, onTestFinished, test, vi } from 'vitest'
+import { createApp, defineComponent, type FunctionalComponent, h, nextTick, reactive } from 'vue'
+import { expect, type Mock, onTestFinished, test, vi } from 'vitest'
 import type { definitions } from '../../cms/definitions.ts'
 
 const admin = 'https://admin.test'
@@ -51,13 +52,14 @@ const inFrame = (search = '?preview=page-1') => {
   return parent
 }
 
-const mount = (adminOrigin: string | undefined) => {
+const mount = (adminOrigin: string | undefined | CmsLivePreviewOptions) => {
+  const options = typeof adminOrigin === 'object' ? adminOrigin : { adminOrigin }
   const el = document.createElement('div')
   document.body.append(el)
   let result: ReturnType<typeof useCmsLivePreview> | undefined
   const app = createApp(
     defineComponent(() => {
-      const preview = useCmsLivePreview(initial, { adminOrigin })
+      const preview = useCmsLivePreview(initial, options)
       result = preview
       return () => preview.value && h(CmsSections, { sections: preview.value.sections, components })
     }),
@@ -239,4 +241,58 @@ test('after unmount, messages and clicks do nothing', async () => {
   onTestFinished(() => stale.remove())
   expect(click(stale).defaultPrevented).toBe(false)
   expect(parent.postMessage).not.toHaveBeenCalled()
+})
+
+const leftPreview = async (site: ReturnType<typeof mount>, parent: { postMessage: Mock }) => {
+  expect(site.title()).toBe('Welcome')
+  expect(site.el.querySelector('[data-cms-section]')).toBeNull()
+  parent.postMessage.mockClear()
+  await send(edited('After preview'))
+  expect(site.title()).toBe('Welcome')
+  expect(click(site.el.querySelector('h1')!).defaultPrevented).toBe(false)
+  expect(parent.postMessage).not.toHaveBeenCalled()
+}
+
+test('after the URL drops ?preview, the next message or click finds the page inert', async () => {
+  const parent = inFrame()
+  const site = mount(admin)
+  await send(edited('Live draft'))
+  expect(site.title()).toBe('Live draft')
+
+  history.replaceState(null, '', '/home')
+  await send(edited('Late'))
+  await leftPreview(site, parent)
+})
+
+test('a URL change seen by the Navigation API ends and restarts live mode', async () => {
+  const navigation = new EventTarget()
+  Object.defineProperty(window, 'navigation', { value: navigation, configurable: true })
+  onTestFinished(() => void Reflect.deleteProperty(window, 'navigation'))
+  const parent = inFrame()
+  const site = mount(admin)
+  await send(edited('Live draft'))
+
+  history.replaceState(null, '', '/home')
+  navigation.dispatchEvent(new Event('currententrychange'))
+  await nextTick()
+  await leftPreview(site, parent)
+
+  history.replaceState(null, '', '?preview=page-1')
+  navigation.dispatchEvent(new Event('currententrychange'))
+  await nextTick()
+  expect(parent.postMessage.mock.calls).toEqual([[{ type: 'opulon:cms:ready' }, admin]])
+  await send(edited('Live again'))
+  expect(site.title()).toBe('Live again')
+})
+
+test('clearing a reactive admin origin ends live mode', async () => {
+  const parent = inFrame()
+  const options = reactive<CmsLivePreviewOptions>({ adminOrigin: admin })
+  const site = mount(options)
+  await send(edited('Live draft'))
+  expect(site.title()).toBe('Live draft')
+
+  options.adminOrigin = undefined
+  await nextTick()
+  await leftPreview(site, parent)
 })
