@@ -1,9 +1,4 @@
 <script setup lang="ts">
-/**
- * One page in three panes: the outline (page settings and the ordered sections), the live
- * preview when the host configured one, and the inputs of the selection. Save draft / publish /
- * unpublish / delete.
- */
 import { CachePurgeNotice, useI18n } from '@opulonjs/admin'
 import { UButton } from '@opulonjs/ui'
 import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'

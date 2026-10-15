@@ -15,10 +15,8 @@ import {
 import type { PagePreview } from '../api.ts'
 import { isRecord } from '../localize.ts'
 
-/** Admin -> preview frame: the unsaved draft as the site renders it. */
 export type AdminMessage = { readonly type: 'opulon:cms:preview'; readonly preview: PagePreview }
 
-/** Preview frame -> admin. */
 export type FrameMessage =
   | { readonly type: 'opulon:cms:ready' }
   | { readonly type: 'opulon:cms:select'; readonly sectionId: string; readonly field?: string }
@@ -60,7 +58,6 @@ const parseAdminMessage = (data: unknown): AdminMessage | undefined => {
   return preview && { type: 'opulon:cms:preview', preview }
 }
 
-/** A message the admin received from its preview frame, if it is a well-formed `FrameMessage`. */
 export const parseFrameMessage = (data: unknown): FrameMessage | undefined => {
   if (!isRecord(data)) return undefined
   if (data.type === 'opulon:cms:ready') return { type: 'opulon:cms:ready' }
@@ -71,7 +68,6 @@ export const parseFrameMessage = (data: unknown): FrameMessage | undefined => {
     : { type: 'opulon:cms:select', sectionId: data.sectionId, field: data.field }
 }
 
-/** Whether `CmsSections` renders inside an active live preview (it then marks section roots). */
 export const liveKey: InjectionKey<Readonly<Ref<boolean>>> = Symbol('opulon:cms:live')
 
 export interface CmsLivePreviewOptions {
@@ -79,7 +75,6 @@ export interface CmsLivePreviewOptions {
   readonly adminOrigin: string | undefined
 }
 
-/** `value` as an http(s) URL (relative to `base`, if given), else undefined. */
 export const httpUrl = (value: string | undefined, base?: string) => {
   if (value === undefined || !URL.canParse(value, base)) return undefined
   const url = new URL(value, base)

@@ -16,7 +16,6 @@ export const emptyLocale = (path = ''): PageLocale => ({
   seo: { title: '', description: '', image: null, noindex: false },
 })
 
-/** A field group's data in one locale: localized fields resolved, falling back to `fallback`. */
 export const localizeData = (
   group: FieldGroup,
   data: Readonly<Record<string, unknown>>,
