@@ -15,6 +15,7 @@ import {
   toValue,
 } from 'vue'
 import type { PagePreview } from '../api.ts'
+import { isRecord } from '../localize.ts'
 
 /** Admin -> preview frame: the unsaved draft as the site renders it. */
 export type AdminMessage = { readonly type: 'opulon:cms:preview'; readonly preview: PagePreview }
@@ -24,8 +25,6 @@ export type FrameMessage =
   | { readonly type: 'opulon:cms:ready' }
   | { readonly type: 'opulon:cms:select'; readonly sectionId: string; readonly field?: string }
 
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
 const isString = (value: unknown): value is string => typeof value === 'string'
 const isFilled = (value: unknown): value is string => isString(value) && value !== ''
 
@@ -58,7 +57,7 @@ const parsePreview = (value: unknown): PagePreview | undefined => {
 }
 
 /** A message a preview frame received, if it is a well-formed `AdminMessage`. */
-export const parseAdminMessage = (data: unknown): AdminMessage | undefined => {
+const parseAdminMessage = (data: unknown): AdminMessage | undefined => {
   if (!isRecord(data) || data.type !== 'opulon:cms:preview') return undefined
   const preview = parsePreview(data.preview)
   return preview && { type: 'opulon:cms:preview', preview }
@@ -83,10 +82,11 @@ export interface CmsLivePreviewOptions {
   readonly adminOrigin: string | undefined
 }
 
-const httpOrigin = (value: string | undefined) => {
-  if (value === undefined || !URL.canParse(value)) return undefined
-  const url = new URL(value)
-  return url.protocol === 'http:' || url.protocol === 'https:' ? url.origin : undefined
+/** `value` as an http(s) URL (relative to `base`, if given), else undefined. */
+export const httpUrl = (value: string | undefined, base?: string) => {
+  if (value === undefined || !URL.canParse(value, base)) return undefined
+  const url = new URL(value, base)
+  return url.protocol === 'http:' || url.protocol === 'https:' ? url : undefined
 }
 
 const elementOf = (target: EventTarget | null) =>
@@ -112,7 +112,7 @@ export const useCmsLivePreview = (
   })
 
   onMounted(() => {
-    const origin = httpOrigin(options.adminOrigin)
+    const origin = httpUrl(options.adminOrigin)?.origin
     const admin = window.parent
     if (!origin || admin === window || !new URLSearchParams(location.search).has('preview')) return
     const post = (message: FrameMessage) => admin.postMessage(message, origin)
@@ -132,11 +132,7 @@ export const useCmsLivePreview = (
       const name = field && section.contains(field) ? field.getAttribute('data-cms-field') : null
       event.preventDefault()
       event.stopPropagation()
-      post(
-        name
-          ? { type: 'opulon:cms:select', sectionId, field: name }
-          : { type: 'opulon:cms:select', sectionId },
-      )
+      post({ type: 'opulon:cms:select', sectionId, field: name ?? undefined })
     }
 
     window.addEventListener('message', onMessage)

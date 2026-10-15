@@ -87,9 +87,12 @@ async function focusField(sectionId: string, field: string | undefined) {
   await nextTick()
   const panel = document.getElementById(`${panels}-${sectionId}`)
   if (!panel) return
-  const wrapper = [...panel.querySelectorAll<HTMLElement>('[data-field]')].find(
-    (el) => field !== undefined && el.dataset.field === field,
-  )
+  const wrapper =
+    field === undefined
+      ? undefined
+      : [...panel.querySelectorAll<HTMLElement>('[data-field]')].find(
+          (el) => el.dataset.field === field,
+        )
   const control = (wrapper && firstControl(wrapper)) ?? firstControl(panel) ?? panel
   control.focus()
 }
@@ -229,6 +232,7 @@ const reload = (done = '') => run(() => pages.get(page.value!.id), done, show)
             <PreviewPane
               v-if="preview"
               :page="page"
+              :url="preview.url"
               :draft="draft"
               class="min-w-0"
               @select="focusField"
@@ -241,7 +245,7 @@ const reload = (done = '') => run(() => pages.get(page.value!.id), done, show)
                     : `${selectedIndex + 1}. ${typeLabel(draft.sections[selectedIndex]!.type)}`
                 }}
               </h2>
-              <div v-show="selection.kind === 'page'" :id="`${panels}-page`" tabindex="-1">
+              <div v-show="selection.kind === 'page'">
                 <LocaleDetails :value="draft.locales" :locales="locales" :disabled="locked" />
               </div>
               <div

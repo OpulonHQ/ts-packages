@@ -21,12 +21,11 @@ export default async (ctx) => {
     sections: [hero, stats],
   })
   const stored = async () => (await api('GET', `/pages/${created.id}`)).draft
-  const active = () => page.evaluate(() => document.activeElement?.getAttribute('name') ?? document.activeElement?.tagName)
 
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto(`${base}/admin/cms/pages/${created.id}`)
   const iframe = page.locator('iframe[title="Live preview of the page"]')
-  const frame = page.frameLocator('iframe[title="Live preview of the page"]')
+  const frame = iframe.contentFrame()
   await frame.locator('h1').filter({ hasText: `Live hero ${run}` }).waitFor()
   check(
     (await iframe.getAttribute('src')) === `${base}/site/?preview=${created.id}&locale=en`,
@@ -49,7 +48,7 @@ export default async (ctx) => {
   await frame.locator('[data-cms-field="note"]').click()
   await page.getByRole('region', { name: '2. Stats' }).waitFor()
   await page.waitForFunction(() => document.activeElement?.getAttribute('name') === 'sections.1.note')
-  check((await active()) === 'sections.1.note', 'clicking the stats note in the frame selects Stats and focuses its note input')
+  check(true, 'clicking the stats note in the frame selects Stats and focuses its note input')
   await shot('frame-click-focus')
   await page.keyboard.type(' typed after click')
   await frame.locator('[data-cms-field="note"]').filter({ hasText: 'Stats note typed after click' }).waitFor()
@@ -57,7 +56,7 @@ export default async (ctx) => {
 
   await outline.getByRole('button', { name: /^1\. Hero/ }).focus()
   await page.keyboard.press('Enter')
-  await page.getByRole('region', { name: '1. Hero' }).waitFor()
+  await inputs.waitFor()
   check(true, 'keyboard: Enter on the outline entry selects the section')
 
   await outline.getByRole('button', { name: 'Section type' }).click()
@@ -101,7 +100,7 @@ export default async (ctx) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.reload()
   await frame.locator('h1').filter({ hasText: `Edited hero ${run}` }).waitFor()
-  const [so, sp, si] = [await outline.boundingBox(), await preview.boundingBox(), await page.getByRole('region', { name: '1. Hero' }).boundingBox()]
+  const [so, sp, si] = [await outline.boundingBox(), await preview.boundingBox(), await inputs.boundingBox()]
   check(so.y < sp.y && sp.y < si.y && so.width <= 390 && sp.width <= 390, `phone: panes stacked (y ${Math.round(so.y)} < ${Math.round(sp.y)} < ${Math.round(si.y)})`)
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
   check(overflow <= 0, `phone: no horizontal scroll (overflow ${overflow}px)`)

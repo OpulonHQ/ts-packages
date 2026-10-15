@@ -32,7 +32,7 @@ Preconditions: a session with cms rights (smoke owner).
 
 - The page editor shows one selection's inputs: click `Page settings` in the `Page outline` before filling Path or SEO fields of a page that has sections (the first section is selected on load).
 - A `FieldSelect` trigger is a button named by its label (`getByRole('button', { name: 'Section type' })`), its choices are `option`s.
-- Reach the preview with `page.frameLocator('iframe[title="Live preview of the page"]')`.
+- Reach the preview with `page.locator('iframe[title="Live preview of the page"]').contentFrame()`.
 
 - There is no Title field: the list shows the en SEO title, else the en path, else `Untitled`.
 - `Available in this language` is off by default; without it the Read API does not serve the page.

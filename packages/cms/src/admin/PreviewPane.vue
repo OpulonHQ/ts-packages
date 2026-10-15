@@ -8,45 +8,40 @@ import { languageName, UButton } from '@opulonjs/ui'
 import FieldSelect from '@opulonjs/ui/components/Field/Select'
 import { computed, onScopeDispose, ref, useId, useTemplateRef, watch } from 'vue'
 import type { Page, PageDocument } from '../api.ts'
+import type { CmsPreviewOptions } from './context.ts'
 import { pagePreview } from '../localize.ts'
-import { type AdminMessage, parseFrameMessage } from '../site/live-preview.ts'
+import { type AdminMessage, httpUrl, parseFrameMessage } from '../site/live-preview.ts'
 import { useCmsContext, usePages } from './use-cms.ts'
 
-const props = defineProps<{ page: Page; draft: PageDocument }>()
+const props = defineProps<{ page: Page; draft: PageDocument; url: CmsPreviewOptions['url'] }>()
 const emit = defineEmits<{ select: [sectionId: string, field: string | undefined] }>()
 
 const { t, locale: adminLocale } = useI18n()
-const { definitions, preview } = useCmsContext()
+const { definitions } = useCmsContext()
 const locales = usePages().contentLocales
 const heading = useId()
 const picked = ref<string | number | null>(locales.value[0] ?? null)
 const locale = computed(() => (typeof picked.value === 'string' ? picked.value : ''))
 const width = ref<'desktop' | 'mobile'>('desktop')
-const ready = ref(false)
 const frame = useTemplateRef<HTMLIFrameElement>('frame')
 
 const localeItems = computed(() =>
   locales.value.map((code) => ({ value: code, label: languageName(code, adminLocale.value) })),
 )
 const target = computed(() => {
-  if (!preview) return undefined
   const { id, draft } = props.page
-  try {
-    const path = draft.locales[locale.value]?.path ?? ''
-    const url = new URL(preview.url({ id, locale: locale.value, path }), location.href)
-    return url.protocol === 'http:' || url.protocol === 'https:' ? url : undefined
-  } catch {
-    return undefined
-  }
+  const path = draft.locales[locale.value]?.path ?? ''
+  return httpUrl(props.url({ id, locale: locale.value, path }), location.href)
 })
 const src = computed(() => target.value?.href)
-watch(src, () => (ready.value = false))
+let ready = false
+watch(src, () => (ready = false))
 
 let timer: ReturnType<typeof setTimeout> | undefined
 const send = () => {
   clearTimeout(timer)
   const frameWindow = frame.value?.contentWindow
-  if (!ready.value || !frameWindow || !target.value) return
+  if (!ready || !frameWindow || !target.value) return
   const message = {
     type: 'opulon:cms:preview',
     preview: pagePreview(
@@ -65,7 +60,6 @@ const schedule = () => {
   timer = setTimeout(send, 150)
 }
 watch(() => props.draft, schedule, { deep: true })
-watch(locale, schedule)
 
 const onMessage = (event: MessageEvent) => {
   const frameWindow = frame.value?.contentWindow
@@ -73,7 +67,7 @@ const onMessage = (event: MessageEvent) => {
   if (event.origin !== target.value.origin || event.source !== frameWindow) return
   const message = parseFrameMessage(event.data)
   if (message?.type === 'opulon:cms:ready') {
-    ready.value = true
+    ready = true
     send()
   } else if (message) {
     const section = props.draft.sections.find((s) => s.id === message.sectionId)

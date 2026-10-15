@@ -8,7 +8,7 @@ import { UButton } from '@opulonjs/ui'
 import FieldSelect from '@opulonjs/ui/components/Field/Select'
 import { computed, ref, useId } from 'vue'
 import { labelText } from '../api.ts'
-import { localizeData } from '../localize.ts'
+import { isRecord } from '../localize.ts'
 import { type PageSelection, useCmsContext, usePages } from './use-cms.ts'
 
 type DraftSection = { id: string; type: string; data: Record<string, unknown> }
@@ -30,14 +30,12 @@ const typeItems = computed(() =>
 const selected = (id: string) => selection.value.kind === 'section' && selection.value.id === id
 
 const summary = (section: DraftSection) => {
-  const type = definitions.sections[section.type]
-  const code = contentLocales.value[0]
-  if (!type || !code) return ''
-  const data = localizeData(type, section.data, code, code)
-  for (const [name, field] of Object.entries(type.fields)) {
-    const value = data[name]
-    if ((field.kind === 'text' || field.kind === 'textarea') && typeof value === 'string' && value)
-      return value
+  const code = contentLocales.value[0] ?? ''
+  for (const [name, field] of Object.entries(definitions.sections[section.type]?.fields ?? {})) {
+    if (field.kind !== 'text' && field.kind !== 'textarea') continue
+    const own = section.data[name]
+    const value = field.localized ? (isRecord(own) ? own[code] : undefined) : own
+    if (typeof value === 'string' && value) return value
   }
   return ''
 }

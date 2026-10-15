@@ -51,12 +51,11 @@ export const CmsSections = defineComponent({
       props.sections.map((section) => {
         const component = props.components[section.type]
         if (component)
-          return h(
-            component,
-            live?.value
-              ? { key: section.id, data: section.data, 'data-cms-section': section.id }
-              : { key: section.id, data: section.data },
-          )
+          return h(component, {
+            key: section.id,
+            data: section.data,
+            ...(live?.value ? { 'data-cms-section': section.id } : {}),
+          })
         warn(`CmsSections: no component for section type "${section.type}"`)
         return null
       })
