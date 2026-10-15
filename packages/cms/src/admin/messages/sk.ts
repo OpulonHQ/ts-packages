@@ -37,7 +37,6 @@ export default {
   page: {
     back: 'Stránky',
     system: 'Systémová stránka',
-    details: 'Údaje stránky',
     path: 'Cesta',
     pathHelp: 'Začína znakom „/“, napr. /o-nas. Malé písmená, číslice a pomlčky.',
     available: 'Dostupná v tomto jazyku',

@@ -37,7 +37,6 @@ export default {
   page: {
     back: 'Pages',
     system: 'System page',
-    details: 'Page details',
     path: 'Path',
     pathHelp: 'Starts with "/", e.g. /about-us. Lowercase letters, digits and dashes.',
     available: 'Available in this language',

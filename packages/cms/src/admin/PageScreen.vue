@@ -80,7 +80,7 @@ const selectedIndex = computed(() => {
 const controls = 'input, textarea, select, button, [contenteditable="true"]'
 const firstControl = (root: Element) =>
   [...root.querySelectorAll<HTMLElement>(controls)].find(
-    (el) => !el.matches(':disabled, [role="tab"]') && el.checkVisibility(),
+    (el) => !el.matches(':disabled, [role="tab"]') && el.checkVisibility?.() !== false,
   )
 async function focusField(sectionId: string, field: string | undefined) {
   selection.value = { kind: 'section', id: sectionId }
