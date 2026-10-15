@@ -29,7 +29,7 @@ const localized = (data: Record<string, unknown>, field: string) => {
 
 <template>
   <div class="space-y-4">
-    <template v-for="(field, key) in group.fields" :key="key">
+    <div v-for="(field, key) in group.fields" :key="key" :data-field="key">
       <fieldset v-if="field.localized" class="space-y-2">
         <legend class="text-sm font-medium text-highlighted">
           {{ labelText(field.label, locale) }}
@@ -54,6 +54,6 @@ const localized = (data: Record<string, unknown>, field: string) => {
         :label="labelText(field.label, locale)"
         :disabled="disabled"
       />
-    </template>
+    </div>
   </div>
 </template>
