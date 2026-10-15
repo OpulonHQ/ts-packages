@@ -15,7 +15,8 @@ import {
   type PagePreview,
   type PageSummary,
 } from '../api.ts'
-import { checkRequired, emptyLocale, localizeSection, normalizeDocument } from './document.ts'
+import { emptyLocale, pagePreview } from '../localize.ts'
+import { checkRequired, normalizeDocument } from './document.ts'
 import { type DocumentRow, documentState, makeDocuments } from './documents.ts'
 
 /** Cache-Tags of one page's public responses. */
@@ -161,20 +162,9 @@ export class Pages extends Context.Service<
           publish: (id, version) => documents.publish(id, version).pipe(Effect.map(toPage)),
           unpublish: (id) => documents.unpublish(id).pipe(Effect.map(toPage)),
           preview: (id, requested) =>
-            Effect.gen(function* () {
-              const row = yield* documents.get(id)
-              const locale = requested && locales.includes(requested) ? requested : defaultLocale
-              const own = row.draft.locales[locale] ?? emptyLocale()
-              return {
-                id: row.id,
-                locale,
-                path: own.path,
-                seo: own.seo,
-                sections: row.draft.sections.map((s) =>
-                  localizeSection(definitions, s, locale, defaultLocale),
-                ),
-              }
-            }),
+            documents
+              .get(id)
+              .pipe(Effect.map((row) => pagePreview(definitions, locales, row, requested))),
         }
       }),
     )

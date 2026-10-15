@@ -12,6 +12,7 @@ import {
   sectionDataSchema,
 } from '../api.ts'
 import { linkProblem, maxSections, uuid } from '../document-rules.ts'
+import { emptyLocale, isRecord } from '../localize.ts'
 import { sanitizeRichText } from './sanitize.ts'
 
 /** Locale-relative path: `/` or lowercase segments of letters, digits and dashes. */
@@ -21,12 +22,6 @@ const pathPattern = /^\/(?:[\p{Ll}\p{Lo}\p{N}-]+(?:\/[\p{Ll}\p{Lo}\p{N}-]+)*)?$/
 export const maxPathLength = 1024
 
 const invalid = (message: string) => new CmsInvalid({ message })
-
-export const emptyLocale = (path = ''): PageLocale => ({
-  path,
-  available: false,
-  seo: { title: '', description: '', image: null, noindex: false },
-})
 
 /** Path, availability and SEO per content locale; documents without paths refuse one. */
 export const cleanLocales = (
@@ -79,8 +74,6 @@ const cleanLocale = (locale: string, given: PageLocale | undefined, withPaths = 
   })
 
 const present = (value: unknown) => value !== null && value !== undefined && value !== ''
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
 
 const isLink = (value: unknown): value is Link => isRecord(value) && typeof value.type === 'string'
 
@@ -205,34 +198,3 @@ export const checkRequired = (
       )
     }
   })
-
-/** A field group's data in one locale: localized fields resolved, falling back to `fallback`. */
-export const localizeData = (
-  group: FieldGroup,
-  data: Readonly<Record<string, unknown>>,
-  locale: string,
-  fallback: string,
-): Record<string, unknown> => {
-  const out: Record<string, unknown> = {}
-  for (const [name, value] of Object.entries(data)) {
-    const field = group.fields[name]
-    if (!field) continue
-    if (!field.localized) out[name] = value
-    else {
-      const values = isRecord(value) ? value : {}
-      out[name] = values[locale] ?? values[fallback] ?? null
-    }
-  }
-  return out
-}
-
-/** A section's data in one locale: localized fields resolved, falling back to `fallback`. */
-export const localizeSection = (
-  definitions: CmsDefinitions,
-  section: Section,
-  locale: string,
-  fallback: string,
-): Section => {
-  const type = definitions.sections[section.type]
-  return type ? { ...section, data: localizeData(type, section.data, locale, fallback) } : section
-}

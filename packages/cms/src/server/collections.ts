@@ -19,7 +19,8 @@ import {
   labelText,
   titleFieldOf,
 } from '../api.ts'
-import { checkFields, cleanData, cleanLocales, emptyLocale, localizeData } from './document.ts'
+import { emptyLocale, localizeData } from '../localize.ts'
+import { checkFields, cleanData, cleanLocales } from './document.ts'
 import { type DocumentRow, documentState, makeDocuments } from './documents.ts'
 import { listItems } from './item-query.ts'
 
