@@ -3,6 +3,7 @@
 // and the admin's generated forms come from the same field definitions: section types,
 // collections and site settings all use `Field`.
 import { Schema } from 'effect'
+import { linkProblem, maxSections } from './document-rules.ts'
 
 /** Admin text: one string, or one per admin locale (`{ en: 'Title', sk: 'Nadpis' }`). */
 export type Label = string | Readonly<Record<string, string>>
@@ -206,6 +207,20 @@ export const siteSettingsFields = {
   }),
 } satisfies Record<string, Field>
 
+/** A starting point for a new page: its sections in order, prefilled. */
+export interface PageTemplate<SectionKey extends string = string> {
+  readonly label: Label
+  readonly description?: Label
+  /**
+   * Data uses the stored shape: localized fields hold `{ [locale]: value }`. Media ids are
+   * per database, so only prefill an image whose id the host seeds.
+   */
+  readonly sections: ReadonlyArray<{
+    readonly type: SectionKey
+    readonly data?: Readonly<Record<string, unknown>>
+  }>
+}
+
 export interface CmsDefinitions {
   readonly sections: Readonly<Record<string, SectionType>> & {
     readonly rich_text: typeof richTextSection
@@ -215,14 +230,15 @@ export interface CmsDefinitions {
   /** The site settings singleton: the global SEO fields plus the host's. */
   readonly settings: FieldGroup
   readonly menus: Readonly<Record<string, Menu>>
+  readonly templates: Readonly<Record<string, PageTemplate>>
 }
 
 const keyPattern = /^[a-z][a-z0-9_]*$/
 
 /**
- * The host's cms definitions: section types, system pages, collections, site settings fields
- * and menus, all by key (`[a-z][a-z0-9_]*`). `rich_text` and the global SEO settings are added.
- * Pass the result to `cms()` and `cmsAdmin()`.
+ * The host's cms definitions: section types, system pages, collections, site settings fields,
+ * menus and page templates, all by key (`[a-z][a-z0-9_]*`). `rich_text` and the global SEO
+ * settings are added. Pass the result to `cms()` and `cmsAdmin()`.
  */
 export const defineCms = <
   const Sections extends Readonly<Record<string, SectionType>>,
@@ -235,12 +251,16 @@ export const defineCms = <
   readonly collections?: Collections
   readonly settings?: Readonly<Record<string, Field>>
   readonly menus?: Menus
+  readonly templates?: Readonly<
+    Record<string, PageTemplate<Extract<keyof Sections, string> | 'rich_text'>>
+  >
 }) => {
   const sections = { rich_text: richTextSection, ...definitions.sections }
   const systemPages = definitions.systemPages
   const collections = definitions.collections ?? ({} as Collections)
   const menus = definitions.menus ?? ({} as Menus)
   const settings = { fields: { ...siteSettingsFields, ...definitions.settings } }
+  const templates: Readonly<Record<string, PageTemplate>> = definitions.templates ?? {}
   const fail = (message: string) => {
     throw new Error(`cms definitions: ${message}`)
   }
@@ -249,6 +269,7 @@ export const defineCms = <
     ...Object.keys(systemPages),
     ...Object.keys(collections),
     ...Object.keys(menus),
+    ...Object.keys(templates),
   ])
     if (!keyPattern.test(key)) fail(`"${key}" is not a valid key ([a-z][a-z0-9_]*).`)
   const groups: Array<[string, FieldGroup]> = [
@@ -263,7 +284,35 @@ export const defineCms = <
   for (const [key, collection] of Object.entries(collections))
     if (collection.titleField !== undefined && !(collection.titleField in collection.fields))
       fail(`the title field "${collection.titleField}" of collection "${key}" is not a field.`)
-  return { sections, systemPages, collections, settings, menus } satisfies CmsDefinitions
+  for (const [key, template] of Object.entries(templates)) {
+    if (template.sections.length > maxSections)
+      fail(
+        `template "${key}" has ${template.sections.length} sections; a page holds at most ${maxSections}.`,
+      )
+    template.sections.forEach(({ type, data = {} }, index) => {
+      const owner = `template "${key}", section ${index + 1}`
+      const sectionType = Object.hasOwn(sections, type) ? sections[type] : undefined
+      if (!sectionType) return fail(`${owner} names the unknown section type "${type}".`)
+      try {
+        Schema.decodeUnknownSync(sectionDataSchema(sectionType))(data, {
+          onExcessProperty: 'error',
+        })
+      } catch (error) {
+        fail(
+          `${owner} ("${type}") has invalid data: ${error instanceof Error ? error.message : String(error)}`,
+        )
+      }
+      for (const [name, field] of Object.entries(sectionType.fields)) {
+        const value = data[name]
+        if (field.kind !== 'link' || typeof value !== 'object' || value === null) continue
+        for (const link of field.localized ? Object.values(value) : [value]) {
+          const problem = Schema.is(Link)(link) ? linkProblem({ systemPages }, link) : undefined
+          if (problem) fail(`${owner} ("${type}") field "${name}": ${problem}`)
+        }
+      }
+    })
+  }
+  return { sections, systemPages, collections, settings, menus, templates } satisfies CmsDefinitions
 }
 
 /** The field naming a collection's items: `titleField`, else the first text field. */

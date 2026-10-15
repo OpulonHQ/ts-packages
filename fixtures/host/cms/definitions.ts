@@ -76,4 +76,18 @@ export const definitions = defineCms({
     main: { label: { en: 'Main menu', sk: 'Hlavné menu' } },
     footer: { label: { en: 'Footer', sk: 'Päta' }, depth: 1 },
   },
+  templates: {
+    landing: {
+      label: { en: 'Landing page', sk: 'Vstupná stránka' },
+      description: {
+        en: 'A hero, key numbers and an introduction.',
+        sk: 'Úvodný blok, čísla a úvodný text.',
+      },
+      sections: [
+        { type: 'hero', data: { title: { en: 'Welcome', it: 'Benvenuti' }, tone: 'dark' } },
+        { type: 'stats', data: { count: 120, visible: true, note: 'Happy customers' } },
+        { type: 'rich_text', data: { body: { en: '<p>Tell visitors what you offer.</p>' } } },
+      ],
+    },
+  },
 })

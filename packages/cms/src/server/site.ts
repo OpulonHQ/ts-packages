@@ -24,7 +24,8 @@ import {
   type SiteSettings,
 } from '../api.ts'
 import { cacheTags } from './cache.ts'
-import { checkFields, cleanData, linkProblem, localizeData, uuid } from './document.ts'
+import { linkProblem, uuid } from '../document-rules.ts'
+import { checkFields, cleanData, localizeData } from './document.ts'
 import { type DocumentRow, documentState, makeDocuments } from './documents.ts'
 
 /** Cache-Tag of the public site response (settings and menus). */

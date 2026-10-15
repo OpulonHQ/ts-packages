@@ -1,0 +1,5 @@
+---
+'@opulonjs/cms': minor
+---
+
+Add page templates. `defineCms` takes `templates` by key: a `label`, an optional `description` and the `sections` a new page starts with, in order, each with its section `type` and optional `data` in the stored shape (localized fields hold `{ [locale]: value }`). `defineCms` throws when a template would make `pages.create` fail: an unknown section type, data that does not decode against the type's fields (unknown fields included), more than 200 sections, or a link that a page refuses (a URL that is not http(s), `mailto:`, `tel:`, a site path or a fragment, an unknown system page, or a page or item id that is not a uuid). TypeScript also rejects an unknown section type. When the host defines templates, Content > Pages "New page" opens a picker with "Blank page" and every template, and the new page starts with the chosen template's sections. Without templates, "New page" creates a blank page in one click as before. Media ids are per database, so a template can only prefill an image whose id the host seeds.
