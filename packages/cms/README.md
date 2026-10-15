@@ -69,8 +69,8 @@ it and posts it to the frame.
    ```
 
    The composable does nothing unless the page runs in a frame, its URL has `?preview` and
-   `adminOrigin` is an `http(s)` origin. It renders the draft the admin posts for the same page
-   and locale, and ignores messages from any other origin or window. During SSR and hydration
+   `adminOrigin` is an `http(s)` origin. It renders the draft the admin posts for the same page,
+   in the language chosen in the admin, and ignores messages from any other origin or window. During SSR and hydration
    it renders `initial` unchanged.
 
 3. Optionally mark the parts of a section component with the field they show. A click on a

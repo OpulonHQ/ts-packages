@@ -165,14 +165,23 @@ test.each([
     undefined,
   ],
   ['another page', edited('Wrong', { id: 'page-2' }), admin, undefined],
-  ['another locale', edited('Wrong', { locale: 'sk' }), admin, undefined],
-])('%s leaves the preview unchanged', async (_, message, origin, source) => {
+])('%s leaves the live preview unchanged', async (_, message, origin, source) => {
   inFrame()
   const site = mount(admin)
+  await send(edited('Live draft'))
+  expect(site.title()).toBe('Live draft')
   await send(message, origin, source ?? window.parent)
-  expect(site.title()).toBe('Welcome')
+  expect(site.title()).toBe('Live draft')
   await send(edited('Accepted'))
   expect(site.title()).toBe('Accepted')
+})
+
+test('a preview of the same page in another language renders', async () => {
+  inFrame()
+  const site = mount(admin)
+  await send(edited('Benvenuti', { locale: 'it' }))
+  expect(site.title()).toBe('Benvenuti')
+  expect(site.preview()?.locale).toBe('it')
 })
 
 test('a click inside a field selects its section and field, and does nothing else', async () => {

@@ -86,7 +86,8 @@ const elementOf = (target: EventTarget | null) =>
 
 /**
  * The page preview to render: `initial`, replaced by the admin's unsaved draft of the same page
- * and locale while the page runs framed in the admin with `?preview` in its URL. A click on a
+ * (in the language the admin previews) while the page runs framed in the admin with `?preview`
+ * in its URL. A click on a
  * section (marked by `CmsSections`) or on a part marked `data-cms-field="<field>"` selects it in
  * the admin instead of acting. Server rendering and hydration see `initial` only.
  */
@@ -97,11 +98,13 @@ export const useCmsLivePreview = (
   const live = ref(false)
   const received = shallowRef<PagePreview>()
   provide(liveKey, readonly(live))
-  const preview = computed(() => {
-    const base = toValue(initial) ?? undefined
-    const next = received.value
-    return next && (!base || (next.id === base.id && next.locale === base.locale)) ? next : base
-  })
+  const samePage = (next: PagePreview) => {
+    const base = toValue(initial)
+    return !base || next.id === base.id
+  }
+  const preview = computed(() =>
+    received.value && samePage(received.value) ? received.value : (toValue(initial) ?? undefined),
+  )
 
   onMounted(() => {
     const origin = httpUrl(options.adminOrigin)?.origin
@@ -112,7 +115,7 @@ export const useCmsLivePreview = (
     const onMessage = (event: MessageEvent) => {
       if (event.origin !== origin || event.source !== admin) return
       const message = parseAdminMessage(event.data)
-      if (message) received.value = message.preview
+      if (message && samePage(message.preview)) received.value = message.preview
     }
     const onClick = (event: Event) => {
       const target = elementOf(event.target)
