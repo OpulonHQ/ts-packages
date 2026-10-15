@@ -72,11 +72,11 @@ const selectedIndex = computed(() => {
     : -1
 })
 
-const controls = 'input, textarea, select, button, [contenteditable="true"]'
+const usable = (el: HTMLElement) => !el.matches(':disabled') && el.checkVisibility?.() !== false
 const firstControl = (root: Element) =>
-  [...root.querySelectorAll<HTMLElement>(controls)].find(
-    (el) => !el.matches(':disabled, [role="tab"]') && el.checkVisibility?.() !== false,
-  )
+  [...root.querySelectorAll<HTMLElement>('input, textarea, select, [contenteditable="true"]')].find(
+    usable,
+  ) ?? [...root.querySelectorAll<HTMLElement>('button:not([role="tab"])')].find(usable)
 async function focusField(sectionId: string, field: string | undefined) {
   selection.value = { kind: 'section', id: sectionId }
   await nextTick()

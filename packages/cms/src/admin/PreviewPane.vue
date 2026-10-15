@@ -56,6 +56,7 @@ const schedule = () => {
   timer = setTimeout(send, 150)
 }
 watch(() => props.draft, schedule, { deep: true })
+watch(locale, schedule)
 
 const onMessage = (event: MessageEvent) => {
   const frameWindow = frame.value?.contentWindow

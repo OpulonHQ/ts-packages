@@ -261,6 +261,47 @@ test('the outline selects, moves, removes and adds sections', async () => {
   expect(input('sections.1.title.en')!.value).toBe('')
 })
 
+test('a click on rich text in the frame focuses its editor, not its toolbar', async () => {
+  const created = (
+    await host.create(
+      page({ en: `/rich-focus-${crypto.randomUUID()}` }, [
+        section('hero', { title: { en: 'Top' } }),
+        section('rich_text', { body: { en: '<p>Body</p>' } }),
+      ]),
+    )
+  ).body
+  mountAdmin(`/admin/cms/pages/${created.id}`)
+  await expect.poll(() => document.querySelector('[contenteditable="true"]')).toBeTruthy()
+
+  select(created.draft.sections[1]!.id, 'body')
+  await expect.poll(inputsHeading).toBe('2. Formátovaný text')
+  await expect.poll(() => document.activeElement?.getAttribute('contenteditable')).toBe('true')
+})
+
+test('a preview URL without the language still gets the chosen language', async () => {
+  const created = await twoHeroes()
+  const modules = adminModules.map((m) =>
+    m.id === 'cms'
+      ? cmsAdmin({
+          definitions,
+          widgets: { color: () => import('../../cms/ColorWidget.vue') },
+          preview: { url: ({ id }) => `/site/?preview=${id}` },
+        })
+      : m,
+  )
+  mountAdmin(`/admin/cms/pages/${created.id}`, modules)
+  await expect.poll(() => input('sections.0.title.en')).toBeTruthy()
+  const shell = frame()
+  const posted = listen()
+  ready()
+  await expect.poll(() => lastPreview(posted)?.locale).toBe('en')
+
+  await pick(region('Náhľad')!, 'Taliančina')
+  const italian = await serverPreview(created.id, 'it')
+  await expect.poll(() => lastPreview(posted)).toEqual(italian)
+  expect(frame()).toBe(shell)
+})
+
 test('without a preview the editor has two panes', async () => {
   const created = await twoHeroes()
   const modules = adminModules.map((m) =>
