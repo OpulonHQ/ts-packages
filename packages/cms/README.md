@@ -73,7 +73,8 @@ it and posts it to the frame.
    admin posts a draft of the page shown, so a site that frames the page itself, or a frame
    showing another page, changes nothing. It renders
    the draft the admin posts for the same page as `initial` (none while `initial` is empty), in
-   the language chosen in the admin, and ignores messages from any other origin or window.
+   the language chosen in the admin, and ignores messages from any other origin or window. When
+   `initial` turns into another page, it drops the draft and asks the admin for a fresh one.
    The options may be reactive: when the URL loses `?preview` or `adminOrigin` stops being
    valid, it drops the draft, the section markers and the click handling. A URL change is seen
    at once on back and forward navigation and, where the browser has the Navigation API, on

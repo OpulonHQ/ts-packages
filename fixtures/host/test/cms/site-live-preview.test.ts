@@ -220,6 +220,20 @@ test('a draft of another page leaves the shown page inert', async () => {
   expect(parent.postMessage).not.toHaveBeenCalled()
 })
 
+test('a page change drops the cached draft and asks the admin for a fresh one', async () => {
+  const parent = inFrame()
+  const page = shallowRef<PagePreview>(initial)
+  const site = mount(admin, page)
+  await send(edited('Draft of page 1'))
+  page.value = { ...initial, id: 'page-2' }
+  await nextTick()
+  parent.postMessage.mockClear()
+  page.value = initial
+  await nextTick()
+  expect(site.title()).toBe('Welcome')
+  expect(parent.postMessage.mock.calls).toEqual([[{ type: 'opulon:cms:ready' }, admin]])
+})
+
 test('a frame without a page of its own renders no draft', async () => {
   inFrame()
   const site = mount(admin, null)
@@ -227,15 +241,18 @@ test('a frame without a page of its own renders no draft', async () => {
   expect(site.preview()).toBeUndefined()
 })
 
-test('a draft that arrives before the page loads shows once the same page loads', async () => {
-  inFrame()
+test('a page that loads after the bridge opens asks the admin for its draft', async () => {
+  const parent = inFrame()
   const page = shallowRef<PagePreview | null>(null)
   const site = mount(admin, page)
   await send(edited('Early draft'))
   expect(site.preview()).toBeUndefined()
+  parent.postMessage.mockClear()
   page.value = initial
   await nextTick()
-  expect(site.title()).toBe('Early draft')
+  expect(parent.postMessage.mock.calls).toEqual([[{ type: 'opulon:cms:ready' }, admin]])
+  await send(edited('Draft after load'))
+  expect(site.title()).toBe('Draft after load')
 })
 
 test('a click inside a field selects its section and field, and does nothing else', async () => {

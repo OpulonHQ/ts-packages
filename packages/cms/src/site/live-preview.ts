@@ -105,6 +105,7 @@ export const useCmsLivePreview = (
     return !!base && next.id !== base.id
   }
   const preview = computed(() => (live.value ? received.value : (toValue(initial) ?? undefined)))
+  const pageId = computed(() => toValue(initial)?.id)
 
   onMounted(() => {
     const admin = window.parent
@@ -124,6 +125,7 @@ export const useCmsLivePreview = (
     watchEffect((onCleanup) => {
       const adminOrigin = origin.value
       if (!adminOrigin || !inPreview.value) return
+      void pageId.value
       const post = (message: FrameMessage) => admin.postMessage(message, adminOrigin)
 
       const onMessage = (event: MessageEvent) => {
