@@ -209,6 +209,17 @@ test('before the admin answers, clicks act as on the public page', async () => {
   expect(parent.postMessage).not.toHaveBeenCalled()
 })
 
+test('a draft of another page leaves the shown page inert', async () => {
+  const parent = inFrame()
+  const site = mount(admin)
+  await send(edited('Other page', { id: 'page-2' }))
+  parent.postMessage.mockClear()
+  expect(site.title()).toBe('Welcome')
+  expect(site.el.querySelector('[data-cms-section]')).toBeNull()
+  expect(click(site.el.querySelector('h1')!).defaultPrevented).toBe(false)
+  expect(parent.postMessage).not.toHaveBeenCalled()
+})
+
 test('a frame without a page of its own renders no draft', async () => {
   inFrame()
   const site = mount(admin, null)

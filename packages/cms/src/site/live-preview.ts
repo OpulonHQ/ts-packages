@@ -6,7 +6,6 @@ import {
   onMounted,
   onScopeDispose,
   provide,
-  readonly,
   type Ref,
   ref,
   shallowRef,
@@ -88,7 +87,7 @@ const elementOf = (target: EventTarget | null) =>
 /**
  * The page preview to render: `initial`, replaced by the admin's unsaved draft of the same page
  * (in the language the admin previews) while the page runs framed in the admin with `?preview`
- * in its URL. Live mode starts at the admin's first valid message. A click on a section (marked
+ * in its URL. Live mode starts once the admin posts a draft of the page shown. A click on a section (marked
  * by `CmsSections`) or on a part marked `data-cms-field="<field>"` selects it in the admin
  * instead of acting. Live mode ends, and the
  * draft is dropped, when the URL loses `?preview` or `options` (which may be reactive) loses its
@@ -98,17 +97,14 @@ export const useCmsLivePreview = (
   initial: MaybeRefOrGetter<PagePreview | null | undefined>,
   options: CmsLivePreviewOptions,
 ): ComputedRef<PagePreview | undefined> => {
-  const live = ref(false)
   const received = shallowRef<PagePreview>()
-  provide(liveKey, readonly(live))
+  const live = computed(() => !!received.value && received.value.id === toValue(initial)?.id)
+  provide(liveKey, live)
   const otherPage = (next: PagePreview) => {
     const base = toValue(initial)
     return !!base && next.id !== base.id
   }
-  const preview = computed(() => {
-    const base = toValue(initial) ?? undefined
-    return received.value && received.value.id === base?.id ? received.value : base
-  })
+  const preview = computed(() => (live.value ? received.value : (toValue(initial) ?? undefined)))
 
   onMounted(() => {
     const admin = window.parent
@@ -133,9 +129,7 @@ export const useCmsLivePreview = (
       const onMessage = (event: MessageEvent) => {
         if (!stillInPreview() || event.origin !== adminOrigin || event.source !== admin) return
         const message = parseAdminMessage(event.data)
-        if (!message) return
-        live.value = true
-        if (!otherPage(message.preview)) received.value = message.preview
+        if (message && !otherPage(message.preview)) received.value = message.preview
       }
       const onClick = (event: Event) => {
         if (!live.value || !stillInPreview()) return
@@ -157,7 +151,6 @@ export const useCmsLivePreview = (
         window.removeEventListener('message', onMessage)
         document.removeEventListener('click', onClick, true)
         received.value = undefined
-        live.value = false
       })
       post({ type: 'opulon:cms:ready' })
     })

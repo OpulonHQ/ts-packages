@@ -69,14 +69,17 @@ it and posts it to the frame.
    ```
 
    The composable does nothing unless the page runs in a frame, its URL has `?preview` and
-   `adminOrigin` is an `http(s)` origin. Section markers and click handling start with the
-   admin's first valid message, so a site that frames the page itself changes nothing. It renders
+   `adminOrigin` is an `http(s)` origin. Section markers and click handling start once the
+   admin posts a draft of the page shown, so a site that frames the page itself, or a frame
+   showing another page, changes nothing. It renders
    the draft the admin posts for the same page as `initial` (none while `initial` is empty), in
    the language chosen in the admin, and ignores messages from any other origin or window.
    The options may be reactive: when the URL loses `?preview` or `adminOrigin` stops being
    valid, it drops the draft, the section markers and the click handling. A URL change is seen
    at once on back and forward navigation and, where the browser has the Navigation API, on
-   `pushState` and `replaceState`; elsewhere those two take effect at the next message or click.
+   `pushState` and `replaceState`. Without the Navigation API, a `pushState` or `replaceState`
+   that drops `?preview` takes effect at the next message or click, and one that adds it is not
+   seen until the next load or back and forward navigation.
    During SSR and hydration it renders `initial` unchanged.
 
 3. Optionally mark the parts of a section component with the field they show. A click on a
