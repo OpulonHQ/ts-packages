@@ -1,5 +1,0 @@
----
-'@opulonjs/cms': minor
----
-
-Add `@opulonjs/cms/site` for a host's public site, without Effect in its bundle: `createCmsClient({ fetch, baseUrl })` reads `resolve`, `site`, `collection` and the editor-only `previewPage`/`previewItem` as the Read API's JSON types; `buildHead` builds the `useHead` input (title template, description, OG with the default image fallback, noindex, absolute canonical, hreflang and `x-default`); `systemPageLink`, `menu` and `localeLinks` cover links and the locale switcher; `<CmsSections>` renders sections from a `sectionComponents<typeof definitions>({...})` map that must cover every section type, with `CmsRichText` for `rich_text`. Add `@opulonjs/cms/site/nuxt`: `cmsNitroHooks(worker)` gives SSR on Workers an in-process cms fetch and copies the Read API's Cache-Tags onto the HTML (`?preview` forwards the editor's cookie and answers `private, no-store`), and `useCmsClient()` picks that fetch during SSR and the real one in the browser. `nuxt` is an optional peer.
