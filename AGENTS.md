@@ -21,3 +21,15 @@ Each rule names what enforces it. When a rule is broken twice and nothing enforc
 | A fix covers every caller of the function it changes, not only the path the ticket names                                             | Review only                                                                                                                                                                                                                                               |
 
 When a lint rule must be bypassed on a new line, put the reason and an expiry date in the disable comment and get a human's approval in the PR.
+
+## Code Review Rules
+
+Flag only issues this PR introduces that a real caller or input reaches in normal use, at one of:
+
+- P0: data loss, a security hole across a real trust boundary, a broken build or deploy.
+- P1: an acceptance-criterion break, a regression against main, or normal use doing a paid or
+  user-visible side effect twice (model calls, charges, emails).
+
+Do not flag edge cases normal use does not reach, hardening or defense in depth, validation of data
+from our own services, refactors, naming, style, or issues main already has. Do not suggest adding
+code unless a P0 or P1 needs it. Most PRs should get no comments.
