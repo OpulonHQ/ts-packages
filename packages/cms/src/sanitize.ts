@@ -1,5 +1,6 @@
 import sanitizeHtml from 'sanitize-html'
 import type { FieldGroup, Link, PageLocale } from './api.ts'
+import { urlPattern } from './document-rules.ts'
 import { isRecord } from './localize.ts'
 
 // The restricted rich text format (TSPACK-11): what RichTextControl's toolbar produces, nothing
@@ -51,11 +52,16 @@ export const present = (value: unknown) => value !== null && value !== undefined
 export const isLink = (value: unknown): value is Link =>
   isRecord(value) && typeof value.type === 'string'
 
+const cleanUrlLink = (url: string) => {
+  const trimmed = url.trim()
+  return urlPattern.test(trimmed) ? { type: 'url', url: trimmed } : null
+}
+
 const cleanValue = (kind: string, value: unknown) =>
   kind === 'richText' && typeof value === 'string'
     ? sanitizeRichText(value)
     : kind === 'link' && isLink(value) && value.type === 'url' && typeof value.url === 'string'
-      ? { type: 'url', url: value.url.trim() }
+      ? cleanUrlLink(value.url)
       : value
 
 export const cleanFields = (

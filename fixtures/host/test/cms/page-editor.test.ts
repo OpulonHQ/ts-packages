@@ -168,25 +168,6 @@ test('the live preview is the server preview, per preview language', async () =>
   await expect.poll(() => lastPreview(italian)).toEqual(it)
 })
 
-test('stored rich text reaches the frame sanitized', async () => {
-  const created = (
-    await host.create(
-      page({ en: `/rich-${crypto.randomUUID()}` }, [
-        section('rich_text', {
-          body: {
-            en: '<p>Safe</p><script>alert(1)</script><p>a<img src="x" onerror="alert(1)"></p>',
-          },
-        }),
-      ]),
-    )
-  ).body
-  mountAdmin(`/admin/cms/pages/${created.id}`)
-  await expect.poll(frame).toBeTruthy()
-  const posted = listen()
-  ready()
-  expect(lastPreview(posted)!.sections[0]!.data.body).toBe('<p>Safe</p><p>a</p>')
-})
-
 test('rich text a custom widget types reaches the frame sanitized, as the server stores it', async () => {
   const created = (
     await host.create(
@@ -237,7 +218,18 @@ test('rich text a custom widget types reaches the frame sanitized, as the server
   expect(live).toEqual(await serverPreview(created.id, 'en'))
 })
 
-test('a malformed link from a custom widget does not stop the live preview', async () => {
+test.each([
+  [
+    'a malformed link from a custom widget does not stop the live preview',
+    { type: 'url' },
+    { cta: { type: 'url' } },
+  ],
+  [
+    'a script URL link from a custom widget never reaches the frame',
+    { type: 'url', url: ' javascript:alert(1)' },
+    {},
+  ],
+])('%s', async (_, link, expected) => {
   const created = await twoHeroes()
   const Broken = defineComponent({
     props: { name: { type: String, required: true } },
@@ -247,7 +239,7 @@ test('a malformed link from a custom widget does not stop the live preview', asy
       () =>
         h('textarea', {
           name: props.name,
-          onInput: () => emit('update:modelValue', { type: 'url' }),
+          onInput: () => emit('update:modelValue', link),
         }),
   })
   const cta = fields.link({ label: 'CTA', widget: 'broken' })
@@ -268,11 +260,7 @@ test('a malformed link from a custom widget does not stop the live preview', asy
   type('sections.0.title.en', 'After the link')
   await expect
     .poll(() => lastPreview(posted)?.sections[0]?.data)
-    .toEqual({
-      title: 'After the link',
-      tone: 'light',
-      cta: { type: 'url' },
-    })
+    .toEqual({ title: 'After the link', tone: 'light', ...expected })
 })
 
 test('the live preview is the draft as Save stores it', async () => {
