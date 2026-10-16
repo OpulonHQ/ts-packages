@@ -11,7 +11,8 @@ const withCacheControl = (response: Response, value: string) => {
 
 /**
  * Serves the host-built admin SPA from static assets (TSPACK-8 decision 3). Returns undefined
- * outside `/admin`. Hashed `/admin/assets/*` files are immutable; other existing files pass
+ * outside `/admin`. Hashed `/admin/assets/*` files are immutable (a missing one `no-store`, so a
+ * request that races a deploy is not cached as a 404); other existing files pass
  * through as the binding serves them (304 included); every other path (and any `.html`) gets `index.html`
  * with `no-store`, so a deploy never leaves editors on a stale shell. Expects the binding to
  * serve files by exact path (wrangler `assets.html_handling: "none"`).
@@ -27,7 +28,8 @@ export const serveAdmin = async (
 
   if (path.startsWith('/admin/assets/')) {
     const file = await assets.fetch(request)
-    return file.ok ? withCacheControl(file, 'public, max-age=31536000, immutable') : file
+    if (file.ok) return withCacheControl(file, 'public, max-age=31536000, immutable')
+    return file.status === 404 ? withCacheControl(file, 'no-store') : file
   }
   if (!path.endsWith('/') && !path.endsWith('.html') && path !== '/admin') {
     const file = await assets.fetch(request)

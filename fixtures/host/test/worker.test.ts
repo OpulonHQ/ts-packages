@@ -94,17 +94,25 @@ test('/admin/** falls back to index.html with no-store', async () => {
   }
 })
 
-test('hashed /admin/assets/* are immutable; other admin files are served as they are', async () => {
+test('hashed /admin/assets/* are immutable, a missing one is no-store; other admin files are served as they are', async () => {
   expect(await request('/admin/assets/index-abc123.js')).toEqual({
     status: 200,
     cacheControl: 'public, max-age=31536000, immutable',
     body: 'console.log(1)',
   })
-  expect((await request('/admin/assets/missing.js')).status).toBe(404)
+  expect(await request('/admin/assets/missing.js')).toMatchObject({
+    status: 404,
+    cacheControl: 'no-store',
+  })
   expect(await request('/admin/favicon.svg')).toMatchObject({ status: 200, body: '<svg/>' })
 })
 
 test('a revalidated admin file answers 304, not the index.html fallback', async () => {
+  expect(
+    await request('/admin/assets/index-abc123.js', {
+      'if-none-match': '"/admin/assets/index-abc123.js"',
+    }),
+  ).toEqual({ status: 304, cacheControl: null, body: '' })
   expect(
     await request('/admin/favicon.svg', { 'if-none-match': '"/admin/favicon.svg"' }),
   ).toMatchObject({
@@ -113,7 +121,7 @@ test('a revalidated admin file answers 304, not the index.html fallback', async 
   })
 })
 
-test('the preview site: /site/** answers its index.html with no-store, hashed assets are immutable', async () => {
+test('the preview site: /site/** answers its index.html with no-store, hashed assets are immutable, a missing one is no-store', async () => {
   for (const path of ['/site', '/site/', '/site/?preview=p1&locale=en', '/site/about']) {
     expect(await request(path)).toEqual({
       status: 200,
@@ -126,7 +134,10 @@ test('the preview site: /site/** answers its index.html with no-store, hashed as
     cacheControl: 'public, max-age=31536000, immutable',
     body: 'console.log(2)',
   })
-  expect((await request('/site/assets/missing.js')).status).toBe(404)
+  expect(await request('/site/assets/missing.js')).toMatchObject({
+    status: 404,
+    cacheControl: 'no-store',
+  })
   expect((await request('/sitemap')).status).toBe(404)
   expect(await request('/admin/')).toMatchObject({ status: 200, body: files['/admin/index.html'] })
   expect(await request('/api/demo/notes', { cookie })).toMatchObject({ status: 200 })

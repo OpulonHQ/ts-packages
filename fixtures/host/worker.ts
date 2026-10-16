@@ -41,7 +41,8 @@ const serveSite = async (request: Request, assets: AssetsBinding) => {
   if (request.method !== 'GET' && request.method !== 'HEAD') return undefined
   if (url.pathname.startsWith('/site/assets/')) {
     const file = await assets.fetch(request)
-    return file.ok ? withCacheControl(file, 'public, max-age=31536000, immutable') : file
+    if (file.ok) return withCacheControl(file, 'public, max-age=31536000, immutable')
+    return file.status === 404 ? withCacheControl(file, 'no-store') : file
   }
   const index = await assets.fetch(new Request(new URL('/site/index.html', url), request))
   return withCacheControl(index, 'no-store')
