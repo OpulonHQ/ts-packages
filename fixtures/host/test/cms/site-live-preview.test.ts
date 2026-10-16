@@ -5,7 +5,16 @@ import {
   sectionComponents,
   useCmsLivePreview,
 } from '@opulonjs/cms/site'
-import { createApp, defineComponent, type FunctionalComponent, h, nextTick, reactive } from 'vue'
+import {
+  createApp,
+  defineComponent,
+  type FunctionalComponent,
+  h,
+  type MaybeRefOrGetter,
+  nextTick,
+  reactive,
+  shallowRef,
+} from 'vue'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import type { definitions } from '../../cms/definitions.ts'
 
@@ -52,14 +61,17 @@ const inFrame = (search = '?preview=page-1') => {
   return parent
 }
 
-const mount = (adminOrigin: string | undefined | CmsLivePreviewOptions) => {
+const mount = (
+  adminOrigin: string | undefined | CmsLivePreviewOptions,
+  page: MaybeRefOrGetter<PagePreview | null> = initial,
+) => {
   const options = typeof adminOrigin === 'object' ? adminOrigin : { adminOrigin }
   const el = document.createElement('div')
   document.body.append(el)
   let result: ReturnType<typeof useCmsLivePreview> | undefined
   const app = createApp(
     defineComponent(() => {
-      const preview = useCmsLivePreview(initial, options)
+      const preview = useCmsLivePreview(page, options)
       result = preview
       return () => preview.value && h(CmsSections, { sections: preview.value.sections, components })
     }),
@@ -127,11 +139,13 @@ test('a framed page without ?preview stays inert', async () => {
   expect(parent.postMessage).not.toHaveBeenCalled()
 })
 
-test('in preview, posts ready to the admin origin and marks every section root', async () => {
+test('in preview, posts ready to the admin origin and marks every section root once the admin answers', async () => {
   const parent = inFrame()
   const site = mount(`${admin}/`)
   expect(parent.postMessage.mock.calls).toEqual([[{ type: 'opulon:cms:ready' }, admin]])
   await nextTick()
+  expect(site.el.querySelector('[data-cms-section]')).toBeNull()
+  await send(edited('Welcome'))
   expect(
     [...site.el.querySelectorAll('[data-cms-section]')].map((e) => [
       e.tagName,
@@ -186,10 +200,37 @@ test('a preview of the same page in another language renders', async () => {
   expect(site.preview()?.locale).toBe('it')
 })
 
-test('a click inside a field selects its section and field, and does nothing else', async () => {
+test('before the admin answers, clicks act as on the public page', async () => {
   const parent = inFrame()
   const site = mount(admin)
   await nextTick()
+  parent.postMessage.mockClear()
+  expect(click(site.el.querySelector('h1')!).defaultPrevented).toBe(false)
+  expect(parent.postMessage).not.toHaveBeenCalled()
+})
+
+test('a frame without a page of its own renders no draft', async () => {
+  inFrame()
+  const site = mount(admin, null)
+  await send(edited('Another page'))
+  expect(site.preview()).toBeUndefined()
+})
+
+test('a draft that arrives before the page loads shows once the same page loads', async () => {
+  inFrame()
+  const page = shallowRef<PagePreview | null>(null)
+  const site = mount(admin, page)
+  await send(edited('Early draft'))
+  expect(site.preview()).toBeUndefined()
+  page.value = initial
+  await nextTick()
+  expect(site.title()).toBe('Early draft')
+})
+
+test('a click inside a field selects its section and field, and does nothing else', async () => {
+  const parent = inFrame()
+  const site = mount(admin)
+  await send(edited('Welcome'))
   parent.postMessage.mockClear()
   const h1 = site.el.querySelector('h1')
   if (!h1?.firstChild) throw new Error('expected the hero title')
@@ -203,7 +244,7 @@ test('a click inside a field selects its section and field, and does nothing els
 test('a click on a section outside any field selects the section', async () => {
   const parent = inFrame()
   const site = mount(admin)
-  await nextTick()
+  await send(edited('Welcome'))
   parent.postMessage.mockClear()
   const stats = site.el.querySelector('p')
   if (!stats) throw new Error('expected the stats section')
@@ -216,7 +257,7 @@ test('a click on a section outside any field selects the section', async () => {
 test('a click outside the sections posts nothing', async () => {
   const parent = inFrame()
   mount(admin)
-  await nextTick()
+  await send(edited('Welcome'))
   parent.postMessage.mockClear()
   const stray = document.createElement('div')
   stray.setAttribute('data-cms-section', 'not-a-section')
@@ -230,7 +271,7 @@ test('a click outside the sections posts nothing', async () => {
 test('after unmount, messages and clicks do nothing', async () => {
   const parent = inFrame()
   const site = mount(admin)
-  await nextTick()
+  await send(edited('Welcome'))
   site.unmount()
   parent.postMessage.mockClear()
   await send(edited('Late'))

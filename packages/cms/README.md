@@ -69,8 +69,10 @@ it and posts it to the frame.
    ```
 
    The composable does nothing unless the page runs in a frame, its URL has `?preview` and
-   `adminOrigin` is an `http(s)` origin. It renders the draft the admin posts for the same page,
-   in the language chosen in the admin, and ignores messages from any other origin or window.
+   `adminOrigin` is an `http(s)` origin. Section markers and click handling start with the
+   admin's first valid message, so a site that frames the page itself changes nothing. It renders
+   the draft the admin posts for the same page as `initial` (none while `initial` is empty), in
+   the language chosen in the admin, and ignores messages from any other origin or window.
    The options may be reactive: when the URL loses `?preview` or `adminOrigin` stops being
    valid, it drops the draft, the section markers and the click handling. A URL change is seen
    at once on back and forward navigation and, where the browser has the Navigation API, on
@@ -94,7 +96,8 @@ so a section component needs a single root element to be clickable. Clicks insid
 not follow links. The posted data is the unsaved draft: fields the editor has not filled are
 missing, and media and link fields hold ids and references, as in `GET /pages/:id/preview`.
 The posted draft is cleaned as Save cleans it (rich text sanitized, URL links and SEO text
-trimmed, empty values dropped), whichever widget produced it.
+trimmed, empty values dropped), whichever widget produced it. A URL link Save would refuse
+(not `https://`, `http://`, `mailto:`, `tel:`, `/` or `#`) is left out of the preview.
 
 ## Sitemap limits
 

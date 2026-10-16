@@ -88,8 +88,9 @@ const elementOf = (target: EventTarget | null) =>
 /**
  * The page preview to render: `initial`, replaced by the admin's unsaved draft of the same page
  * (in the language the admin previews) while the page runs framed in the admin with `?preview`
- * in its URL. A click on a section (marked by `CmsSections`) or on a part marked
- * `data-cms-field="<field>"` selects it in the admin instead of acting. Live mode ends, and the
+ * in its URL. Live mode starts at the admin's first valid message. A click on a section (marked
+ * by `CmsSections`) or on a part marked `data-cms-field="<field>"` selects it in the admin
+ * instead of acting. Live mode ends, and the
  * draft is dropped, when the URL loses `?preview` or `options` (which may be reactive) loses its
  * admin origin. Server rendering and hydration see `initial` only.
  */
@@ -100,13 +101,14 @@ export const useCmsLivePreview = (
   const live = ref(false)
   const received = shallowRef<PagePreview>()
   provide(liveKey, readonly(live))
-  const samePage = (next: PagePreview) => {
+  const otherPage = (next: PagePreview) => {
     const base = toValue(initial)
-    return !base || next.id === base.id
+    return !!base && next.id !== base.id
   }
-  const preview = computed(() =>
-    received.value && samePage(received.value) ? received.value : (toValue(initial) ?? undefined),
-  )
+  const preview = computed(() => {
+    const base = toValue(initial) ?? undefined
+    return received.value && received.value.id === base?.id ? received.value : base
+  })
 
   onMounted(() => {
     const admin = window.parent
@@ -131,10 +133,12 @@ export const useCmsLivePreview = (
       const onMessage = (event: MessageEvent) => {
         if (!stillInPreview() || event.origin !== adminOrigin || event.source !== admin) return
         const message = parseAdminMessage(event.data)
-        if (message && samePage(message.preview)) received.value = message.preview
+        if (!message) return
+        live.value = true
+        if (!otherPage(message.preview)) received.value = message.preview
       }
       const onClick = (event: Event) => {
-        if (!stillInPreview()) return
+        if (!live.value || !stillInPreview()) return
         const target = elementOf(event.target)
         const section = target?.closest('[data-cms-section]')
         const sectionId = section?.getAttribute('data-cms-section')
@@ -149,7 +153,6 @@ export const useCmsLivePreview = (
 
       window.addEventListener('message', onMessage)
       document.addEventListener('click', onClick, true)
-      live.value = true
       onCleanup(() => {
         window.removeEventListener('message', onMessage)
         document.removeEventListener('click', onClick, true)
