@@ -18,9 +18,9 @@
 // (scripts/smoke.ts; waits for a real */5 cron tick, so allow ~6 minutes; it reruns against a
 // host that already has its Super admin). Cleanup: do not delete a Worker that ever had a cron
 // trigger; deploy it with "crons": [] and keep it (TSPACK-40). Deleting one left its trigger
-// firing as an unknown script with internalError, and afterwards no new trigger on that account
-// fired. Removing the crons first (an empty /schedules list) and deleting seconds later did the
-// same, on two accounts.
+// firing as an unknown script with internalError, even when its crons were removed first, on
+// two accounts. Cloudflare's 2026-10-14 fix made new triggers fire again, but one of those
+// orphans still fires, so deleting is still not known to be safe.
 // Then hyperdrive delete, empty the R2 bucket (r2 object delete) before r2 bucket delete, and
 // delete the throwaway database.
 {
