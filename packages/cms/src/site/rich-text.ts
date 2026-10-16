@@ -1,7 +1,7 @@
 import { defineComponent, h, type PropType } from 'vue'
 import type { PublicData } from '../api.ts'
 
-/** The `rich_text` section: its body is HTML the Read API already sanitized. */
+/** The `rich_text` section: its body is HTML sanitized by the Read API (or by the admin, live). */
 export const CmsRichText = defineComponent({
   name: 'CmsRichText',
   props: { data: { type: Object as PropType<PublicData>, required: true } },

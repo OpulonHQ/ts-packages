@@ -9,6 +9,9 @@ import { type FieldGroup, labelText } from '../api.ts'
 import FieldControl from './FieldControl.vue'
 
 const data = defineModel<Record<string, unknown>>('data', { required: true })
+const shownLocales = defineModel<Readonly<Record<string, string>>>('shownLocales', {
+  default: () => ({}),
+})
 defineProps<{
   group: FieldGroup
   locales: ReadonlyArray<string>
@@ -29,12 +32,16 @@ const localized = (data: Record<string, unknown>, field: string) => {
 
 <template>
   <div class="space-y-4">
-    <template v-for="(field, key) in group.fields" :key="key">
+    <div v-for="(field, key) in group.fields" :key="key" :data-field="key">
       <fieldset v-if="field.localized" class="space-y-2">
         <legend class="text-sm font-medium text-highlighted">
           {{ labelText(field.label, locale) }}
         </legend>
-        <LocaleTabs :locales="locales">
+        <LocaleTabs
+          :model-value="shownLocales[key]"
+          :locales="locales"
+          @update:model-value="(code) => code && (shownLocales = { ...shownLocales, [key]: code })"
+        >
           <template v-for="code in locales" :key="code" #[code]>
             <FieldControl
               v-model="localized(data, String(key))[code]"
@@ -54,6 +61,6 @@ const localized = (data: Record<string, unknown>, field: string) => {
         :label="labelText(field.label, locale)"
         :disabled="disabled"
       />
-    </template>
+    </div>
   </div>
 </template>

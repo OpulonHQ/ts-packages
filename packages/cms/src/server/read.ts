@@ -23,7 +23,8 @@ import {
 } from '../api.ts'
 import { cacheTags } from './cache.ts'
 import { uuid } from '../document-rules.ts'
-import { localizeData, maxPathLength } from './document.ts'
+import { localizeData } from '../localize.ts'
+import { maxPathLength } from './document.ts'
 import { canonicalPath, Redirects } from './redirects.ts'
 import { allLinks, resolveLinks, resolveMenuItems } from './site.ts'
 

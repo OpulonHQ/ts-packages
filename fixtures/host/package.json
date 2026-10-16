@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "./scripts/dev.sh",
     "typecheck": "vue-tsc --noEmit",
-    "build": "vite build"
+    "build": "vite build && vite build -c vite.site.config.ts"
   },
   "dependencies": {
     "@effect/sql-pg": "4.0.3",

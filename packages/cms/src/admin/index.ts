@@ -1,9 +1,10 @@
 import { defineAdminModule, type Lazy } from '@opulonjs/admin'
 import { defineAsyncComponent, defineComponent, h, provide, type Component } from 'vue'
 import { cmsAuditActions, type CmsDefinitions, cmsPermissions, type FieldGroup } from '../api.ts'
-import { cmsContextKey } from './context.ts'
+import { cmsContextKey, type CmsPreviewOptions } from './context.ts'
 import EditorFailed from './EditorFailed.vue'
 
+export type { CmsPreviewOptions } from './context.ts'
 export type { CmsWidgetProps } from './use-cms.ts'
 
 /** Widgets cms ships, named after their field kind. */
@@ -24,6 +25,8 @@ export interface CmsAdminOptions {
   readonly definitions: CmsDefinitions
   /** Custom field widgets by name (`fields.custom({ widget })`, or `widget` on any field). */
   readonly widgets?: Readonly<Record<string, Lazy<Component>>>
+  /** The host site's page in preview mode, shown live beside the page editor. */
+  readonly preview?: CmsPreviewOptions
 }
 
 /**
@@ -57,6 +60,7 @@ export const cmsAdmin = (options: CmsAdminOptions) => {
   const hasMenus = Object.keys(definitions.menus).length > 0
   const context = {
     definitions: options.definitions,
+    preview: options.preview,
     widgets: Object.fromEntries(
       Object.entries(registered).map(([name, load]) => [
         name,

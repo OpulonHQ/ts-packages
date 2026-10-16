@@ -35,6 +35,9 @@ export interface CmsWidgetProps {
   disabled?: boolean
 }
 
+export type PageSelection =
+  { readonly kind: 'page' } | { readonly kind: 'section'; readonly id: string }
+
 export const useCmsContext = () => {
   const context = inject(cmsContextKey)
   if (!context) throw new Error('cms screens must be mounted through cmsAdmin()')

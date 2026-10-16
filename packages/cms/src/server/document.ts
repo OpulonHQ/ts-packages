@@ -4,7 +4,6 @@ import {
   type CmsDefinitions,
   type FieldGroup,
   labelText,
-  type Link,
   type PageDocument,
   type PageLocale,
   type Section,
@@ -12,7 +11,8 @@ import {
   sectionDataSchema,
 } from '../api.ts'
 import { linkProblem, maxSections, uuid } from '../document-rules.ts'
-import { sanitizeRichText } from './sanitize.ts'
+import { emptyLocale, isRecord } from '../localize.ts'
+import { cleanFields, cleanLocaleText, isLink, present } from '../sanitize.ts'
 
 /** Locale-relative path: `/` or lowercase segments of letters, digits and dashes. */
 const pathPattern = /^\/(?:[\p{Ll}\p{Lo}\p{N}-]+(?:\/[\p{Ll}\p{Lo}\p{N}-]+)*)?$/u
@@ -21,12 +21,6 @@ const pathPattern = /^\/(?:[\p{Ll}\p{Lo}\p{N}-]+(?:\/[\p{Ll}\p{Lo}\p{N}-]+)*)?$/
 export const maxPathLength = 1024
 
 const invalid = (message: string) => new CmsInvalid({ message })
-
-export const emptyLocale = (path = ''): PageLocale => ({
-  path,
-  available: false,
-  seo: { title: '', description: '', image: null, noindex: false },
-})
 
 /** Path, availability and SEO per content locale; documents without paths refuse one. */
 export const cleanLocales = (
@@ -54,7 +48,8 @@ export const cleanLocales = (
 const cleanLocale = (locale: string, given: PageLocale | undefined, withPaths = true) =>
   Effect.gen(function* () {
     if (!given) return emptyLocale()
-    const path = given.path.trim()
+    const clean = cleanLocaleText(given)
+    const path = clean.path
     if (path !== '' && !pathPattern.test(path))
       return yield* invalid(
         `The ${locale} path "${path}" must start with "/" and use lowercase letters, digits and dashes.`,
@@ -63,26 +58,11 @@ const cleanLocale = (locale: string, given: PageLocale | undefined, withPaths = 
       return yield* invalid(`The ${locale} path is longer than ${maxPathLength} characters.`)
     if (withPaths && given.available && path === '')
       return yield* invalid(`The page is available in ${locale}, so it needs a ${locale} path.`)
-    const image = given.seo.image
+    const image = clean.seo.image
     if (image !== null && !uuid.test(image))
       return yield* invalid(`The ${locale} social image is not a media item.`)
-    return {
-      path,
-      available: given.available,
-      seo: {
-        title: given.seo.title.trim().slice(0, 300),
-        description: given.seo.description.trim().slice(0, 1000),
-        image,
-        noindex: given.seo.noindex,
-      },
-    }
+    return clean
   })
-
-const present = (value: unknown) => value !== null && value !== undefined && value !== ''
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-
-const isLink = (value: unknown): value is Link => isRecord(value) && typeof value.type === 'string'
 
 /** Decodes a field group's data against its fields, drops empty values and unknown locales,
  *  checks links and sanitizes rich text. */
@@ -105,30 +85,7 @@ export const cleanData = (
         if (problem) return yield* invalid(`"${labelText(field.label, 'en')}": ${problem}`)
       }
     }
-    const clean = (kind: string, value: unknown) =>
-      kind === 'richText' && typeof value === 'string'
-        ? sanitizeRichText(value)
-        : kind === 'link' && isLink(value) && value.type === 'url'
-          ? { type: 'url', url: value.url.trim() }
-          : value
-    const out: Record<string, unknown> = {}
-    for (const [name, field] of Object.entries(type.fields)) {
-      const value = decoded[name]
-      if (!present(value)) continue
-      if (field.localized) {
-        const values = Object.fromEntries(
-          Object.entries(isRecord(value) ? value : {})
-            .filter(([locale]) => locales.includes(locale))
-            .map(([locale, v]) => [locale, clean(field.kind, v)])
-            .filter(([, v]) => present(v)),
-        )
-        if (Object.keys(values).length > 0) out[name] = values
-      } else {
-        const v = clean(field.kind, value)
-        if (present(v)) out[name] = v
-      }
-    }
-    return out
+    return cleanFields(type, decoded, locales)
   })
 
 /**
@@ -205,34 +162,3 @@ export const checkRequired = (
       )
     }
   })
-
-/** A field group's data in one locale: localized fields resolved, falling back to `fallback`. */
-export const localizeData = (
-  group: FieldGroup,
-  data: Readonly<Record<string, unknown>>,
-  locale: string,
-  fallback: string,
-): Record<string, unknown> => {
-  const out: Record<string, unknown> = {}
-  for (const [name, value] of Object.entries(data)) {
-    const field = group.fields[name]
-    if (!field) continue
-    if (!field.localized) out[name] = value
-    else {
-      const values = isRecord(value) ? value : {}
-      out[name] = values[locale] ?? values[fallback] ?? null
-    }
-  }
-  return out
-}
-
-/** A section's data in one locale: localized fields resolved, falling back to `fallback`. */
-export const localizeSection = (
-  definitions: CmsDefinitions,
-  section: Section,
-  locale: string,
-  fallback: string,
-): Section => {
-  const type = definitions.sections[section.type]
-  return type ? { ...section, data: localizeData(type, section.data, locale, fallback) } : section
-}

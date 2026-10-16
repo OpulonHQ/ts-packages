@@ -42,6 +42,7 @@ export default async (ctx) => {
 
   for (const editor of editors) {
     await page.goto(`${base}/admin/cms${editor.path}`)
+    if (editor.kind === 'page') await page.getByRole('button', { name: 'Page settings', exact: true }).click()
     const field = page.locator(`input[name="${editor.field}"]`)
     await field.waitFor()
     await field.fill(editor.value)

@@ -16,6 +16,8 @@ const files: Record<string, string> = {
   '/admin/index.html': '<!doctype html><title>admin</title>',
   '/admin/assets/index-abc123.js': 'console.log(1)',
   '/admin/favicon.svg': '<svg/>',
+  '/site/index.html': '<!doctype html><title>site</title>',
+  '/site/assets/index-def456.js': 'console.log(2)',
 }
 const assets: Env['ASSETS'] = {
   fetch: async (request) => {
@@ -109,4 +111,23 @@ test('a revalidated admin file answers 304, not the index.html fallback', async 
     status: 304,
     body: '',
   })
+})
+
+test('the preview site: /site/** answers its index.html with no-store, hashed assets are immutable', async () => {
+  for (const path of ['/site', '/site/', '/site/?preview=p1&locale=en', '/site/about']) {
+    expect(await request(path)).toEqual({
+      status: 200,
+      cacheControl: 'no-store',
+      body: files['/site/index.html'],
+    })
+  }
+  expect(await request('/site/assets/index-def456.js')).toEqual({
+    status: 200,
+    cacheControl: 'public, max-age=31536000, immutable',
+    body: 'console.log(2)',
+  })
+  expect((await request('/site/assets/missing.js')).status).toBe(404)
+  expect((await request('/sitemap')).status).toBe(404)
+  expect(await request('/admin/')).toMatchObject({ status: 200, body: files['/admin/index.html'] })
+  expect(await request('/api/demo/notes', { cookie })).toMatchObject({ status: 200 })
 })

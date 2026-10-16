@@ -26,6 +26,8 @@ const adminTests = [
   'fixtures/host/test/cms/editor-failed.test.ts',
   'fixtures/host/test/cms/reference-paging-admin.test.ts',
   'fixtures/host/test/cms/cms-sections.test.ts',
+  'fixtures/host/test/cms/site-live-preview.test.ts',
+  'fixtures/host/test/cms/page-editor.test.ts',
 ]
 
 export default defineConfig({
@@ -62,6 +64,9 @@ export default defineConfig({
           name: 'admin',
           include: adminTests,
           environment: './test/happy-dom-server.ts',
+          environmentOptions: {
+            happyDOM: { settings: { navigation: { disableChildFrameNavigation: true } } },
+          },
           expect: { poll: { timeout: 5000 } },
           testTimeout: 15_000,
           globalSetup,

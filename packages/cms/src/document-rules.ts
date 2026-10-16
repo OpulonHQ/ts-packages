@@ -3,7 +3,7 @@ import type { CmsDefinitions, Link } from './definitions.ts'
 export const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export const maxSections = 200
 
-const urlPattern = /^(?:https?:\/\/|mailto:|tel:|\/(?!\/)|#)\S*$/i
+export const urlPattern = /^(?:https?:\/\/|mailto:|tel:|\/(?!\/)|#)\S*$/i
 
 export const linkProblem = (
   definitions: Pick<CmsDefinitions, 'systemPages'>,

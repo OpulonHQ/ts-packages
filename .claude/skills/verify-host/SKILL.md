@@ -65,7 +65,7 @@ A journey is a module `export default async ({ page, base, shot, args, check }) 
 
 ## Evidence
 
-Every helper writes to `.verify/<timestamp>/` (git-ignored; set `EVIDENCE_DIR` to group a run): `smoke.log` from the smoke; numbered PNGs, `trace.zip` (open with `pnpm dlx playwright@1.59.1 show-trace`) from UI journeys. Proof standards:
+Every helper writes to `.verify/<timestamp>/` (git-ignored; set `EVIDENCE_DIR` to group a run): `smoke.log` from the smoke; numbered PNGs, `trace.zip` (open with `pnpm dlx playwright@1.59.1 show-trace`) from UI journeys, plus a `.webm` recording of the run when `VERIFY_VIDEO=1` is set. Proof standards:
 
 - Drive the real path: admin UI or the public `/api/**` as the SPA calls it, with `Origin` set. No test-only endpoints, no direct table writes to fake a state the UI should create (the CLI bootstrap is a real user path).
 - Capture the action and the resulting state: a screenshot before and after, plus the API status the action produced.

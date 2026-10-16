@@ -10,6 +10,7 @@ const { existsSync } = await import('node:fs')
 const context = await browser.newContext({
   viewport: { width: 1280, height: 800 },
   ...(existsSync(session) ? { storageState: session } : {}),
+  ...(process.env.VERIFY_VIDEO ? { recordVideo: { dir: out, size: { width: 1280, height: 800 } } } : {}),
 })
 await context.tracing.start({ screenshots: true, snapshots: true })
 const page = await context.newPage()
@@ -36,6 +37,7 @@ try {
 } finally {
   await context.tracing.stop({ path: `${out}/trace.zip` })
   if ((await context.request.get(`${base}/api/me`)).ok()) await context.storageState({ path: session })
+  await context.close()
   await browser.close()
   console.log(`evidence: ${out}`)
 }

@@ -25,7 +25,8 @@ import {
 } from '../api.ts'
 import { cacheTags } from './cache.ts'
 import { linkProblem, uuid } from '../document-rules.ts'
-import { checkFields, cleanData, localizeData } from './document.ts'
+import { localizeData } from '../localize.ts'
+import { checkFields, cleanData } from './document.ts'
 import { type DocumentRow, documentState, makeDocuments } from './documents.ts'
 
 /** Cache-Tag of the public site response (settings and menus). */
