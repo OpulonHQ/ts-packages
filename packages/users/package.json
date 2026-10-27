@@ -1,6 +1,6 @@
 {
   "name": "@opulonjs/users",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Staff users: sign-in, invitations and password reset for @opulonjs host apps",
   "license": "MIT",
   "type": "module",

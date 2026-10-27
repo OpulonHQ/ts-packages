@@ -1,6 +1,6 @@
 {
   "name": "@opulonjs/ui",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Admin UI kit on Nuxt UI 4 for @opulonjs host apps",
   "license": "MIT",
   "type": "module",
