@@ -130,8 +130,14 @@ The fixture's `admin/overrides/Dashboard.vue` adds “Fixture dashboard override
 
 ## Releases
 
-All `@opulonjs/*` packages share one fixed version. They sit at 0.0.0 until the first `minor` changeset releases 0.1.0. Add a changeset to every PR that changes a package (`pnpm changeset`, or `pnpm changeset --empty` when nothing is released). Merging to `main` opens a "version packages" PR; merging that PR publishes to npm with provenance through trusted publishing. The manual **Snapshot** workflow publishes pending changes as `<version>-next-<timestamp>` under the `next` dist-tag.
+All `@opulonjs/*` packages share one fixed version. They sit at 0.0.0 until the first `minor` changeset releases 0.1.0. Add a changeset to every PR that changes a package (`pnpm changeset`, or `pnpm changeset --empty` when nothing is released). Merging to `main` opens a "version packages" PR; merging that PR publishes to npm with provenance through trusted publishing. Running the **Release** workflow by hand (Actions → Release → Run workflow) publishes pending changes as `<version>-next-<timestamp>` under the `next` dist-tag instead; install one with `pnpm add @opulonjs/core@next`.
 
-Packages are marked `"private": true` until they are ready for their first release; remove the flag to let the release workflow publish them.
+npm trusts one workflow file per package, so every publish goes through `.github/workflows/release.yml`; keep that filename. A new package has to exist on npm before it can trust the workflow:
+
+1. From a clean `main`, run `pnpm build`, then in the package's directory run `pnpm publish --tag next --no-provenance`, signed in to npm with 2FA. Provenance only works from CI.
+2. Set up trusted publishing with npm 11.15 or later: `npm trust github @opulonjs/<name> --file release.yml --repo OpulonHQ/ts-packages`.
+3. Within two days, publish a release or a snapshot through the workflow; npm drops a trusted publisher that has not published by then.
+
+A package that should not be published yet is marked `"private": true`.
 
 There are no git hooks; CI runs every check.

@@ -1,22 +1,24 @@
 name: Release
 
+# npm trusts one workflow file per package, so releases and snapshots both publish from this file.
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: release
   cancel-in-progress: false
 
-permissions:
-  contents: write
-  pull-requests: write
-  id-token: write # npm trusted publishing (OIDC) and provenance
-
 jobs:
   release:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write # npm trusted publishing (OIDC) and provenance
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -36,4 +38,28 @@ jobs:
           pr-title: 'chore: version packages'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_CONFIG_PROVENANCE: 'true'
+
+  snapshot:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write # npm trusted publishing (OIDC) and provenance
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          cache: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: pnpm install --frozen-lockfile
+      - name: npm token for the first publish
+        run: '[ -z "$NPM_TOKEN" ] || echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc'
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - run: pnpm snapshot
+        env:
           NPM_CONFIG_PROVENANCE: 'true'
