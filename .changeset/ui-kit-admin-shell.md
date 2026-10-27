@@ -1,6 +1,0 @@
----
-'@opulonjs/ui': minor
-'@opulonjs/admin': minor
----
-
-Add the UI kit and the admin shell. `@opulonjs/ui` wraps Nuxt UI 4: kit components at `@opulonjs/ui/components/<Name>` (DataTable, LocaleTabs, ConfirmDialog, StatusBadge, PageHeader, EmptyState, StatCard, RichTextControl, `Field/Text`, `Field/Textarea`, `Field/Number`, `Field/Select`, `Field/Toggle`, `Field/RichText`), built one file per component, en/sk kit strings, re-exports of the Nuxt UI components admin screens use, and the `opulonUi()` Vite preset in `@opulonjs/ui/vite` (build-time brand: palettes, radius, font, component overrides; self-hosted Inter; offline Lucide bundle, no Iconify API calls). `createAdmin` now renders a Nuxt UI dashboard: nav groups (Content, Users, Settings, host groups by order), dashboard widgets, nav, routes and widgets filtered by `/me` permissions, sign-in routing through exactly one auth provider, en + sk messages extensible by the host, and the user's admin locale. `defineAdminModule` takes the module's `permissions` and `auditActions` catalogs and then requires en and sk labels (`permissions.<key>`, `audit.<key>`) for every key at type level. `useAdmin()` exposes the signed-in user and `can(permission)` to module screens. `opulonAdmin({ brand })` applies the brand at build time.
