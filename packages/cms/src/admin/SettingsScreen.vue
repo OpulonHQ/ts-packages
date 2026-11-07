@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /** Content > Site settings: global SEO and the host's fields, with draft and publishing. */
-import { useI18n } from '@opulonjs/admin'
+import { CachePurgeNotice, useI18n } from '@opulonjs/admin'
 import { UCard } from '@opulonjs/ui'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
 import { computed, onMounted, ref, shallowRef, useTemplateRef } from 'vue'
@@ -9,7 +9,7 @@ import RevisionHistory from './RevisionHistory.vue'
 import FieldsForm from './FieldsForm.vue'
 import PublishActions from './PublishActions.vue'
 import ActionStatus from './ActionStatus.vue'
-import { useAction, useCmsContext, useContent, useFocusReturn } from './use-cms.ts'
+import { useAction, useCmsContext, useContent, useDraftChanges, useFocusReturn } from './use-cms.ts'
 
 const { t } = useI18n()
 const content = useContent()
@@ -18,6 +18,8 @@ const { pending, status, run } = useAction(() => t('cms.errors.failed'))
 
 const settings = shallowRef<SiteSettings>()
 const data = ref<Record<string, unknown>>({})
+// The fields as last saved, the unsaved-changes bar's comparison and Discard's copy.
+const baseline = shallowRef<Record<string, unknown>>()
 const revisionPending = ref(false)
 const canEdit = computed(() => content.can('cms.site.edit'))
 const locked = computed(() => !canEdit.value || pending.value || revisionPending.value)
@@ -30,6 +32,7 @@ useFocusReturn(
 const show = (next: SiteSettings) => {
   settings.value = next
   data.value = structuredClone(next.draft.data)
+  baseline.value = structuredClone(next.draft.data)
 }
 onMounted(() => run(() => content.getSettings(), '', show))
 
@@ -46,8 +49,20 @@ const publish = () =>
     t('cms.page.published'),
     show,
   )
-const unpublish = () => run(() => content.unpublishSettings(), t('cms.site.unpublished'), show)
+// Unpublishing leaves the draft as it was, so edits on screen stay on screen.
+const unpublish = () =>
+  run(
+    () => content.unpublishSettings(),
+    t('cms.site.unpublished'),
+    (next) => (settings.value = next),
+  )
 const reload = (done = '') => run(() => content.getSettings(), done, show)
+useDraftChanges({
+  draft: data,
+  baseline,
+  save,
+  busy: () => pending.value || revisionPending.value,
+})
 </script>
 
 <template>
@@ -60,12 +75,12 @@ const reload = (done = '') => run(() => content.getSettings(), done, show)
           :pending="pending || revisionPending"
           :can-edit="canEdit"
           :can-publish="content.can('cms.site.publish')"
-          @save="save"
           @publish="publish"
           @unpublish="unpublish"
         />
       </template>
     </PageHeader>
+    <CachePurgeNotice :pending="pending || revisionPending" class="mb-4" />
     <ActionStatus :status="status" @reload="reload()" />
     <form
       v-if="settings"

@@ -18,6 +18,12 @@ const en = {
     notFound: 'Page not found.',
     navigation: 'Main navigation',
     reload: { message: 'A new admin version is available.', action: 'Reload' },
+    discard: {
+      title: 'Discard unsaved changes?',
+      description: 'Your changes since the last save are lost.',
+      confirm: 'Discard changes',
+      cancel: 'Keep editing',
+    },
     groups: { content: 'Content', users: 'Users', settings: 'Settings' },
     audit: {
       title: 'Audit log',
@@ -74,6 +80,12 @@ const sk: typeof en = {
     notFound: 'Stránka sa nenašla.',
     navigation: 'Hlavná navigácia',
     reload: { message: 'Je dostupná nová verzia administrácie.', action: 'Obnoviť' },
+    discard: {
+      title: 'Zahodiť neuložené zmeny?',
+      description: 'Zmeny od posledného uloženia sa stratia.',
+      confirm: 'Zahodiť zmeny',
+      cancel: 'Pokračovať v úpravách',
+    },
     groups: { content: 'Obsah', users: 'Používatelia', settings: 'Nastavenia' },
     audit: {
       title: 'Auditný záznam',

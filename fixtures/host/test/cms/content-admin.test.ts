@@ -20,7 +20,7 @@ import { cmsContextKey } from '../../../../packages/cms/src/admin/context.ts'
 import type { RevisionSnapshot } from '../../../../packages/cms/src/admin/use-revisions.ts'
 import { files } from '../media/helpers.ts'
 import { useAdminLifetime } from '../admin-lifetime.ts'
-import { page, section, useCmsHost } from './helpers.ts'
+import { page, saveDraft, section, useCmsHost } from './helpers.ts'
 
 // Runs in the `admin` vitest project (happy-dom); the admin's fetch goes into the test Worker.
 // The editor's admin locale is sk.
@@ -616,7 +616,7 @@ test('editors manage collection items in generated forms and publish them', asyn
 
   type('data.title.en', 'Hello world')
   type('locales.en.path', '/blog/hello-world')
-  button('Uložiť koncept')!.click()
+  await saveDraft()
   await expect.poll(text).toContain('Koncept uložený.')
   const saved = (await host.call<Item>('GET', `/items/${post.id}`)).body
   expect(saved.draft.data).toEqual({ title: { en: 'Hello world' } })
@@ -686,7 +686,8 @@ test('a publish still saving cannot publish the page the editor navigated to', a
   history.pushState(null, '', `/admin/cms/pages/${b.id}`)
   window.dispatchEvent(new PopStateEvent('popstate'))
   await expect.poll(() => input('locales.en.path')?.value).toBe('/admin-publish-race-b')
-  button('Uložiť koncept')!.click()
+  type('locales.en.seo.title', 'Page B')
+  await saveDraft()
   await expect.poll(text).toContain('Koncept uložený.')
   held.resolve()
   await new Promise((resolve) => setTimeout(resolve, 50))
@@ -786,7 +787,8 @@ test.each([
   const text = mountAdmin(`/admin/cms${path}`, fetch)
   await expect.poll(editable).toBe(true)
   type(c.field, value)
-  button(c.action)!.click()
+  if (c.action === 'Uložiť koncept') await saveDraft()
+  else button(c.action)!.click()
   await expect.poll(() => holding).toBe(true)
   expect(editable()).toBe(false)
 
@@ -812,7 +814,7 @@ test.each(editors)(
     button('Zverejniť')!.click()
     await expect.poll(() => document.querySelector('[role="alert"]')).toBeTruthy()
     type(c.field, '/saved-after')
-    button('Uložiť koncept')!.click()
+    await saveDraft()
     await expect.poll(text).toContain('Koncept uložený.')
     expect(c.stored((await host.call<Document>('GET', path)).body)).toBe('/saved-after')
   },
@@ -852,7 +854,8 @@ test('rich text and reference pickers are locked while an item save is in flight
   await expect.poll(row).toBeTruthy()
   await expect.poll(richText).toBeTruthy()
 
-  button('Uložiť koncept')!.click()
+  type('data.title.en', 'Locked while saving')
+  await saveDraft()
   await expect.poll(() => holding).toBe(true)
   expect(richText()).toBeNull()
   row()!.click()
@@ -896,7 +899,8 @@ test('no button in the page editor form can change the draft while a save is in 
     .poll(() => formButtons().some((b) => b.getAttribute('aria-label') === 'Odstrániť sekciu'))
     .toBe(true)
 
-  button('Uložiť koncept')!.click()
+  type('sections.0.title.en', 'First, edited')
+  await saveDraft()
   await expect.poll(() => holding).toBe(true)
   expect(usable()).toEqual([])
 
@@ -914,7 +918,7 @@ test('editors build a menu from entries with labels per locale and links', async
   type('items.0.label.en', 'Docs')
   type('items.0.label.it', 'Documenti')
   type('items.0.link.url', 'https://example.test/docs')
-  button('Uložiť koncept')!.click()
+  await saveDraft()
   await expect.poll(text).toContain('Koncept uložený.')
   const menu = (await host.call<Menu>('GET', '/menus/main')).body
   expect(menu.draft.items).toEqual([

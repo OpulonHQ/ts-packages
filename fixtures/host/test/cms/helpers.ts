@@ -4,6 +4,7 @@ import { createWorker, PgFromHyperdrive } from '@opulonjs/core/workers'
 import { Mailer } from '@opulonjs/emails/server'
 import { R2MediaStorage } from '@opulonjs/media/server'
 import { Layer } from 'effect'
+import { expect } from 'vitest'
 import { adminQuery } from '../../../../test/postgres/admin.ts'
 import { useTestDatabase } from '../../../../test/postgres/index.ts'
 import { server } from '../../server/opulon.ts'
@@ -190,3 +191,14 @@ export const section = (type: string, data: Record<string, unknown>, id = crypto
   type,
   data,
 })
+
+/**
+ * Clicks the unsaved-changes bar's "Uložiť koncept" (sk): the bar appears once the draft on screen
+ * differs from what was saved, so a test edits first and the button shows a render later.
+ */
+export const saveDraft = async () => {
+  const find = () =>
+    [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Uložiť koncept')
+  await expect.poll(find).toBeDefined()
+  find()!.click()
+}

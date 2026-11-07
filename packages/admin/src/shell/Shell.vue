@@ -17,13 +17,28 @@ import {
   UNavigationMenu,
   useToast,
 } from '@opulonjs/ui'
-import { computed, inject, onUnmounted, ref, watch } from 'vue'
+import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
+import UnsavedChangesBar from '@opulonjs/ui/components/UnsavedChangesBar'
+import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { failedScreenKey, type NavTarget, type ShellNavItem, useAdmin } from '../state.ts'
 import ScreenFailed from './ScreenFailed.vue'
 
-const { brand, me, status, stale, nav, navTarget, signOut, accountRoute, setLocale } = useAdmin()
+const {
+  brand,
+  me,
+  status,
+  stale,
+  nav,
+  navTarget,
+  signOut,
+  accountRoute,
+  setLocale,
+  editors,
+  confirmDiscard,
+  discardRequest,
+} = useAdmin()
 const { t, locale, availableLocales } = useI18n()
 const toast = useToast()
 const route = useRoute()
@@ -160,7 +175,47 @@ const userMenu = computed<DropdownMenuItem[][]>(() => [
       ]
     : []),
 ])
-const reload = () => location.reload()
+// The newest editor with a bar owns it while it has unsaved changes; Discard asks first.
+const editor = computed(() => [...editors].reverse().find((e) => e.bar))
+const unsaved = () => editors.some((e) => e.dirty() && !e.busy())
+const discard = async () => {
+  const target = editor.value
+  if (target && (await confirmDiscard())) target.discard?.()
+}
+const discardOpen = computed({
+  get: () => discardRequest.value !== undefined,
+  set: (open) => {
+    if (!open) discardRequest.value?.(false)
+  },
+})
+// Cmd/Ctrl+S saves the newest editor that saves, and never opens the browser's own dialog over it.
+const onKeydown = (event: KeyboardEvent) => {
+  if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return
+  if (event.key.toLowerCase() !== 's' || event.defaultPrevented) return
+  const target = [...editors].reverse().find((e) => e.save)
+  if (!target) return
+  event.preventDefault()
+  if (target.dirty() && !target.busy()) target.save?.()
+}
+let leaving = false
+const onBeforeUnload = (event: BeforeUnloadEvent) => {
+  if (leaving || !unsaved()) return
+  event.preventDefault()
+  event.returnValue = ''
+}
+onMounted(() => {
+  window.addEventListener('keydown', onKeydown)
+  window.addEventListener('beforeunload', onBeforeUnload)
+})
+onUnmounted(() => {
+  window.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('beforeunload', onBeforeUnload)
+})
+const reload = async () => {
+  if (unsaved() && !(await confirmDiscard())) return
+  leaving = true
+  location.reload()
+}
 // The navbar names the section, on its detail screens too (the child's name under a group).
 const title = computed(() => {
   if (current.value.route === 'dashboard') return t('admin.dashboard')
@@ -313,7 +368,33 @@ const title = computed(() => {
           <ScreenFailed v-if="failedScreen" />
           <RouterView />
         </template>
+        <template #footer>
+          <Transition
+            enter-active-class="transition duration-150 ease-out motion-reduce:transition-none"
+            enter-from-class="translate-y-2 opacity-0"
+            leave-active-class="transition duration-100 ease-in motion-reduce:transition-none"
+            leave-to-class="translate-y-2 opacity-0"
+          >
+            <UnsavedChangesBar
+              v-if="editor?.dirty()"
+              :save-label="editor.saveLabel?.()"
+              :busy="editor.busy()"
+              @save="editor.save?.()"
+              @discard="discard"
+            />
+          </Transition>
+        </template>
       </UDashboardPanel>
     </UDashboardGroup>
+
+    <ConfirmDialog
+      v-model:open="discardOpen"
+      :title="t('admin.discard.title')"
+      :description="t('admin.discard.description')"
+      :confirm-label="t('admin.discard.confirm')"
+      :cancel-label="t('admin.discard.cancel')"
+      danger
+      @confirm="discardRequest?.(true)"
+    />
   </UApp>
 </template>

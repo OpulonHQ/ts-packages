@@ -1,5 +1,14 @@
-import { useAdmin, useApiClient } from '@opulonjs/admin'
-import { computed, inject, onBeforeUnmount, onScopeDispose, ref, watch } from 'vue'
+import { useAdmin, useApiClient, useI18n, useUnsavedChanges } from '@opulonjs/admin'
+import {
+  computed,
+  inject,
+  onBeforeUnmount,
+  onScopeDispose,
+  ref,
+  type Ref,
+  type ShallowRef,
+  watch,
+} from 'vue'
 import { cmsContextKey } from './context.ts'
 import {
   CmsConflict,
@@ -118,6 +127,31 @@ export const useContent = () => {
 export interface ActionResult {
   kind: 'ok' | 'error' | 'conflict'
   message: string
+}
+
+/**
+ * A cms editor's draft against the copy it last saved (`baseline`, taken when the editor shows a
+ * document): the shell's unsaved-changes bar with "Save draft" and Discard, the leave guard and
+ * Cmd/Ctrl+S.
+ */
+export const useDraftChanges = <D>(options: {
+  readonly draft: Ref<D | undefined>
+  readonly baseline: ShallowRef<D | undefined>
+  readonly save: () => unknown
+  readonly busy: () => boolean
+}) => {
+  const { t } = useI18n()
+  return useUnsavedChanges({
+    current: () => options.draft.value,
+    saved: () => options.baseline.value,
+    save: options.save,
+    discard: () => {
+      if (options.baseline.value !== undefined)
+        options.draft.value = structuredClone(options.baseline.value)
+    },
+    busy: options.busy,
+    saveLabel: () => t('cms.page.save'),
+  })
 }
 
 /**

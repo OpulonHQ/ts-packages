@@ -2,7 +2,7 @@ import type { Item } from '@opulonjs/cms/api'
 import { expect, test } from 'vitest'
 import { useAdminLifetime } from '../admin-lifetime.ts'
 import { files } from '../media/helpers.ts'
-import { useCmsHost } from './helpers.ts'
+import { saveDraft, useCmsHost } from './helpers.ts'
 
 // Runs in the `admin` vitest project (happy-dom); the admin's fetch goes into the test Worker.
 // The editor's admin locale is sk.
@@ -18,6 +18,13 @@ const uploadButton = () =>
   [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(
     (b) => b.textContent?.trim() === 'Nahrať',
   )
+// An edit so the unsaved-changes bar offers Save: it shows only while the draft has changes.
+const editTitle = async (value: string) => {
+  const field = () => document.querySelector<HTMLInputElement>('input[name="data.title.en"]')
+  await expect.poll(field).toBeTruthy()
+  field()!.value = value
+  field()!.dispatchEvent(new Event('input'))
+}
 const storedCover = async (id: string) =>
   (await host.call<Item>('GET', `/items/${id}`)).body.draft.data.cover
 
@@ -115,8 +122,11 @@ test.each([
     await expect.poll(() => button('Obnoviť do konceptu')).toBeTruthy()
   }
 
+  const saving = c.action === 'Uložiť koncept'
+  if (saving) await editTitle('Cover race, edited')
   await startUpload(filename)
-  button(c.action)!.click()
+  if (saving) await saveDraft()
+  else button(c.action)!.click()
   if (restoring) {
     const confirm = () =>
       [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(
@@ -132,7 +142,7 @@ test.each([
   await expect.poll(() => cover()?.textContent).toContain(filename)
   expect(cover()?.textContent).not.toContain('earlier-cover.png')
   expect(await storedCover(published.id)).toBe(earlier)
-  button('Uložiť koncept')!.click()
+  await saveDraft()
   await expect.poll(() => storedCover(published.id)).toBe(state.uploaded)
 })
 
@@ -151,8 +161,9 @@ test.each([
       'PUT /draft',
     )
 
+    await editTitle('First cover owner, edited')
     await startUpload(filename)
-    button('Uložiť koncept')!.click()
+    await saveDraft()
     if (c.inFlight) {
       await expect.poll(() => state.holding).toBe(true)
       expect(locked()).toBe(true)
@@ -168,8 +179,8 @@ test.each([
       await expect.poll(() => document.querySelector('[role="dialog"]')).toBeNull()
     }
 
-    button('Uložiť koncept')!.click()
-    await expect.poll(text).toContain('Koncept uložený.')
+    // The second item opens without unsaved changes: the first item's upload never reached it.
+    expect(text()).not.toContain('Neuložené zmeny')
     expect(cover()?.textContent).not.toContain(filename)
     expect(await storedCover(second.id)).toBe(kept)
     expect(await storedCover(first.id)).toBeUndefined()

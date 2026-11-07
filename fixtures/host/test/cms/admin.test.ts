@@ -4,7 +4,7 @@ import { expect, test } from 'vitest'
 import { adminModules } from '../../admin/modules.ts'
 import { definitions as hostDefinitions } from '../../cms/definitions.ts'
 import { useAdminLifetime } from '../admin-lifetime.ts'
-import { page, section, useCmsHost } from './helpers.ts'
+import { page, saveDraft, section, useCmsHost } from './helpers.ts'
 
 // Runs in the `admin` vitest project (happy-dom); the admin's fetch goes into the test Worker.
 const admin = useAdminLifetime()
@@ -61,7 +61,7 @@ test('pages list system pages; an editor edits the draft in generated forms and 
 
   type('sections.0.title.en', 'About us')
   type('locales.en.seo.title', 'About')
-  button('Uložiť koncept')!.click()
+  await saveDraft()
   await expect.poll(text).toContain('Koncept uložený.')
   const draft = await stored(created.id)
   expect(draft.draft.sections[0]?.data).toEqual({ title: { en: 'About us' }, tone: 'light' })
@@ -86,7 +86,7 @@ const openedPage = async () => {
   return location.pathname.split('/').at(-1)!
 }
 
-test('a new page starts from a template: its sections open prefilled, then save', async () => {
+test('a new page starts from a template: its sections open prefilled and already stored', async () => {
   const text = mountAdmin('/admin/cms/pages')
   await expect.poll(() => button('Nová stránka')).toBeDefined()
   button('Nová stránka')!.click()
@@ -99,8 +99,8 @@ test('a new page starts from a template: its sections open prefilled, then save'
   const id = await openedPage()
   await expect.poll(() => input('sections.0.title.en')?.value).toBe('Welcome')
   expect(input('sections.0.title.it')?.value).toBe('Benvenuti')
-  button('Uložiť koncept')!.click()
-  await expect.poll(text).toContain('Koncept uložený.')
+  // Created with its sections: nothing is unsaved, so no bar asks to save.
+  expect(text()).not.toContain('Neuložené zmeny')
   const { sections } = (await stored(id)).draft
   expect(sections.map(({ type, data }) => ({ type, data }))).toEqual([
     { type: 'hero', data: { title: { en: 'Welcome', it: 'Benvenuti' }, tone: 'dark' } },
@@ -138,7 +138,7 @@ test('a system page offers no delete', async () => {
   )
   const home = body.rows.find((r) => r.systemKey === 'home')!
   const text = mountAdmin(`/admin/cms/pages/${home.id}`)
-  await expect.poll(text).toContain('Uložiť koncept')
+  await expect.poll(text).toContain('Zverejniť')
   expect(button('Vymazať')).toBeUndefined()
   await expect.poll(text).toContain('Zatiaľ žiadne publikované revízie.')
 })

@@ -116,6 +116,10 @@ export default {
     description:
       'Názov webu, predvolené SEO a údaje pre celý web. Zmeny sa prejavia po zverejnení.',
   },
+  unpublish: {
+    title: 'Stiahnuť z webu?',
+    description: 'Návštevníci ho prestanú vidieť, kým ho znova nezverejníte. Koncept zostane.',
+  },
   site: { unpublished: 'Zverejnenie zrušené. Web to už nezobrazuje.' },
   menus: {
     title: 'Menu',

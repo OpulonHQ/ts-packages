@@ -7,6 +7,7 @@ import {
   createApp,
   defineAsyncComponent,
   isVNode,
+  shallowReactive,
   shallowRef,
   type App,
   type FunctionalComponent,
@@ -32,6 +33,7 @@ import {
   type AdminState,
   type Me,
   type NavTarget,
+  type ShellEditor,
   type ShellNavGroup,
   type Status,
 } from './state.ts'
@@ -407,11 +409,38 @@ export const createAdmin = (options: AdminOptions): App => {
       if (me.value && shows()) me.value = { ...me.value, locale }
     })
   }
+  // Open editors register their unsaved state (useUnsavedChanges): the shell shows the bar for
+  // the newest, and asks before navigating away or reloading while any is dirty.
+  const editors = shallowReactive<ShellEditor[]>([])
+  const registerEditor = (editor: ShellEditor) => {
+    editors.push(editor)
+    return () => {
+      const index = editors.indexOf(editor)
+      if (index >= 0) editors.splice(index, 1)
+    }
+  }
+  // A save in flight already carries its changes: leaving does not lose them.
+  const unsaved = () => editors.some((editor) => editor.dirty() && !editor.busy())
+  const discardRequest = shallowRef<(discard: boolean) => void>()
+  let asking: Promise<boolean> | undefined
+  const confirmDiscard = () =>
+    (asking ??= new Promise<boolean>((resolve) => {
+      discardRequest.value = (discard) => {
+        discardRequest.value = undefined
+        asking = undefined
+        resolve(discard)
+      }
+    }))
+
   const state: AdminState = {
     brand: options.brand,
     me,
     status,
     navTarget: shallowRef<NavTarget>(),
+    editors,
+    registerEditor,
+    confirmDiscard,
+    discardRequest,
     stale: computed(
       () => buildId !== undefined && me.value !== undefined && me.value.buildId !== buildId,
     ),
@@ -475,6 +504,18 @@ export const createAdmin = (options: AdminOptions): App => {
   })
   // Leave guards run before beforeEach, so a host leave guard's error stays in the console.
   let latest: RouteLocationNormalized | undefined
+  // Before the access guard: asks once for a new path chosen while signed in, never for the
+  // redirect a guard starts (it would ask twice), nor once the session has ended (sign-out and
+  // expiry navigate to sign-in themselves). Query and hash changes keep the editor.
+  router.beforeEach((to, from) =>
+    unmounted ||
+    status.value !== 'ready' ||
+    to.redirectedFrom !== undefined ||
+    to.path === from.path ||
+    !unsaved()
+      ? true
+      : confirmDiscard(),
+  )
   router.beforeEach(async (to) => {
     latest = to
     await ready

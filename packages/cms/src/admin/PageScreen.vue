@@ -1,9 +1,7 @@
 <script setup lang="ts">
 import { CachePurgeNotice, useI18n } from '@opulonjs/admin'
-import { UButton } from '@opulonjs/ui'
 import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
-import StatusBadge from '@opulonjs/ui/components/StatusBadge'
 import { computed, ref, shallowRef, useId, watch, useTemplateRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { labelText, type Page, type PageDocument, type PageLocale } from '../api.ts'
@@ -13,12 +11,14 @@ import FieldsForm from './FieldsForm.vue'
 import LocaleDetails from './LocaleDetails.vue'
 import PageOutline from './PageOutline.vue'
 import PreviewPane from './PreviewPane.vue'
+import PublishActions from './PublishActions.vue'
 import ActionStatus from './ActionStatus.vue'
 import {
   type PageSelection,
   pageTitle,
   useAction,
   useCmsContext,
+  useDraftChanges,
   usePages,
   useFocusReturn,
 } from './use-cms.ts'
@@ -38,6 +38,8 @@ const { pending, status, run, invalidate } = useAction(() => t('cms.errors.faile
 
 const page = shallowRef<Page>()
 const draft = ref<Draft>()
+// The draft as last saved, the unsaved-changes bar's comparison and Discard's copy.
+const baseline = shallowRef<Draft>()
 const missing = ref(false)
 const confirming = ref(false)
 const revisionPending = ref(false)
@@ -112,6 +114,7 @@ const toDraft = (document: PageDocument): Draft => {
 const show = (next: Page) => {
   page.value = next
   draft.value = toDraft(next.draft)
+  baseline.value = toDraft(next.draft)
 }
 
 let loadTicket = 0
@@ -123,6 +126,7 @@ watch(
     chosen.value = undefined
     page.value = undefined
     draft.value = undefined
+    baseline.value = undefined
     missing.value = false
     try {
       const next = await pages.get(id)
@@ -149,14 +153,29 @@ const publish = () =>
     t('cms.page.published'),
     show,
   )
-const unpublish = () => run(() => pages.unpublish(page.value!.id), t('cms.page.unpublished'), show)
+// Unpublishing leaves the draft as it was, so edits on screen stay on screen.
+const unpublish = () =>
+  run(
+    () => pages.unpublish(page.value!.id),
+    t('cms.page.unpublished'),
+    (next) => (page.value = next),
+  )
 async function remove() {
   confirming.value = false
   await run(() => pages.remove(page.value!.id), '')
-  if (status.value?.kind === 'ok') await router.push({ name: 'cms.pages' })
+  if (status.value?.kind !== 'ok') return
+  // Deleted: nothing is left to save, so leaving does not ask.
+  draft.value = baseline.value
+  await router.push({ name: 'cms.pages' })
 }
 
 const reload = (done = '') => run(() => pages.get(page.value!.id), done, show)
+useDraftChanges({
+  draft,
+  baseline,
+  save,
+  busy: () => pending.value || revisionPending.value,
+})
 </script>
 
 <template>
@@ -168,42 +187,16 @@ const reload = (done = '') => run(() => pages.get(page.value!.id), done, show)
         :breadcrumbs="[{ label: t('cms.page.back'), to: { name: 'cms.pages' } }, { label: title }]"
       >
         <template #actions>
-          <StatusBadge
+          <PublishActions
             :status="page.status"
-            :label="t(`cms.status.${page.status}`)"
-            :color="page.status === 'changed' ? 'warning' : undefined"
-          />
-          <UButton
-            v-if="canEdit"
-            :label="t('cms.page.save')"
-            color="neutral"
-            variant="outline"
-            :loading="pending || revisionPending"
-            @click="save"
-          />
-          <UButton
-            v-if="canEdit && pages.can('cms.pages.publish')"
-            :label="t('cms.page.publish')"
-            icon="i-lucide-globe"
-            :loading="pending || revisionPending"
-            @click="publish"
-          />
-          <UButton
-            v-if="pages.can('cms.pages.publish') && page.published"
-            :label="t('cms.page.unpublish')"
-            color="neutral"
-            variant="ghost"
-            :disabled="pending || revisionPending"
-            @click="unpublish"
-          />
-          <UButton
-            v-if="canEdit && !page.systemKey"
-            :label="t('cms.page.delete')"
-            color="error"
-            variant="ghost"
-            icon="i-lucide-trash-2"
-            :disabled="pending || revisionPending"
-            @click="confirming = true"
+            :published="page.published !== null"
+            :pending="pending || revisionPending"
+            :can-edit="canEdit"
+            :can-publish="pages.can('cms.pages.publish')"
+            :deletable="!page.systemKey"
+            @publish="publish"
+            @unpublish="unpublish"
+            @delete="confirming = true"
           />
         </template>
       </PageHeader>
