@@ -4,7 +4,8 @@
  *
  * <MediaPicker v-model="state.heroImage" :label="t('site.hero')" accept="image" />
  *
- * The picker is a group named by its label and `hint` (shown at the end of the label's row).
+ * The picker is a group named by its label and described by `hint` (shown at the end of the
+ * label's row) or `srHint` (not shown).
  */
 import { useI18n } from '@opulonjs/admin'
 import { UButton, UIcon, UModal } from '@opulonjs/ui'
@@ -16,8 +17,10 @@ import { accept as acceptTypes, failureMessage, useMedia } from './use-media.ts'
 const model = defineModel<string | null>({ default: null })
 const props = defineProps<{
   label?: string
-  /** Next to the label, e.g. the language of a per-language image. */
+  /** Next to the label, e.g. "All languages". */
   hint?: string
+  /** Not shown; screen readers read it in the picker's description, e.g. the image's language. */
+  srHint?: string
   /** Only images or only PDFs; default both. */
   accept?: 'image' | 'pdf'
   /**
@@ -36,8 +39,8 @@ const failure = ref<string>()
 const uploading = ref(false)
 const fileInput = ref<HTMLInputElement>()
 const baseId = useId()
-const labelledBy = computed(() =>
-  [props.label && `${baseId}-label`, props.hint && `${baseId}-hint`].filter(Boolean).join(' '),
+const describedBy = computed(() =>
+  props.hint ? `${baseId}-hint` : props.srHint ? `${baseId}-sr-hint` : undefined,
 )
 
 watch(
@@ -104,12 +107,14 @@ async function upload(event: Event) {
 <template>
   <div
     class="space-y-2"
-    :role="labelledBy ? 'group' : undefined"
-    :aria-labelledby="labelledBy || undefined"
+    :role="label ? 'group' : undefined"
+    :aria-labelledby="label ? `${baseId}-label` : undefined"
+    :aria-describedby="label ? describedBy : undefined"
   >
     <div v-if="label || hint" class="flex items-center justify-between gap-1 text-sm">
       <p v-if="label" :id="`${baseId}-label`" class="font-medium text-default">{{ label }}</p>
       <span v-if="hint" :id="`${baseId}-hint`" class="text-muted">{{ hint }}</span>
+      <span v-else-if="srHint" :id="`${baseId}-sr-hint`" class="sr-only">{{ srHint }}</span>
     </div>
     <div class="flex items-center gap-3">
       <template v-if="item">

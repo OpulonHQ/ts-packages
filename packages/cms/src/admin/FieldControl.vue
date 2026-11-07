@@ -24,8 +24,10 @@ const props = defineProps<{
   field: Field
   name: string
   label: string
-  /** Next to the label: the value's language, or "All languages" (see `CmsWidgetProps`). */
+  /** Next to the label: "All languages" for a field every locale shares (`CmsWidgetProps`). */
   hint?: string
+  /** Read to screen readers only: the language a localized value is in. Built-in widgets only. */
+  srHint?: string
   disabled?: boolean
 }>()
 
@@ -63,6 +65,7 @@ const select = computed({
     :name="name"
     :label="label"
     :hint="hint"
+    :sr-hint="srHint"
     :help="help"
     :disabled="disabled"
   />
@@ -72,6 +75,7 @@ const select = computed({
     :name="name"
     :label="label"
     :hint="hint"
+    :sr-hint="srHint"
     :help="help"
     :disabled="disabled"
   />
@@ -81,6 +85,7 @@ const select = computed({
     :name="name"
     :label="label"
     :hint="hint"
+    :sr-hint="srHint"
     :help="help"
     :disabled="disabled"
   />
@@ -90,6 +95,7 @@ const select = computed({
     :name="name"
     :label="label"
     :hint="hint"
+    :sr-hint="srHint"
     :help="help"
     :min="field.min"
     :max="field.max"
@@ -101,6 +107,7 @@ const select = computed({
     :name="name"
     :label="label"
     :hint="hint"
+    :sr-hint="srHint"
     :help="help"
     :items="items"
     :disabled="disabled"
@@ -111,6 +118,7 @@ const select = computed({
     :name="name"
     :label="label"
     :hint="hint"
+    :sr-hint="srHint"
     :help="help"
     :disabled="disabled"
   />
@@ -119,6 +127,7 @@ const select = computed({
     v-model="text"
     :label="label"
     :hint="hint"
+    :sr-hint="srHint"
     :accept="field.accept"
     :disabled="disabled"
   />
@@ -128,6 +137,7 @@ const select = computed({
     :name="name"
     :label="label"
     :hint="hint"
+    :sr-hint="srHint"
     :disabled="disabled"
   />
   <ReferenceControl
@@ -137,6 +147,7 @@ const select = computed({
     :name="name"
     :label="label"
     :hint="hint"
+    :sr-hint="srHint"
     :disabled="disabled"
   />
   <component

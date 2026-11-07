@@ -142,7 +142,11 @@ test.each(['item', 'page'])(
                     ...route,
                     component: async () => ({
                       default: testScreen(() => {
-                        provide(cmsContextKey, { definitions: current, widgets: {} })
+                        provide(cmsContextKey, {
+                          definitions: current,
+                          widgets: {},
+                          contentLocale: ref(),
+                        })
                         const { locale } = useI18n()
                         fallback = () => {
                           collection.value = undefined

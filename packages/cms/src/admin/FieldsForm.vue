@@ -3,8 +3,9 @@
  * The generated form of a field group (a section type, a collection, the site settings): one
  * control per field. A localized field shows the control of `locale`, the editor's content
  * language; the other locales' controls stay mounted and hidden, so nothing typed in them is lost
- * and focus can find them. With several content locales each control names its language next to
- * its label, or "All languages" for a field every locale shares. Edits `data` in place.
+ * and focus can find them. With several content locales a field every locale shares says "All
+ * languages" next to its label, and a localized control's description names its language for
+ * screen readers. Edits `data` in place.
  */
 import { useI18n } from '@opulonjs/admin'
 import { computed } from 'vue'
@@ -45,7 +46,7 @@ const localized = (data: Record<string, unknown>, field: string) => {
             :field="field"
             :name="`${name}.${key}.${code}`"
             :label="labelText(field.label, adminLocale)"
-            :hint="hints.language(code)"
+            :sr-hint="hints.language(code)"
             :disabled="disabled"
           />
         </div>

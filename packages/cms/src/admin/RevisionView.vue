@@ -1,12 +1,13 @@
 <script setup lang="ts">
 /**
  * A revision's snapshot in the editor's read-only forms, in one content language with its own
- * switch (bound to the editor's). The languages are the content locales and any other the
- * snapshot holds; one the snapshot lacks shows empty.
+ * switch. The languages are the content locales and any other the snapshot holds; one the
+ * snapshot lacks shows empty. Choosing a content locale here chooses it for the editor too; a
+ * locale only the snapshot holds stays a choice of this view, until the editor's language changes.
  */
 import { useI18n } from '@opulonjs/admin'
 import LocaleSwitch from '@opulonjs/ui/components/LocaleSwitch'
-import { computed, shallowRef, watch } from 'vue'
+import { computed, ref, shallowRef, watch } from 'vue'
 import { labelText, type PageLocale } from '../api.ts'
 import { emptyLocale } from '../localize.ts'
 import FieldsForm from './FieldsForm.vue'
@@ -30,9 +31,20 @@ const locales = computed(() => {
   const own = 'locales' in document ? Object.keys(document.locales) : []
   return [...new Set([...content.contentLocales.value, ...own])]
 })
+// A locale the site no longer has: shown here only, so the editor's switch keeps a real one.
+const snapshotOnly = ref<string>()
+watch(contentLocale, () => (snapshotOnly.value = undefined))
 const shown = computed({
-  get: () => shownLocale(locales.value, contentLocale.value),
-  set: (code: string) => (contentLocale.value = code),
+  get: () =>
+    snapshotOnly.value !== undefined && locales.value.includes(snapshotOnly.value)
+      ? snapshotOnly.value
+      : shownLocale(locales.value, contentLocale.value),
+  set: (code: string) => {
+    if (content.contentLocales.value.includes(code)) {
+      snapshotOnly.value = undefined
+      contentLocale.value = code
+    } else snapshotOnly.value = code
+  },
 })
 /** Path, availability and SEO in every language shown, empty where the snapshot has none. */
 const withLocales = (own: Readonly<Record<string, PageLocale>>) =>

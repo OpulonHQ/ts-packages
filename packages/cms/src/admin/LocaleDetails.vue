@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
  * Path, availability and SEO of a page or a routed item in `locale`, the editor's content
- * language; the other locales' fields stay mounted and hidden. Edits in place.
+ * language; the other locales' fields stay mounted and hidden. With several content locales each
+ * field's description names its language for screen readers. Edits in place.
  */
 import { useI18n } from '@opulonjs/admin'
 import { MediaPicker } from '@opulonjs/media/admin'
@@ -33,7 +34,7 @@ const hints = useLocaleHints(() => props.locales)
         v-model="value[code]!.path"
         :name="`${namePrefix ?? 'locales'}.${code}.path`"
         :label="t('cms.page.path')"
-        :hint="hints.language(code)"
+        :sr-hint="hints.language(code)"
         :help="t('cms.page.pathHelp')"
         :disabled="disabled"
       />
@@ -41,28 +42,28 @@ const hints = useLocaleHints(() => props.locales)
         v-model="value[code]!.available"
         :name="`${namePrefix ?? 'locales'}.${code}.available`"
         :label="t('cms.page.available')"
-        :hint="hints.language(code)"
+        :sr-hint="hints.language(code)"
         :disabled="disabled"
       />
       <FieldText
         v-model="value[code]!.seo.title"
         :name="`${namePrefix ?? 'locales'}.${code}.seo.title`"
         :label="t('cms.page.seoTitle')"
-        :hint="hints.language(code)"
+        :sr-hint="hints.language(code)"
         :disabled="disabled"
       />
       <FieldTextarea
         v-model="value[code]!.seo.description"
         :name="`${namePrefix ?? 'locales'}.${code}.seo.description`"
         :label="t('cms.page.seoDescription')"
-        :hint="hints.language(code)"
+        :sr-hint="hints.language(code)"
         :rows="2"
         :disabled="disabled"
       />
       <MediaPicker
         v-model="value[code]!.seo.image"
         :label="t('cms.page.seoImage')"
-        :hint="hints.language(code)"
+        :sr-hint="hints.language(code)"
         accept="image"
         :disabled="disabled"
       />
@@ -70,7 +71,7 @@ const hints = useLocaleHints(() => props.locales)
         v-model="value[code]!.seo.noindex"
         :name="`${namePrefix ?? 'locales'}.${code}.seo.noindex`"
         :label="t('cms.page.noindex')"
-        :hint="hints.language(code)"
+        :sr-hint="hints.language(code)"
         :disabled="disabled"
       />
     </div>

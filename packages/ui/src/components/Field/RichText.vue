@@ -6,7 +6,7 @@
  */
 import RichTextControl from '@opulonjs/ui/components/RichTextControl'
 import UFormField from '@nuxt/ui/components/FormField.vue'
-import type { FieldProps, RichTextButton } from '../../fields.ts'
+import { srOnlyHint, type FieldProps, type RichTextButton } from '../../fields.ts'
 
 const model = defineModel<string | null>()
 
@@ -19,7 +19,8 @@ defineProps<FieldProps & { toolbar?: ReadonlyArray<RichTextButton> }>()
     :label="label"
     :description="description"
     :help="help"
-    :hint="hint"
+    :hint="hint ?? srHint"
+    :ui="hint === undefined && srHint !== undefined ? srOnlyHint : undefined"
     :required="required"
     :size="size"
   >

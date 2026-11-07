@@ -4,7 +4,7 @@ import { listDefaultPerPage, listMaxOffset, listMaxPerPage } from '@opulonjs/cor
 import { type TableQuery, UButton, UCheckbox } from '@opulonjs/ui'
 import DataTable from '@opulonjs/ui/components/DataTable'
 import { Schema } from 'effect'
-import { computed, ref, shallowRef, watch } from 'vue'
+import { computed, ref, shallowRef, useId, watch } from 'vue'
 import type { Field, ItemSummary } from '../api.ts'
 import { useContent } from './use-cms.ts'
 
@@ -14,8 +14,10 @@ const props = defineProps<{
   name: string
   label: string
   hint?: string
+  srHint?: string
   disabled?: boolean
 }>()
+const hintId = useId()
 const { t } = useI18n()
 const content = useContent()
 type SelectedReference =
@@ -112,12 +114,13 @@ const selectedTitle = (id: string) => {
 </script>
 
 <template>
-  <fieldset class="space-y-2">
-    <legend
-      class="flex w-full items-center justify-between gap-1 text-sm font-medium text-highlighted"
-    >
-      {{ label }} <span v-if="hint" class="font-normal text-muted">{{ hint }}</span>
+  <fieldset class="space-y-2" :aria-describedby="hint || srHint ? hintId : undefined">
+    <legend class="flex w-full items-center justify-between gap-1 text-sm">
+      <span class="font-medium text-highlighted">{{ label }}</span>
+      <!-- On the legend's row, but it describes the group (aria-describedby), not names it. -->
+      <span v-if="hint" :id="hintId" aria-hidden="true" class="text-muted">{{ hint }}</span>
     </legend>
+    <span v-if="!hint && srHint" :id="hintId" class="sr-only">{{ srHint }}</span>
     <div
       v-if="selected.length"
       class="flex flex-wrap gap-2"

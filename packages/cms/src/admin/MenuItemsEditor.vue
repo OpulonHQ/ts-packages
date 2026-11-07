@@ -83,7 +83,7 @@ function move(index: number, by: -1 | 1) {
           v-model="entry.label[code]"
           :name="`${name}.${index}.label.${code}`"
           :label="t('cms.menu.label')"
-          :hint="hints.language(code)"
+          :sr-hint="hints.language(code)"
           :disabled="disabled"
         />
       </div>

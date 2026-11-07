@@ -4,7 +4,7 @@
  */
 import UFormField from '@nuxt/ui/components/FormField.vue'
 import UInputNumber from '@nuxt/ui/components/InputNumber.vue'
-import type { FieldProps } from '../../fields.ts'
+import { srOnlyHint, type FieldProps } from '../../fields.ts'
 
 const model = defineModel<number | null>()
 
@@ -17,7 +17,8 @@ defineProps<FieldProps & { min?: number; max?: number; step?: number }>()
     :label="label"
     :description="description"
     :help="help"
-    :hint="hint"
+    :hint="hint ?? srHint"
+    :ui="hint === undefined && srHint !== undefined ? srOnlyHint : undefined"
     :required="required"
     :size="size"
   >

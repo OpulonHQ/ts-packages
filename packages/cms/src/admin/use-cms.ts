@@ -11,6 +11,7 @@ import {
   watch,
 } from 'vue'
 import { cmsContextKey } from './context.ts'
+import { refusedLocale } from './refused-locale.ts'
 import {
   CmsConflict,
   type CmsDefinitions,
@@ -39,8 +40,9 @@ export interface CmsWidgetProps {
   /** The field's label in the admin locale. */
   label: string
   /**
-   * Set while the host has several content locales: the language of the value (a localized
-   * field's widget edits one locale's) or "All languages". Show it next to the label.
+   * "All languages" while the host has several content locales and the field is not localized:
+   * show it next to the label. Unset otherwise. Declare it (or `inheritAttrs: false`), or Vue
+   * renders it as an attribute of the widget's root element.
    */
   hint?: string
   /**
@@ -135,8 +137,9 @@ export const shownLocale = (locales: ReadonlyArray<string>, locale: string | und
   locale !== undefined && locales.includes(locale) ? locale : (locales[0] ?? '')
 
 /**
- * What a control says next to its label while there are several content locales: the language a
- * localized value is in, or "All languages" for a value every locale shares.
+ * While there are several content locales: "All languages" next to the label of a value every
+ * locale shares (`shared`, shown), and the language of a localized value (`language`, read to
+ * screen readers only: the editor's language switch already shows it).
  */
 export const useLocaleHints = (locales: () => ReadonlyArray<string>) => {
   const { t, locale } = useI18n()
@@ -147,23 +150,17 @@ export const useLocaleHints = (locales: () => ReadonlyArray<string>) => {
   }
 }
 
-/** The content locale a refused save names: a value's path (`at ["title"]["it"]`) or a path or
- *  social image of one locale ("The it path …"). */
-export const refusedLocale = (message: string, locales: ReadonlyArray<string>) =>
-  [...message.matchAll(/\["([^"]*)"\]|\b(?:[Tt]he|a) (\S+) (?:path|social image)\b/g)]
-    .flatMap(([, segment, named]) => [segment, named])
-    .find((code) => code !== undefined && locales.includes(code))
-
 /**
  * The content locale an editor shows, one for all its localized fields (the editor's language
- * switch): the first content locale until another is chosen. A save the server refuses for a
- * value of one locale switches to that locale, so the editor sees the value named.
+ * switch): the one last chosen in any cms editor of this admin (until the page reloads), else
+ * the first content locale. A save the server refuses for a value of one locale switches to
+ * that locale, so the editor sees the value named.
  */
 export const useContentLocale = (
   locales: () => ReadonlyArray<string>,
   status: Ref<ActionResult | undefined>,
 ) => {
-  const chosen = ref<string>()
+  const chosen = useCmsContext().contentLocale
   watch(status, (result) => {
     if (result?.kind !== 'error') return
     const refused = refusedLocale(result.message, locales())

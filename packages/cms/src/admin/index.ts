@@ -1,5 +1,15 @@
 import { defineAdminModule, type Lazy } from '@opulonjs/admin'
-import { defineAsyncComponent, defineComponent, h, provide, type Component } from 'vue'
+import {
+  type App,
+  type Component,
+  defineAsyncComponent,
+  defineComponent,
+  getCurrentInstance,
+  h,
+  provide,
+  type Ref,
+  ref,
+} from 'vue'
 import {
   cmsAuditActions,
   type CmsDefinitions,
@@ -79,7 +89,16 @@ export const cmsAdmin = (options: CmsAdminOptions) => {
       ]),
     ),
   }
-  // Screens read the definitions and widgets through provide/inject.
+  // The chosen content language lives as long as the admin app, shared by its cms screens.
+  const contentLocales = new WeakMap<App, Ref<string | undefined>>()
+  const contentLocale = (app: App) => {
+    const known = contentLocales.get(app)
+    if (known) return known
+    const created = ref<string>()
+    contentLocales.set(app, created)
+    return created
+  }
+  // Screens read the definitions, widgets and content language through provide/inject.
   const screen =
     (load: Lazy<Component>): Lazy<Component> =>
     async () => {
@@ -87,7 +106,8 @@ export const cmsAdmin = (options: CmsAdminOptions) => {
       return {
         default: defineComponent({
           setup() {
-            provide(cmsContextKey, context)
+            const app = getCurrentInstance()!.appContext.app
+            provide(cmsContextKey, { ...context, contentLocale: contentLocale(app) })
             return () => h(inner)
           },
         }),
