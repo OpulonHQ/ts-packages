@@ -18,6 +18,7 @@ const en = {
     notFound: 'Page not found.',
     navigation: 'Main navigation',
     reload: { message: 'A new admin version is available.', action: 'Reload' },
+    unsaved: 'Unsaved changes',
     discard: {
       title: 'Discard unsaved changes?',
       description: 'Your changes since the last save are lost.',
@@ -80,6 +81,7 @@ const sk: typeof en = {
     notFound: 'Stránka sa nenašla.',
     navigation: 'Hlavná navigácia',
     reload: { message: 'Je dostupná nová verzia administrácie.', action: 'Obnoviť' },
+    unsaved: 'Neuložené zmeny',
     discard: {
       title: 'Zahodiť neuložené zmeny?',
       description: 'Zmeny od posledného uloženia sa stratia.',

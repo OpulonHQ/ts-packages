@@ -73,6 +73,7 @@ const publish = () =>
       const saved = await saveDraft()
       if (!current()) return
       menu.value = saved
+      baseline.value = editable(saved)
       return content.publishMenu(saved.key, saved.version)
     },
     t('cms.page.published'),

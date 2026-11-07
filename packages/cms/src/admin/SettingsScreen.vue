@@ -44,6 +44,7 @@ const publish = () =>
       const saved = await saveDraft()
       if (!current()) return
       settings.value = saved
+      baseline.value = structuredClone(saved.draft.data)
       return content.publishSettings(saved.version)
     },
     t('cms.page.published'),

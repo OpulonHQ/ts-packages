@@ -31,7 +31,7 @@ const text = useKitText()
     :aria-label="message ?? text.unsavedChanges"
     class="flex flex-wrap items-center justify-end gap-2 border-t border-default bg-default px-4 py-3 sm:px-6"
   >
-    <p class="me-auto flex items-center gap-2 text-sm font-medium text-highlighted" role="status">
+    <p class="me-auto flex items-center gap-2 text-sm font-medium text-highlighted">
       <span class="size-2 shrink-0 rounded-full bg-warning" aria-hidden="true" />
       {{ message ?? text.unsavedChanges }}
     </p>

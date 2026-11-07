@@ -133,3 +133,62 @@ test('Unpublish asks first and keeps the edits on screen', async () => {
   expect(stored.published).toBeNull()
   expect((stored.draft.data.title as Record<string, string>).en).toBe('Live post')
 })
+
+const menuItem = (label: string) =>
+  [...document.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find((item) =>
+    item.textContent?.includes(label),
+  )
+
+test('the site settings and a menu open without unsaved changes', async () => {
+  for (const path of ['/admin/cms/settings', '/admin/cms/menus/footer']) {
+    const text = mountAdmin(path)
+    await expect.poll(text).toContain('Zatiaľ žiadne publikované revízie.')
+    expect(bar()).toBeNull()
+    text.unmount()
+  }
+})
+
+test('moving to another item with unsaved changes asks first', async () => {
+  const create = async (title: string) =>
+    (
+      await host.call<Item>('POST', '/collections/posts/items', {
+        body: { locales: {}, data: { title: { en: title } } },
+      })
+    ).body
+  const first = await create('First')
+  const second = await create('Second')
+  mountAdmin(`/admin/cms/items/${first.id}`)
+  await expect.poll(() => input('data.title.en')?.value).toBe('First')
+  type('data.title.en', 'First, edited')
+  await expect.poll(bar).toBeTruthy()
+
+  goTo(`/admin/cms/items/${second.id}`)
+  await expect.poll(dialog).toBeTruthy()
+  button('Pokračovať v úpravách', dialog()!)!.click()
+  await expect.poll(() => location.pathname).toBe(`/admin/cms/items/${first.id}`)
+  expect(input('data.title.en')!.value).toBe('First, edited')
+
+  goTo(`/admin/cms/items/${second.id}`)
+  await expect.poll(dialog).toBeTruthy()
+  button('Zahodiť zmeny', dialog()!)!.click()
+  await expect.poll(() => input('data.title.en')?.value).toBe('Second')
+  await expect.poll(bar).toBeNull()
+})
+
+test('signing out with unsaved changes asks first', async () => {
+  const created = (await host.create(page({ en: `/sign-out-${crypto.randomUUID()}` }))).body
+  mountAdmin(`/admin/cms/pages/${created.id}`)
+  await expect.poll(() => input('locales.en.path')).toBeTruthy()
+  type('locales.en.seo.title', 'Not saved')
+  await expect.poll(bar).toBeTruthy()
+
+  const trigger = document.querySelector<HTMLElement>('[aria-label="Používateľské menu"]')!
+  trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  await expect.poll(() => menuItem('Odhlásiť sa')).toBeDefined()
+  menuItem('Odhlásiť sa')!.click()
+  await expect.poll(() => dialog()?.textContent).toContain('Zahodiť neuložené zmeny?')
+  button('Pokračovať v úpravách', dialog()!)!.click()
+  await expect.poll(dialog).toBeNull()
+  expect(location.pathname).toBe(`/admin/cms/pages/${created.id}`)
+  expect(input('locales.en.seo.title')!.value).toBe('Not saved')
+})

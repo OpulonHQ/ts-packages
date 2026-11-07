@@ -169,7 +169,11 @@ const userMenu = computed<DropdownMenuItem[][]>(() => [
             label: t('admin.signOut'),
             icon: 'i-lucide-log-out',
             color: 'error' as const,
-            onSelect: signOut,
+            // Signing out ends the session, so the leave guard cannot ask afterwards: ask here.
+            onSelect: async () => {
+              if (unsaved() && !(await confirmDiscard())) return
+              await signOut()
+            },
           },
         ],
       ]
@@ -195,6 +199,8 @@ const onKeydown = (event: KeyboardEvent) => {
   const target = [...editors].reverse().find((e) => e.save)
   if (!target) return
   event.preventDefault()
+  // Not behind an open dialog (a delete confirmation, a picker): it is not what the user sees.
+  if (document.querySelector('[role="dialog"]')) return
   if (target.dirty() && !target.busy()) target.save?.()
 }
 let leaving = false
@@ -369,6 +375,8 @@ const title = computed(() => {
           <RouterView />
         </template>
         <template #footer>
+          <!-- Always in the page, so screen readers hear the bar appear and go. -->
+          <p class="sr-only" aria-live="polite">{{ editor?.dirty() ? t('admin.unsaved') : '' }}</p>
           <Transition
             enter-active-class="transition duration-150 ease-out motion-reduce:transition-none"
             enter-from-class="translate-y-2 opacity-0"

@@ -148,6 +148,7 @@ const publish = () =>
       const saved = await saveDraft()
       if (!current()) return
       page.value = saved
+      baseline.value = toDraft(saved.draft)
       return pages.publish(saved.id, saved.version)
     },
     t('cms.page.published'),
