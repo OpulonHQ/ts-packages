@@ -9,7 +9,7 @@ import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
 import FieldText from '@opulonjs/ui/components/Field/Text'
 import FieldTextarea from '@opulonjs/ui/components/Field/Textarea'
 import LocaleTabs from '@opulonjs/ui/components/LocaleTabs'
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, useTemplateRef, watch } from 'vue'
 import type { MediaItem } from '../api.ts'
 import { accept, failureMessage, formatSize, useMedia } from './use-media.ts'
 
@@ -29,6 +29,7 @@ const pending = ref(false)
 const status = ref<{ kind: 'ok' | 'error'; message: string }>()
 const confirming = ref(false)
 const fileInput = ref<HTMLInputElement>()
+const root = useTemplateRef<HTMLElement>('root')
 const locked = computed(() => !media.can('media.upload') || pending.value)
 
 const savedText = (item: MediaItem) => ({ alt: item.alt, caption: item.caption })
@@ -43,6 +44,7 @@ const changes = useUnsavedChanges({
   discard: () => show(props.item),
   busy: () => pending.value,
   bar: false,
+  within: () => root.value,
 })
 // Replace, archive and restore answer with the item: unsaved text stays; another item replaces it.
 watch(
@@ -94,7 +96,7 @@ const restore = () => run(() => media.restore(props.item.id), t('media.details.r
 </script>
 
 <template>
-  <div class="space-y-6">
+  <div ref="root" class="space-y-6">
     <CachePurgeNotice
       v-if="media.can('media.upload') || media.can('media.archive')"
       :pending="pending"

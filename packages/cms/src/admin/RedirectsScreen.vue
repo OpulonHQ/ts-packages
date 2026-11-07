@@ -40,6 +40,7 @@ const changes = useUnsavedChanges({
   discard: () => (editing.value = opened.value && structuredClone(opened.value)),
   busy: () => pending.value,
   bar: false,
+  within: () => document.getElementById(formId),
 })
 const { open, dismissible, close, leave } = useCloseGuard({
   isOpen: () => editing.value !== undefined,

@@ -22,7 +22,13 @@ import UnsavedChangesBar from '@opulonjs/ui/components/UnsavedChangesBar'
 import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
-import { failedScreenKey, type NavTarget, type ShellNavItem, useAdmin } from '../state.ts'
+import {
+  failedScreenKey,
+  losesChanges,
+  type NavTarget,
+  type ShellNavItem,
+  useAdmin,
+} from '../state.ts'
 import ScreenFailed from './ScreenFailed.vue'
 
 const {
@@ -181,7 +187,7 @@ const userMenu = computed<DropdownMenuItem[][]>(() => [
 ])
 // The newest editor with a bar owns it while it has unsaved changes; Discard asks first.
 const editor = computed(() => [...editors].reverse().find((e) => e.bar))
-const unsaved = () => editors.some((e) => e.dirty() && !e.busy())
+const unsaved = () => editors.some(losesChanges)
 const discard = async () => {
   const target = editor.value
   if (target && (await confirmDiscard())) target.discard?.()
@@ -200,7 +206,10 @@ const onKeydown = (event: KeyboardEvent) => {
   if (!target) return
   event.preventDefault()
   // Not behind an open dialog (a delete confirmation, a picker): it is not what the user sees.
-  if (document.querySelector('[role="dialog"]')) return
+  // The dialog holding the editor's own form (a slideover) is what the user sees.
+  const form = target.within?.()
+  const dialogs = [...document.querySelectorAll('[role="dialog"]')]
+  if (dialogs.some((dialog) => !form || !dialog.contains(form))) return
   if (target.dirty() && !target.busy()) target.save?.()
 }
 let leaving = false

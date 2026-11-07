@@ -80,6 +80,8 @@ useUnsavedChanges({
   discard: () => locales.value.forEach((l) => (drafts[l] = savedDraft(l))),
   busy: () => busy.value,
   saveLabel: () => t('emails.editor.save'),
+  // One request per language: leaving after the first would drop the others.
+  guardWhileBusy: true,
 })
 
 /** Runs one request, showing its outcome (or the server's validation message) for `locale`. */
@@ -245,6 +247,7 @@ function insertComponent(locale: string) {
               :name="`subject-${l.locale}`"
               :label="t('emails.editor.subject')"
               :maxlength="255"
+              :disabled="busy"
               required
             />
             <div class="space-y-2">
@@ -262,12 +265,14 @@ function insertComponent(locale: string) {
                   variant="soft"
                   :label="`{{${p.name}}}`"
                   :title="p.sample"
+                  :disabled="busy"
                   @click="editors[l.locale]?.insert(`{{${p.name}}}`)"
                 />
               </div>
               <RichTextControl
                 :ref="(el) => (editors[l.locale] = el as { insert: (c: string) => void } | null)"
                 v-model="drafts[l.locale]!.body"
+                :disabled="busy"
               />
               <div
                 class="flex flex-wrap items-end gap-2"
@@ -294,7 +299,7 @@ function insertComponent(locale: string) {
                   :label="t('emails.editor.insert')"
                   color="neutral"
                   variant="outline"
-                  :disabled="!chosen"
+                  :disabled="!chosen || busy"
                   @click="insertComponent(l.locale)"
                 />
               </div>

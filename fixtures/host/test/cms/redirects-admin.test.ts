@@ -146,3 +146,50 @@ test('the redirect slideover asks before unsaved changes are lost, and closes at
   await expect.poll(() => field('to')).toBeNull()
   expect((await stored()).find((r) => r.from === '/first')?.to).toBe('/one')
 })
+
+test('Cmd/Ctrl+S saves the open redirect, but not behind its delete confirmation', async () => {
+  const created = (
+    await host.call<Redirect>('POST', '/redirects', {
+      body: { locale: 'en', from: '/keys', to: '/one', status: 301 },
+    })
+  ).body
+  const writes: string[] = []
+  const text = admin.mount('/admin/cms/redirects', {
+    fetch: (input, init) => {
+      const request = new Request(input, init)
+      if (request.method !== 'GET') writes.push(request.method)
+      return host.fetch(request)
+    },
+  })
+  const shortcut = () => {
+    const event = new KeyboardEvent('keydown', {
+      key: 's',
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    })
+    field('to')!.dispatchEvent(event)
+    return event.defaultPrevented
+  }
+  await expect.poll(() => row('/keys')).toBeDefined()
+  row('/keys')!.click()
+  await expect.poll(() => field('to')?.value).toBe('/one')
+  type('to', '/two')
+  expect(shortcut()).toBe(true)
+  await expect.poll(text).toContain('Presmerovanie uložené.')
+  expect((await stored()).find((r) => r.id === created.id)?.to).toBe('/two')
+
+  // The list reloads after the save; open the row once it shows the saved target.
+  await expect.poll(() => row('/keys')?.textContent).toContain('/two')
+  row('/keys')!.click()
+  await expect.poll(() => field('to')?.value).toBe('/two')
+  type('to', '/three')
+  button('Vymazať')!.click()
+  await expect.poll(() => buttons('Vymazať').length).toBe(2)
+  // Behind the confirmation the shortcut saves nothing; deleting goes ahead.
+  expect(shortcut()).toBe(true)
+  buttons('Vymazať').at(-1)!.click()
+  await expect.poll(text).toContain('Presmerovanie vymazané.')
+  expect(writes).toEqual(['PUT', 'DELETE'])
+  expect(await stored()).toEqual([])
+})

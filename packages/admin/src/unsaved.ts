@@ -38,6 +38,16 @@ export interface UnsavedChangesOptions {
   readonly saveLabel?: () => string
   /** False for an editor with its own buttons (a slideover's footer): guard and shortcut only. */
   readonly bar?: boolean
+  /**
+   * Keep asking before leaving while busy, for a save of several requests that leaving would cut
+   * short (default: a save in flight carries the changes, so leaving does not ask).
+   */
+  readonly guardWhileBusy?: boolean
+  /**
+   * The element holding the form, for an editor inside a dialog (a slideover): Cmd/Ctrl+S saves
+   * while that dialog is open, but not behind another dialog over it (a delete confirmation).
+   */
+  readonly within?: () => Element | null | undefined
 }
 
 export interface UnsavedChanges {
@@ -70,6 +80,8 @@ export const useUnsavedChanges = (options: UnsavedChangesOptions): UnsavedChange
     discard: options.discard,
     saveLabel: options.saveLabel,
     bar: options.bar ?? true,
+    guardWhileBusy: options.guardWhileBusy ?? false,
+    ...(options.within ? { within: options.within } : {}),
   }
   onBeforeUnmount(admin.registerEditor(editor))
   return {
@@ -102,7 +114,12 @@ export interface CloseGuard {
   readonly dismissible: ComputedRef<boolean>
   /** Cancel and `@close:prevent`: asks while unsaved, then closes. */
   readonly close: () => Promise<void>
-  /** Before the form is replaced (another row, a new record): asks while unsaved; true to go on. */
+  /**
+   * Before the form is replaced (another row, a new record): asks while unsaved; true to go on.
+   * While a modal slideover is open its overlay keeps the rows and buttons behind it out of reach,
+   * so a row click or a "New" button reaches this with a form open only from code (a test, a
+   * non-modal slideover): a safeguard, not a path users take today.
+   */
   readonly leave: () => Promise<boolean>
 }
 
@@ -119,7 +136,20 @@ export interface CloseGuard {
  */
 export const useCloseGuard = (options: CloseGuardOptions): CloseGuard => {
   const admin = useAdmin()
-  const leave = async () => !options.dirty() || (await admin.confirmDiscard())
+  // One question at a time: a request while it is open does nothing (the slideover can emit
+  // close:prevent while the question opens), so "Discard changes" on a row switch opens that row
+  // instead of also closing the slideover.
+  let asking = false
+  const leave = async () => {
+    if (!options.dirty()) return true
+    if (asking) return false
+    asking = true
+    try {
+      return await admin.confirmDiscard()
+    } finally {
+      asking = false
+    }
+  }
   const close = async () => {
     if (await leave()) options.close()
   }

@@ -66,12 +66,15 @@ async function upload(event: Event) {
   const input = event.target as HTMLInputElement
   const files = [...(input.files ?? [])]
   input.value = ''
+  // Each upload opens in the details: ask before it would replace unsaved text, not after.
+  if (files.length === 0 || !(await leave())) return
   uploading.value = true
   failure.value = undefined
   try {
     for (const file of files) {
       const uploaded = await media.upload(file)
-      if (await leave()) selected.value = uploaded
+      // Text typed into an earlier upload of this batch keeps its details open.
+      if (!details.value?.dirty) selected.value = uploaded
     }
   } catch (error) {
     failure.value = failureMessage(error, t('media.errors.failed'))

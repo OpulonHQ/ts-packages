@@ -40,6 +40,7 @@ const changes = useUnsavedChanges({
   discard: () => (invite.value = invite.value && blank()),
   busy: () => busy.value,
   bar: false,
+  within: () => document.getElementById(formId),
 })
 const { open, dismissible, close, leave } = useCloseGuard({
   isOpen: () => invite.value !== undefined,

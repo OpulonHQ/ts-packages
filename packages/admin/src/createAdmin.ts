@@ -30,6 +30,7 @@ import {
   adminStateKey,
   apiContextKey,
   failedScreenKey,
+  losesChanges,
   type AdminState,
   type Me,
   type NavTarget,
@@ -419,8 +420,8 @@ export const createAdmin = (options: AdminOptions): App => {
       if (index >= 0) editors.splice(index, 1)
     }
   }
-  // A save in flight already carries its changes: leaving does not lose them.
-  const unsaved = () => editors.some((editor) => editor.dirty() && !editor.busy())
+  // A save in flight already carries its changes: leaving does not lose them (losesChanges).
+  const unsaved = () => editors.some(losesChanges)
   const discardRequest = shallowRef<(discard: boolean) => void>()
   let asking: Promise<boolean> | undefined
   const confirmDiscard = () =>

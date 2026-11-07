@@ -315,10 +315,70 @@ test.each([
     await expect.poll(discardDialog).toBeTruthy()
     button('Keep editing', discardDialog())!.click()
     await expect.poll(discardDialog).toBeUndefined()
-    document.querySelector<HTMLButtonElement>('button[data-slot="close"]')!.click()
+    // The × asks too; Keep editing leaves the slideover open with what was typed.
+    const closeButton = () => document.querySelector<HTMLButtonElement>('button[data-slot="close"]')
+    closeButton()!.click()
+    await expect.poll(discardDialog).toBeTruthy()
+    button('Keep editing', discardDialog())!.click()
+    await expect.poll(discardDialog).toBeUndefined()
+    expect(field(name)!.value).toBe(value)
+    expect(closeButton()).toBeTruthy()
+    closeButton()!.click()
     await expect.poll(discardDialog).toBeTruthy()
     button('Discard changes', discardDialog())!.click()
     await expect.poll(() => field(name)).toBeNull()
     expect(admin.text()).not.toContain(value)
   },
 )
+
+test('a permission unchecked and checked again leaves the role without unsaved changes', async () => {
+  const owner = await seedUser(db.url, { superAdmin: true })
+  const cookie = await host.signIn(owner.email, owner.password)
+  const permissions = ['emails.log.view', 'users.manage']
+  await host.request('POST', '/users/roles', { cookie, body: { name: 'Two duties', permissions } })
+  const roles = (await host.request('GET', '/users/roles', { cookie })).body as {
+    roles: ReadonlyArray<{ name: string; permissions: ReadonlyArray<string> }>
+  }
+  const stored = roles.roles.find((r) => r.name === 'Two duties')!.permissions
+  const labels: Record<string, string> = {
+    'emails.log.view': 'View the email log',
+    'users.manage': 'Invite and manage users',
+  }
+  mountAdmin('/admin/roles', { cookie })
+  await expect.poll(() => row('Two duties')).toBeDefined()
+  row('Two duties')!.click()
+  await expect.poll(() => field('name')?.value).toBe('Two duties')
+
+  // Checking it again puts the stored first permission last: still the same set.
+  const first = labels[stored[0]!]!
+  check(first)
+  await expect.poll(() => checked(first)).toBe('false')
+  check(first)
+  await expect.poll(() => checked(first)).toBe('true')
+  button('Cancel')!.click()
+  await expect.poll(() => field('name')).toBeNull()
+  expect(discardDialog()).toBeUndefined()
+})
+
+test('Cmd/Ctrl+S sends the invitation from inside its slideover', async () => {
+  const owner = await seedUser(db.url, { superAdmin: true })
+  const admin = mountAdmin('/admin/users', {
+    cookie: await host.signIn(owner.email, owner.password),
+  })
+  await expect.poll(() => button('Invite')?.disabled).toBe(false)
+  button('Invite')!.click()
+  await expect.poll(() => field('email')).toBeTruthy()
+  type('email', 'shortcut@example.test')
+  const sent = host.mailer.sent.length
+  const shortcut = new KeyboardEvent('keydown', {
+    key: 's',
+    ctrlKey: true,
+    bubbles: true,
+    cancelable: true,
+  })
+  field('email')!.dispatchEvent(shortcut)
+  expect(shortcut.defaultPrevented).toBe(true)
+  await expect.poll(admin.text).toContain('The invitation to shortcut@example.test is on its way.')
+  expect(field('email')).toBeNull()
+  await expect.poll(() => host.mailer.sent.length).toBe(sent + 1)
+})

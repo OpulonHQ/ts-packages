@@ -2,7 +2,7 @@ import { defineAdminModule } from '@opulonjs/admin'
 import { EmailTemplateList } from '@opulonjs/emails/api'
 import { emailsAdmin } from '@opulonjs/emails/admin'
 import { Schema } from 'effect'
-import { beforeEach, expect, test } from 'vitest'
+import { beforeEach, expect, onTestFinished, test } from 'vitest'
 import { useTestDatabase } from '../../../test/postgres/index.ts'
 import { useAdminLifetime } from './admin-lifetime.ts'
 import { makeShop } from './support/shop.ts'
@@ -14,17 +14,23 @@ const db = useTestDatabase()
 const shop = admin.track(makeShop(() => db.url))
 const order = 'shop.order_confirmed'
 
-/** The screen's writes (`PUT /path`), and a predicate that makes matching requests fail. */
+/**
+ * The screen's writes (`PUT /path`), a predicate that makes matching requests fail, and one that
+ * holds matching requests until the promise it returns settles.
+ */
 const writes: string[] = []
 let failing: ((request: Request) => boolean) | undefined
+let holding: ((request: Request) => Promise<void> | undefined) | undefined
 beforeEach(() => {
   writes.length = 0
   failing = undefined
+  holding = undefined
 })
 const hostFetch: typeof fetch = async (input, init) => {
   const request = new Request(input, init)
   if (request.method === 'PUT') writes.push(`PUT ${new URL(request.url).pathname}`)
   if (failing?.(request)) return new Response('down', { status: 503 })
+  await holding?.(request)
   const pending: Array<Promise<unknown>> = []
   const response = await shop.fetch(request, (p) => pending.push(p))
   const body = await response.arrayBuffer()
@@ -199,4 +205,63 @@ test('the Send this email switch says whether the change was saved', async () =>
   toggle()!.click()
   await expect.poll(text).toContain('Posielanie sa nepodarilo zmeniť. Skúste to znova.')
   expect(toggle()!.getAttribute('aria-checked')).toBe('false')
+})
+
+const goTo = (path: string) => {
+  history.pushState(null, '', path)
+  window.dispatchEvent(new PopStateEvent('popstate'))
+}
+const discardDialog = () =>
+  [...document.querySelectorAll<HTMLElement>('[role="dialog"]')].find((d) =>
+    d.textContent?.includes('Zahodiť neuložené zmeny?'),
+  )
+const inDialog = (label: string) =>
+  [...(discardDialog()?.querySelectorAll('button') ?? [])].find(
+    (b) => b.textContent?.trim() === label,
+  )
+
+test('leaving while the first of two language saves runs asks; the fields wait meanwhile', async () => {
+  const release = Promise.withResolvers<void>()
+  onTestFinished(() => release.resolve())
+  let held = false
+  holding = (request) => {
+    if (request.method !== 'PUT' || !request.url.endsWith('/locales/en')) return undefined
+    held = true
+    return release.promise
+  }
+  const editor = `/admin/emails/templates/${order}`
+  mount(editor)
+  await expect.poll(() => subjectField('it')).toBeTruthy()
+  setSubject('en', 'Order {{order}}, held')
+  setSubject('it', 'Ordine {{order}}, in attesa')
+  await saveFromBar()
+  await expect.poll(() => held).toBe(true)
+
+  goTo('/admin/emails/templates')
+  await expect.poll(discardDialog).toBeTruthy()
+  inDialog('Pokračovať v úpravách')!.click()
+  await expect.poll(() => location.pathname).toBe(editor)
+  expect(subjectField('it')!.disabled).toBe(true)
+  expect(subjectField('it')!.value).toBe('Ordine {{order}}, in attesa')
+
+  release.resolve()
+  await expect.poll(bar).toBeNull()
+  expect((await overrideOf('en'))?.subject).toBe('Order {{order}}, held')
+  expect((await overrideOf('it'))?.subject).toBe('Ordine {{order}}, in attesa')
+  expect(subjectField('it')!.disabled).toBe(false)
+})
+
+test('Discard puts every language back', async () => {
+  mount(`/admin/emails/templates/${order}`)
+  await expect.poll(() => subjectField('it')).toBeTruthy()
+  const saved = { en: subjectField('en')!.value, it: subjectField('it')!.value }
+  setSubject('en', 'Thrown away')
+  setSubject('it', 'Buttato via')
+  await expect.poll(bar).toBeTruthy()
+  ;[...bar()!.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Zahodiť')!.click()
+  await expect.poll(discardDialog).toBeTruthy()
+  inDialog('Zahodiť zmeny')!.click()
+  await expect.poll(bar).toBeNull()
+  expect({ en: subjectField('en')!.value, it: subjectField('it')!.value }).toEqual(saved)
+  expect(writes).toEqual([])
 })

@@ -30,13 +30,17 @@ const notice = ref<{ error: boolean; text: string }>()
 const busy = ref(false)
 const formId = useId()
 
+// Permissions compare as a set: unchecking and checking one again is no change.
+const comparable = (form: RoleForm | undefined) =>
+  form && { ...form, permissions: [...form.permissions].sort() }
 const changes = useUnsavedChanges({
-  current: () => editing.value,
-  saved: () => opened.value,
+  current: () => comparable(editing.value),
+  saved: () => comparable(opened.value),
   save: () => save(),
   discard: () => (editing.value = opened.value && structuredClone(opened.value)),
   busy: () => busy.value,
   bar: false,
+  within: () => document.getElementById(formId),
 })
 const { open, dismissible, close, leave } = useCloseGuard({
   isOpen: () => editing.value !== undefined,
