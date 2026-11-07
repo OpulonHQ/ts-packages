@@ -1,4 +1,4 @@
-import { computed, type ComputedRef, onBeforeUnmount } from 'vue'
+import { computed, type ComputedRef, onBeforeUnmount, type WritableComputedRef } from 'vue'
 import { type ShellEditor, useAdmin } from './state.ts'
 
 /**
@@ -84,4 +84,54 @@ export const useUnsavedChanges = (options: UnsavedChangesOptions): UnsavedChange
  */
 export const useLeaveGuard = (dirty: () => boolean): void => {
   onBeforeUnmount(useAdmin().registerEditor({ dirty, busy: () => false, bar: false }))
+}
+
+export interface CloseGuardOptions {
+  /** Whether the slideover (or modal) holding the form is open. */
+  readonly isOpen: () => boolean
+  /** Closes it; what the form holds is dropped. */
+  readonly close: () => void
+  /** The form holds unsaved changes. */
+  readonly dirty: () => boolean
+}
+
+export interface CloseGuard {
+  /** For `v-model:open`: its × closes through `close`. */
+  readonly open: WritableComputedRef<boolean>
+  /** For `:dismissible`: false while unsaved, so Escape and an outside click emit `close:prevent`. */
+  readonly dismissible: ComputedRef<boolean>
+  /** Cancel and `@close:prevent`: asks while unsaved, then closes. */
+  readonly close: () => Promise<void>
+  /** Before the form is replaced (another row, a new record): asks while unsaved; true to go on. */
+  readonly leave: () => Promise<boolean>
+}
+
+/**
+ * A slideover holding a small record's form: every way of closing it (Cancel, ×, Escape, an
+ * outside click) and every switch to another record asks "Discard unsaved changes?" first while
+ * the form has unsaved changes, and closes at once while it has none.
+ *
+ * const { open, dismissible, close, leave } = useCloseGuard({
+ *   isOpen: () => form.value !== undefined, close: () => (form.value = undefined),
+ *   dirty: () => changes.dirty.value,
+ * })
+ * <USlideover v-model:open="open" :dismissible="dismissible" @close:prevent="close">
+ */
+export const useCloseGuard = (options: CloseGuardOptions): CloseGuard => {
+  const admin = useAdmin()
+  const leave = async () => !options.dirty() || (await admin.confirmDiscard())
+  const close = async () => {
+    if (await leave()) options.close()
+  }
+  return {
+    open: computed({
+      get: options.isOpen,
+      set: (open) => {
+        if (!open) void close()
+      },
+    }),
+    dismissible: computed(() => !options.dirty()),
+    close,
+    leave,
+  }
 }

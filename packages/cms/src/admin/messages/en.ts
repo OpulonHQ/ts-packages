@@ -95,6 +95,8 @@ export default {
     cancel: 'Cancel',
     delete: 'Delete',
     deleteTitle: 'Delete this redirect?',
+    deleteWarning:
+      'Visitors to the old address no longer reach the new one. This cannot be undone.',
     deleted: 'Redirect deleted.',
   },
   collections: {

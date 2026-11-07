@@ -1,11 +1,14 @@
 <script setup lang="ts">
-/** Users > a user: roles, admin locale, deactivation and reactivation. */
-import { AuditTimeline, useAdmin, useI18n, useRoute } from '@opulonjs/admin'
+/**
+ * Users > a user: roles (saved from the unsaved-changes bar), admin locale (applies at once),
+ * deactivation and reactivation.
+ */
+import { AuditTimeline, useAdmin, useI18n, useRoute, useUnsavedChanges } from '@opulonjs/admin'
 import { UButton, UCard, UCheckbox } from '@opulonjs/ui'
 import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
 import StatusBadge from '@opulonjs/ui/components/StatusBadge'
-import { ref, shallowRef } from 'vue'
+import { computed, ref, shallowRef } from 'vue'
 import type { UserInfo } from '../api.ts'
 import LocalePicker from './LocalePicker.vue'
 import { failureKey, useUsersClient } from './client.ts'
@@ -23,15 +26,28 @@ const busy = ref(false)
 const confirming = ref(false)
 const timeline = ref<{ refresh: () => Promise<void> }>()
 
+const sorted = (ids: ReadonlyArray<string>) => [...ids].sort()
+const savedRoleIds = computed(() => sorted(user.value?.roleIds ?? []))
+// The roles card is an editor: the bar saves it, and leaving asks while toggles are unsaved.
+const roleChanges = useUnsavedChanges({
+  current: () => sorted(roleIds.value),
+  saved: () => savedRoleIds.value,
+  save: () => saveRoles(),
+  discard: () => (roleIds.value = [...savedRoleIds.value]),
+  busy: () => busy.value,
+})
+
 let latest = 0
-const load = () => {
+/** Reads the user again; unsaved role toggles stay unless `resetRoles` (first load, saved). */
+const load = (resetRoles = true) => {
   const ticket = ++latest
   return users((client) => client.users({ query: { id } })).then(
     (list) => {
       if (ticket !== latest) return
+      const keep = !resetRoles && roleChanges.dirty.value
       user.value = list.users.find((u) => u.id === id)
       roles.value = list.roles
-      roleIds.value = [...(user.value?.roleIds ?? [])]
+      if (!keep) roleIds.value = [...(user.value?.roleIds ?? [])]
       status.value = user.value ? 'ready' : 'notFound'
     },
     () => {
@@ -49,27 +65,34 @@ function toggle(roleId: string, on: boolean | 'indeterminate') {
   roleIds.value = on === true ? [...rest, roleId] : rest
 }
 
-async function run(change: () => Promise<void>, done: string) {
+/** Runs one change, then reads the user again; only saved roles replace the toggles on screen. */
+async function run(change: () => Promise<void>, done: string, savesRoles = false) {
   busy.value = true
   notice.value = undefined
+  let saved = false
   try {
     await change()
+    saved = true
     notice.value = { error: false, text: t(done) }
   } catch (error) {
     notice.value = { error: true, text: t(failureKey(error)) }
   } finally {
-    busy.value = false
     confirming.value = false
-    await load()
+    // Busy until the user is read again, so saved toggles never show as unsaved in between.
+    await load(saved && savesRoles)
+    busy.value = false
     await timeline.value?.refresh()
   }
 }
 
-const saveRoles = () =>
-  run(
-    () => users((c) => c.assignRoles({ params: { id }, payload: { roleIds: roleIds.value } })),
+function saveRoles() {
+  const payload = { roleIds: [...roleIds.value] }
+  return run(
+    () => users((c) => c.assignRoles({ params: { id }, payload })),
     'users.user.rolesSaved',
+    true,
   )
+}
 
 const setActive = (active: boolean) =>
   run(
@@ -125,7 +148,8 @@ const setLocale = (locale: string | null) => {
       <p
         v-if="notice"
         :role="notice.error ? 'alert' : 'status'"
-        :class="notice.error && 'text-error'"
+        :class="notice.error ? 'text-error' : 'text-success'"
+        class="text-sm"
       >
         {{ notice.text }}
       </p>
@@ -139,15 +163,10 @@ const setLocale = (locale: string | null) => {
             :key="role.id"
             :label="roleName(role)"
             :model-value="roleIds.includes(role.id)"
+            :disabled="busy"
             @update:model-value="toggle(role.id, $event)"
           />
         </fieldset>
-        <UButton
-          class="mt-4"
-          :loading="busy"
-          :label="t('users.user.saveRoles')"
-          @click="saveRoles"
-        />
       </UCard>
 
       <UCard>

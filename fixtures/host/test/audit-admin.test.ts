@@ -341,7 +341,7 @@ test('a user manager without audit permission sees no timeline and makes no audi
   const user = await seedUser(db.url, { permissions: ['users.manage'] })
   const cookie = await host.signIn(user.email, user.password)
   const admin = mount(`/admin/users/${user.id}`, cookie)
-  await expect.poll(admin.text).toContain('Save roles')
+  await expect.poll(admin.text).toContain('Admin language')
   expect(admin.text()).not.toContain('Audit timeline')
   expect(admin.requests.filter((url) => new URL(url).pathname === '/api/audit')).toEqual([])
 })

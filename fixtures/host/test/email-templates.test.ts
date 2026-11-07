@@ -2,7 +2,7 @@ import { defineAdminModule } from '@opulonjs/admin'
 import { EmailTemplateList } from '@opulonjs/emails/api'
 import { emailsAdmin } from '@opulonjs/emails/admin'
 import { Schema } from 'effect'
-import { expect, test } from 'vitest'
+import { beforeEach, expect, test } from 'vitest'
 import { useTestDatabase } from '../../../test/postgres/index.ts'
 import { useAdminLifetime } from './admin-lifetime.ts'
 import { makeShop } from './support/shop.ts'
@@ -14,12 +14,23 @@ const db = useTestDatabase()
 const shop = admin.track(makeShop(() => db.url))
 const order = 'shop.order_confirmed'
 
+/** The screen's writes (`PUT /path`), and a predicate that makes matching requests fail. */
+const writes: string[] = []
+let failing: ((request: Request) => boolean) | undefined
+beforeEach(() => {
+  writes.length = 0
+  failing = undefined
+})
 const hostFetch: typeof fetch = async (input, init) => {
+  const request = new Request(input, init)
+  if (request.method === 'PUT') writes.push(`PUT ${new URL(request.url).pathname}`)
+  if (failing?.(request)) return new Response('down', { status: 503 })
   const pending: Array<Promise<unknown>> = []
-  const response = await shop.fetch(new Request(input, init), (p) => pending.push(p))
+  const response = await shop.fetch(request, (p) => pending.push(p))
   const body = await response.arrayBuffer()
   await Promise.all(pending)
-  return new Response(body, response)
+  // A 204 (the switch's answer) may not carry a body, not even an empty one.
+  return new Response(response.status === 204 ? null : body, response)
 }
 
 // The shop has no users module; this stands in as the shell's auth provider.
@@ -43,6 +54,14 @@ const mount = (path: string) =>
 const text = () => document.body.textContent ?? ''
 const button = (label: string) =>
   [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === label)!
+const bar = () => document.querySelector('[role="region"][aria-label="Neuložené zmeny"]')
+/** Clicks the unsaved-changes bar's Save once it shows and no request of the editor runs. */
+const saveFromBar = async () => {
+  const save = () =>
+    [...(bar()?.querySelectorAll('button') ?? [])].find((b) => b.textContent?.trim() === 'Uložiť')
+  await expect.poll(() => save()?.disabled).toBe(false)
+  save()!.click()
+}
 const overrideOf = async (locale: string) => {
   const list = Schema.decodeUnknownSync(EmailTemplateList)(
     (await shop.request('GET', '/emails/templates')).body,
@@ -81,7 +100,7 @@ test('the editor saves an override, previews it and sends a test', async () => {
 
   subject.value = 'Objednávka {{order}} je potvrdená'
   subject.dispatchEvent(new Event('input'))
-  button('Uložiť').click()
+  await saveFromBar()
   await expect.poll(text).toContain('Šablóna bola uložená.')
   expect(await overrideOf('en')).toEqual({
     subject: 'Objednávka {{order}} je potvrdená',
@@ -108,7 +127,7 @@ test('the editor shows why the server rejected the wording', async () => {
   const subject = document.querySelector<HTMLInputElement>('input[name="subject-en"]')!
   subject.value = 'Hi {{nobody}}'
   subject.dispatchEvent(new Event('input'))
-  button('Uložiť').click()
+  await saveFromBar()
   await expect.poll(text).toContain('undeclared placeholder "nobody"')
 })
 
@@ -116,7 +135,68 @@ test('placeholders insert into the body at the cursor', async () => {
   mount(`/admin/emails/templates/${order}`)
   await expect.poll(() => document.querySelector('[contenteditable="true"]')).toBeTruthy()
   button('{{order}}').click()
-  button('Uložiť').click()
+  await saveFromBar()
   await expect.poll(text).toContain('Šablóna bola uložená.')
   expect((await overrideOf('en'))?.body).toContain('{{order}}')
+})
+
+const subjectField = (locale: string) =>
+  document.querySelector<HTMLInputElement>(`input[name="subject-${locale}"]`)
+const setSubject = (locale: string, value: string) => {
+  subjectField(locale)!.value = value
+  subjectField(locale)!.dispatchEvent(new Event('input'))
+}
+const testNote = 'Test použije uložené znenie'
+
+test('the bar saves only the languages with changes, then goes away', async () => {
+  const italian = { subject: 'Ordine {{order}}', body: '<p>Ciao</p>' }
+  await shop.request('PUT', `/emails/templates/${order}/locales/it`, italian)
+  writes.length = 0
+  mount(`/admin/emails/templates/${order}`)
+  await expect.poll(() => subjectField('it')?.value).toBe('Ordine {{order}}')
+  expect(bar()).toBeNull()
+  expect(text()).not.toContain(testNote)
+
+  setSubject('en', 'Order {{order}} is in')
+  await expect.poll(bar).toBeTruthy()
+  expect(text()).toContain(testNote)
+  await saveFromBar()
+  await expect.poll(text).toContain('Šablóna bola uložená.')
+  await expect.poll(bar).toBeNull()
+  expect(text()).not.toContain(testNote)
+  expect(writes).toEqual([`PUT /api/emails/templates/${order}/locales/en`])
+  expect((await overrideOf('en'))?.subject).toBe('Order {{order}} is in')
+  expect(await overrideOf('it')).toEqual(italian)
+})
+
+test('a language the server refuses keeps its changes and shows why; the others save', async () => {
+  mount(`/admin/emails/templates/${order}`)
+  await expect.poll(() => subjectField('it')).toBeTruthy()
+  const italian = await overrideOf('it')
+  setSubject('en', 'Order {{order}} is on its way')
+  setSubject('it', 'Ciao {{nobody}}')
+  await saveFromBar()
+  await expect.poll(text).toContain('undeclared placeholder "nobody"')
+  expect((await overrideOf('en'))?.subject).toBe('Order {{order}} is on its way')
+  expect(await overrideOf('it')).toEqual(italian)
+  // The refused language stays unsaved and its tab is shown.
+  expect(bar()).toBeTruthy()
+  expect(subjectField('it')!.value).toBe('Ciao {{nobody}}')
+  await expect
+    .poll(() => document.querySelector('[role="tab"][aria-selected="true"]')?.textContent)
+    .toContain('Taliančina')
+})
+
+test('the Send this email switch says whether the change was saved', async () => {
+  mount(`/admin/emails/templates/${order}`)
+  const toggle = () => document.querySelector<HTMLButtonElement>('button[role="switch"]')
+  await expect.poll(() => toggle()?.getAttribute('aria-checked')).toBe('true')
+  toggle()!.click()
+  await expect.poll(text).toContain('Tento e-mail sa už neposiela.')
+  expect(toggle()!.getAttribute('aria-checked')).toBe('false')
+
+  failing = (request) => request.method === 'PUT' && request.url.endsWith('/enabled')
+  toggle()!.click()
+  await expect.poll(text).toContain('Posielanie sa nepodarilo zmeniť. Skúste to znova.')
+  expect(toggle()!.getAttribute('aria-checked')).toBe('false')
 })
