@@ -24,6 +24,6 @@ defineProps<FieldProps & { toolbar?: ReadonlyArray<RichTextButton> }>()
     :required="required"
     :size="size"
   >
-    <RichTextControl v-model="model" :toolbar="toolbar" :disabled="disabled" />
+    <RichTextControl v-model="model" :toolbar="toolbar" :disabled="disabled" :label="label" />
   </UFormField>
 </template>
