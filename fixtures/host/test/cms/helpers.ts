@@ -202,3 +202,34 @@ export const saveDraft = async () => {
   await expect.poll(find).toBeDefined()
   find()!.click()
 }
+
+/** The language names of the editor's content language switch ("Jazyk obsahu"), or [] without. */
+export const languages = (root: ParentNode = document) =>
+  [...(languageSwitch(root)?.querySelectorAll('label') ?? [])].map((l) => l.textContent?.trim())
+
+/** The first content language switch under `root`: an editor's own, above its form. */
+export const languageSwitch = (root: ParentNode = document) =>
+  [...root.querySelectorAll<HTMLElement>('[role="radiogroup"]')].find(
+    (group) =>
+      document.getElementById(group.getAttribute('aria-labelledby') ?? '')?.textContent?.trim() ===
+      'Jazyk obsahu',
+  )
+
+/** The language the switch under `root` shows (`Angličtina`, `Taliančina`). */
+export const chosenLanguage = (root: ParentNode = document) =>
+  [...(languageSwitch(root)?.querySelectorAll('label') ?? [])]
+    .find((label) => label.querySelector('input')?.checked)
+    ?.textContent?.trim()
+
+/** Chooses a language in the switch under `root`, as a click on its name does. */
+export const chooseLanguage = (language: string, root: ParentNode = document) => {
+  const label = [...(languageSwitch(root)?.querySelectorAll('label') ?? [])].find(
+    (l) => l.textContent?.trim() === language,
+  )
+  if (!label) throw new Error(`no "${language}" in the content language switch`)
+  label.querySelector('input')!.click()
+}
+
+/** The control named `name` is in view: not in a hidden language or an unselected section. */
+export const shown = (name: string) =>
+  document.querySelector<HTMLElement>(`[name="${name}"]`)?.checkVisibility() === true

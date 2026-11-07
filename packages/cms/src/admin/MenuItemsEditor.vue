@@ -1,11 +1,13 @@
 <script setup lang="ts">
-/** A level of a menu: each entry's label per locale, its link and its children (nested up to
- *  the menu's depth). Edits `items` in place. */
+/** A level of a menu: each entry's label in `locale` (the editor's content language; the other
+ *  locales' stay mounted and hidden), its link and its children (nested up to the menu's depth).
+ *  Edits `items` in place. */
 import { useI18n } from '@opulonjs/admin'
 import { UButton } from '@opulonjs/ui'
 import FieldText from '@opulonjs/ui/components/Field/Text'
-import LocaleTabs from '@opulonjs/ui/components/LocaleTabs'
+import { computed } from 'vue'
 import LinkControl from './LinkControl.vue'
+import { shownLocale, useLocaleHints } from './use-cms.ts'
 
 export interface EditedMenuItem {
   id: string
@@ -15,16 +17,20 @@ export interface EditedMenuItem {
 }
 
 const items = defineModel<EditedMenuItem[]>('items', { required: true })
-defineProps<{
+const props = defineProps<{
   level: number
   depth: number
   locales: ReadonlyArray<string>
+  /** The content locale whose labels show; default: the first. */
+  locale?: string
   /** Form path prefix, e.g. `items` or `items.0.children`. */
   name: string
   disabled?: boolean
 }>()
 
 const { t } = useI18n()
+const shown = computed(() => shownLocale(props.locales, props.locale))
+const hints = useLocaleHints(() => props.locales)
 
 const add = () =>
   items.value.push({
@@ -44,7 +50,7 @@ function move(index: number, by: -1 | 1) {
     <li v-for="(entry, index) in items" :key="entry.id" class="space-y-2">
       <div class="flex items-center justify-between gap-2">
         <span class="text-sm font-medium text-highlighted">
-          {{ entry.label[locales[0] ?? ''] || t('cms.menu.untitled') }}
+          {{ entry.label[shown] || entry.label[locales[0] ?? ''] || t('cms.menu.untitled') }}
         </span>
         <div v-if="!disabled" class="flex gap-1">
           <UButton
@@ -72,20 +78,20 @@ function move(index: number, by: -1 | 1) {
           />
         </div>
       </div>
-      <LocaleTabs :locales="locales">
-        <template v-for="code in locales" :key="code" #[code]>
-          <FieldText
-            v-model="entry.label[code]"
-            :name="`${name}.${index}.label.${code}`"
-            :label="t('cms.menu.label')"
-            :disabled="disabled"
-          />
-        </template>
-      </LocaleTabs>
+      <div v-for="code in locales" v-show="code === shown" :key="code">
+        <FieldText
+          v-model="entry.label[code]"
+          :name="`${name}.${index}.label.${code}`"
+          :label="t('cms.menu.label')"
+          :hint="hints.language(code)"
+          :disabled="disabled"
+        />
+      </div>
       <LinkControl
         v-model="entry.link"
         :name="`${name}.${index}.link`"
         :label="t('cms.menu.link')"
+        :hint="hints.shared()"
         :disabled="disabled"
       />
       <MenuItemsEditor
@@ -94,6 +100,7 @@ function move(index: number, by: -1 | 1) {
         :level="level + 1"
         :depth="depth"
         :locales="locales"
+        :locale="locale"
         :name="`${name}.${index}.children`"
         :disabled="disabled"
       />

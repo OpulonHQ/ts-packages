@@ -27,6 +27,7 @@ const en = {
   link: 'Link',
   linkApply: 'Apply',
   linkRemove: 'Remove',
+  contentLanguage: 'Content language',
   tools: {
     bold: 'Bold',
     italic: 'Italic',
@@ -68,6 +69,7 @@ const sk: KitText = {
   link: 'Odkaz',
   linkApply: 'Použiť',
   linkRemove: 'Odstrániť',
+  contentLanguage: 'Jazyk obsahu',
   tools: {
     bold: 'Tučné',
     italic: 'Kurzíva',

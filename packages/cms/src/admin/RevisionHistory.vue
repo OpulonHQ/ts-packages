@@ -20,6 +20,8 @@ const props = defineProps<{
   disabled?: boolean
 }>()
 const emit = defineEmits<{ restored: []; reload: []; busy: [value: boolean] }>()
+/** The editor's content language, which the revision shown follows. */
+const contentLocale = defineModel<string>('contentLocale')
 const { t, locale } = useI18n()
 const api = useRevisions()
 const identity = computed(() => `${props.kind}:${props.documentRef}:${props.publishedRevisionId}`)
@@ -135,6 +137,7 @@ async function restore() {
         {{ state.snapshot.revision.author.name }}
       </h3>
       <RevisionView
+        v-model:content-locale="contentLocale"
         :snapshot="state.snapshot"
         :document-ref="documentRef"
         :collection="collection"

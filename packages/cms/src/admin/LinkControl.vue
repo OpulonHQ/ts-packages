@@ -10,7 +10,7 @@ import { pageTitle, useCmsContext, useContent } from './use-cms.ts'
 import ReferenceControl from './ReferenceControl.vue'
 
 const model = defineModel<unknown>()
-const props = defineProps<{ name: string; label: string; disabled?: boolean }>()
+const props = defineProps<{ name: string; label: string; hint?: string; disabled?: boolean }>()
 
 const { t, locale } = useI18n()
 const { definitions } = useCmsContext()
@@ -132,7 +132,11 @@ function selectCollection(value: string | number | null | undefined) {
 
 <template>
   <fieldset class="space-y-2">
-    <legend class="text-sm font-medium text-highlighted">{{ props.label }}</legend>
+    <legend
+      class="flex w-full items-center justify-between gap-1 text-sm font-medium text-highlighted"
+    >
+      {{ props.label }} <span v-if="hint" class="font-normal text-muted">{{ hint }}</span>
+    </legend>
     <FieldSelect
       v-model="type"
       :name="`${name}.type`"

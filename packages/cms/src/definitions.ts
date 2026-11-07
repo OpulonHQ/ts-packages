@@ -45,7 +45,7 @@ export interface Field<T = unknown> {
   readonly kind: FieldKind
   readonly label: Label
   readonly help?: Label
-  /** Holds one value per content locale, edited in locale tabs. */
+  /** Holds one value per content locale, edited in the language the editor's switch shows. */
   readonly localized: boolean
   /** Must hold a value (in the default content locale, if localized) to publish. */
   readonly required: boolean

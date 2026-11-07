@@ -9,7 +9,13 @@ import type { Field, ItemSummary } from '../api.ts'
 import { useContent } from './use-cms.ts'
 
 const model = defineModel<unknown>()
-const props = defineProps<{ field: Field; name: string; label: string; disabled?: boolean }>()
+const props = defineProps<{
+  field: Field
+  name: string
+  label: string
+  hint?: string
+  disabled?: boolean
+}>()
 const { t } = useI18n()
 const content = useContent()
 type SelectedReference =
@@ -107,7 +113,11 @@ const selectedTitle = (id: string) => {
 
 <template>
   <fieldset class="space-y-2">
-    <legend class="text-sm font-medium text-highlighted">{{ label }}</legend>
+    <legend
+      class="flex w-full items-center justify-between gap-1 text-sm font-medium text-highlighted"
+    >
+      {{ label }} <span v-if="hint" class="font-normal text-muted">{{ hint }}</span>
+    </legend>
     <div
       v-if="selected.length"
       class="flex flex-wrap gap-2"

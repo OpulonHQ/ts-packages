@@ -1,0 +1,9 @@
+---
+'@opulonjs/cms': minor
+'@opulonjs/ui': minor
+'@opulonjs/media': minor
+---
+
+One language switch per editor instead of a tab strip on every field. While the host has more than one content locale, the page, item, site settings and menu editors show `LocaleSwitch` ("Content language", the language names from `languageName`) above the form, and every localized field, the path, availability and SEO of a page or routed item, and every menu entry's label show the chosen language; the other languages' controls stay mounted and hidden, so nothing typed in them is lost and focus can reach them. Each label shows once (the legend that repeated it is gone). With several content locales a localized control names its language next to its label (part of its accessible description or name) and a field every language shares says "All languages"; with one locale there is no switch and neither note. The page editor's switch and its preview language are one value: changing either changes both, and a click in the preview turns the editor to the preview's language before focusing the field. A save the server refuses for a value of one language (`at ["title"]["it"]`, "The it path …") turns the editor to that language. The revision shown under an editor follows the same language and has its own switch over the content locales and any other locale its snapshot holds; a language the snapshot lacks shows empty. Stored data, the API and form field names are unchanged.
+
+`LocaleSwitch` is native radios in a radiogroup named "Content language" (or `label`), underlined like `LocaleTabs`, and renders nothing for fewer than two locales. `FieldToggle` shows its `hint` at the end of the switch's label row, where it was dropped before. `MediaPicker` takes `hint` and is a group named by its label and hint. cms field widgets get `hint` (`CmsWidgetProps`): the value's language or "All languages", to show next to the label.

@@ -3,17 +3,21 @@
  * Picks one media item from the library (archived items excluded); `v-model` is its id or null.
  *
  * <MediaPicker v-model="state.heroImage" :label="t('site.hero')" accept="image" />
+ *
+ * The picker is a group named by its label and `hint` (shown at the end of the label's row).
  */
 import { useI18n } from '@opulonjs/admin'
 import { UButton, UIcon, UModal } from '@opulonjs/ui'
 import DataTable from '@opulonjs/ui/components/DataTable'
-import { computed, ref, shallowRef, watch } from 'vue'
+import { computed, ref, shallowRef, useId, watch } from 'vue'
 import type { MediaItem } from '../api.ts'
 import { accept as acceptTypes, failureMessage, useMedia } from './use-media.ts'
 
 const model = defineModel<string | null>({ default: null })
 const props = defineProps<{
   label?: string
+  /** Next to the label, e.g. the language of a per-language image. */
+  hint?: string
   /** Only images or only PDFs; default both. */
   accept?: 'image' | 'pdf'
   /**
@@ -31,6 +35,10 @@ const item = shallowRef<MediaItem>()
 const failure = ref<string>()
 const uploading = ref(false)
 const fileInput = ref<HTMLInputElement>()
+const baseId = useId()
+const labelledBy = computed(() =>
+  [props.label && `${baseId}-label`, props.hint && `${baseId}-hint`].filter(Boolean).join(' '),
+)
 
 watch(
   model,
@@ -94,8 +102,15 @@ async function upload(event: Event) {
 </script>
 
 <template>
-  <div class="space-y-2">
-    <p v-if="label" class="text-sm font-medium text-default">{{ label }}</p>
+  <div
+    class="space-y-2"
+    :role="labelledBy ? 'group' : undefined"
+    :aria-labelledby="labelledBy || undefined"
+  >
+    <div v-if="label || hint" class="flex items-center justify-between gap-1 text-sm">
+      <p v-if="label" :id="`${baseId}-label`" class="font-medium text-default">{{ label }}</p>
+      <span v-if="hint" :id="`${baseId}-hint`" class="text-muted">{{ hint }}</span>
+    </div>
     <div class="flex items-center gap-3">
       <template v-if="item">
         <img

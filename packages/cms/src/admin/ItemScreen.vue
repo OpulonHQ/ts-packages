@@ -6,6 +6,7 @@
 import { CachePurgeNotice, useI18n, useNavTarget } from '@opulonjs/admin'
 import { UCard } from '@opulonjs/ui'
 import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
+import LocaleSwitch from '@opulonjs/ui/components/LocaleSwitch'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
 import { computed, ref, shallowRef, watch, useTemplateRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -15,7 +16,14 @@ import FieldsForm from './FieldsForm.vue'
 import LocaleDetails from './LocaleDetails.vue'
 import PublishActions from './PublishActions.vue'
 import ActionStatus from './ActionStatus.vue'
-import { useAction, useCmsContext, useContent, useDraftChanges, useFocusReturn } from './use-cms.ts'
+import {
+  useAction,
+  useCmsContext,
+  useContent,
+  useContentLocale,
+  useDraftChanges,
+  useFocusReturn,
+} from './use-cms.ts'
 
 interface Draft {
   locales: Record<string, PageLocale>
@@ -40,6 +48,7 @@ const revisionPending = ref(false)
 const locales = computed(() => content.contentLocales.value)
 const canEdit = computed(() => content.can('cms.collections.edit'))
 const locked = computed(() => !canEdit.value || pending.value || revisionPending.value)
+const contentLocale = useContentLocale(() => locales.value, status)
 const form = useTemplateRef<HTMLFormElement>('form')
 useFocusReturn(
   () => pending.value || revisionPending.value,
@@ -172,13 +181,19 @@ useDraftChanges({
       <CachePurgeNotice :pending="pending || revisionPending" class="mb-4" />
       <ActionStatus :status="status" @reload="reload()" />
 
+      <LocaleSwitch v-model="contentLocale" :locales="locales" class="mb-4" />
       <form ref="form" tabindex="-1" :aria-label="item.title" @submit.prevent="save">
         <fieldset :disabled="pending || revisionPending" class="min-w-0 space-y-6">
           <UCard v-if="collection.routed">
             <template #header>
               <h2 class="font-semibold text-highlighted">{{ t('cms.item.details') }}</h2>
             </template>
-            <LocaleDetails :value="draft.locales" :locales="locales" :disabled="locked" />
+            <LocaleDetails
+              :value="draft.locales"
+              :locales="locales"
+              :locale="contentLocale"
+              :disabled="locked"
+            />
           </UCard>
           <UCard>
             <template #header>
@@ -188,6 +203,7 @@ useDraftChanges({
               v-model:data="draft.data"
               :group="collection"
               :locales="locales"
+              :locale="contentLocale"
               name="data"
               :disabled="locked"
             />
@@ -196,6 +212,7 @@ useDraftChanges({
       </form>
       <RevisionHistory
         v-if="item"
+        v-model:content-locale="contentLocale"
         :version="item.version"
         kind="item"
         :document-ref="item.id"
