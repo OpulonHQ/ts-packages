@@ -80,6 +80,11 @@ export interface DataTableColumn<R> {
   label?: string
   sortable?: boolean
   align?: 'left' | 'center' | 'right'
+  /**
+   * Keeps the cell on one line: statuses, dates, numbers. Other cells wrap, long words and
+   * paths included, so a long title can never push the short columns out of view.
+   */
+  nowrap?: boolean
   /** Plain-text cell; for rich cells use the `#<key>-cell` slot. */
   format?: (value: unknown, row: R) => string
 }

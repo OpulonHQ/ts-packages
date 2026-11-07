@@ -19,6 +19,28 @@ export const languageName = (code: string, inLocale: string = code): string => {
   return name ? name.charAt(0).toLocaleUpperCase(inLocale) + name.slice(1) : code
 }
 
+const toDate = (value: unknown): Date | undefined => {
+  if (value === null || value === undefined || value === '') return undefined
+  const date = value instanceof Date ? value : new Date(String(value))
+  return Number.isNaN(date.getTime()) ? undefined : date
+}
+
+/** A day the way every admin list shows it (`Nov 7, 2026`, `7. 11. 2026`); empty: `—`. */
+export const formatDate = (value: unknown, locale: string): string => {
+  const date = toDate(value)
+  return date
+    ? new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(date)
+    : EMPTY_PLACEHOLDER
+}
+
+/** A moment in local time, for logs and histories (`Nov 7, 2026, 2:37 PM`); empty: `—`. */
+export const formatDateTime = (value: unknown, locale: string): string => {
+  const date = toDate(value)
+  return date
+    ? new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(date)
+    : EMPTY_PLACEHOLDER
+}
+
 /** Reads a dotted path (`status.name`) from a row. */
 export const getPath = (row: unknown, path: string): unknown =>
   path

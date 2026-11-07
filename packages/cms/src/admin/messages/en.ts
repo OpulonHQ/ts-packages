@@ -32,7 +32,7 @@ export default {
     blankDescription: 'No sections yet.',
     templateSections: 'Sections: {sections}',
   },
-  columns: { title: 'Title', path: 'Path', status: 'Status', updatedAt: 'Edited' },
+  columns: { title: 'Title', path: 'Path', status: 'Status', updatedAt: 'Updated' },
   status: { draft: 'Draft', published: 'Published', changed: 'Unpublished changes' },
   page: {
     back: 'Pages',

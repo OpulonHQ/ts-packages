@@ -1,43 +1,38 @@
 <script setup lang="ts">
 import { useApiClient, useI18n } from '@opulonjs/admin'
-import type { TablePage, TableQuery } from '@opulonjs/ui'
+import { formatDateTime, type TablePage, type TableQuery } from '@opulonjs/ui'
 import DataTable from '@opulonjs/ui/components/DataTable'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
 import StatusBadge from '@opulonjs/ui/components/StatusBadge'
-import { ref } from 'vue'
+import { computed } from 'vue'
 import { type EmailLogEntry, EmailsGroup, emailStatuses } from '../api.ts'
 
 const { t, locale } = useI18n()
 const emails = useApiClient(EmailsGroup)
-const failed = ref(false)
 
 const isStatus = (v: unknown): v is EmailLogEntry['status'] => emailStatuses.some((s) => s === v)
 
-async function load(query: TableQuery): Promise<TablePage<EmailLogEntry>> {
+// A failure reaches the table, which shows it with "Try again" instead of an empty log.
+const load = (query: TableQuery): Promise<TablePage<EmailLogEntry>> => {
   const status = query.filters.status
-  try {
-    const page = await emails((client) =>
-      client.log({
-        query: {
-          page: query.page,
-          perPage: query.perPage,
-          ...(isStatus(status) ? { status } : {}),
-        },
-      }),
-    )
-    failed.value = false
-    return page
-  } catch {
-    failed.value = true
-    return { rows: [], total: 0 }
-  }
+  return emails((client) =>
+    client.log({
+      query: {
+        page: query.page,
+        perPage: query.perPage,
+        ...(isStatus(status) ? { status } : {}),
+      },
+    }),
+  )
 }
 
-const columns = [
+// Computed, so a language switch from the user menu relabels the table too.
+const columns = computed(() => [
   {
     key: 'createdAt',
     label: t('emails.log.columns.createdAt'),
-    format: (value: unknown) => new Date(String(value)).toLocaleString(locale.value),
+    nowrap: true,
+    format: (value: unknown) => formatDateTime(value, locale.value),
   },
   { key: 'templateKey', label: t('emails.log.columns.templateKey') },
   {
@@ -46,26 +41,31 @@ const columns = [
     format: (value: unknown) => (Array.isArray(value) ? value.join(', ') : ''),
   },
   { key: 'subject', label: t('emails.log.columns.subject') },
-  { key: 'status', label: t('emails.log.columns.status') },
-  { key: 'attempts', label: t('emails.log.columns.attempts'), align: 'right' as const },
-]
+  { key: 'status', label: t('emails.log.columns.status'), nowrap: true },
+  {
+    key: 'attempts',
+    label: t('emails.log.columns.attempts'),
+    align: 'right' as const,
+    nowrap: true,
+  },
+])
 
-const statusFilter = {
+const statusFilter = computed(() => ({
   key: 'status',
   label: t('emails.log.columns.status'),
   options: emailStatuses.map((value) => ({ value, label: t(`emails.log.status.${value}`) })),
-}
+}))
 </script>
 
 <template>
   <section>
     <PageHeader :title="t('emails.log.title')" :description="t('emails.log.description')" />
-    <p v-if="failed" role="alert" class="text-error">{{ t('emails.log.failed') }}</p>
     <DataTable
       :load="load"
       :columns="columns"
       :filters="[statusFilter]"
       :empty-title="t('emails.log.empty')"
+      :error-message="t('emails.log.failed')"
       :caption="t('emails.log.title')"
     >
       <template #status-cell="{ row }">

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /** Content > Pages: every page with its path and publish status; system pages first. */
 import { CachePurgeNotice, useI18n } from '@opulonjs/admin'
-import { queryRows, type TableQuery, UButton, UModal } from '@opulonjs/ui'
+import { formatDate, queryRows, type TableQuery, UButton, UModal } from '@opulonjs/ui'
 import DataTable from '@opulonjs/ui/components/DataTable'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
 import StatusBadge from '@opulonjs/ui/components/StatusBadge'
@@ -25,14 +25,17 @@ const load = async (query: TableQuery) => {
   }))
   return queryRows(rows, ['title', 'path'], query)
 }
+// The same columns as a collection's items, sortable the same way (pages sort in memory).
 const columns = computed(() => [
-  { key: 'title', label: t('cms.columns.title') },
-  { key: 'path', label: t('cms.columns.path') },
-  { key: 'status', label: t('cms.columns.status') },
+  { key: 'title', label: t('cms.columns.title'), sortable: true },
+  { key: 'path', label: t('cms.columns.path'), sortable: true },
+  { key: 'status', label: t('cms.columns.status'), sortable: true, nowrap: true },
   {
     key: 'updatedAt',
     label: t('cms.columns.updatedAt'),
-    format: (v: unknown) => new Date(String(v)).toLocaleDateString(locale.value),
+    sortable: true,
+    nowrap: true,
+    format: (v: unknown) => formatDate(v, locale.value),
   },
 ])
 

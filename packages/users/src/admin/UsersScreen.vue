@@ -55,7 +55,7 @@ const columns = computed(() => [
     label: t('users.users.columns.roles'),
     format: (value: unknown) => (value as ReadonlyArray<string>).map(roleName).join(', '),
   },
-  { key: 'deactivated', label: t('users.users.columns.status') },
+  { key: 'deactivated', label: t('users.users.columns.status'), sortable: true, nowrap: true },
 ])
 
 function toggleRole(id: string, on: boolean | 'indeterminate') {
@@ -139,9 +139,6 @@ async function send() {
       searchable
       :on-row-click="(row: UserInfo) => router.push({ name: 'users.user', params: { id: row.id } })"
     >
-      <template #error
-        ><p role="alert" class="text-sm text-error">{{ t('users.errors.failed') }}</p></template
-      >
       <template #pagination-limit>{{ t('users.users.paginationLimit') }}</template>
       <template #deactivated-cell="{ row }">
         <StatusBadge
