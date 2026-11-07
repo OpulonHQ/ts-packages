@@ -46,18 +46,25 @@ const coreScreens = defineAdminModule({
       component: screen('audit screen'),
     },
     { name: 'core.profile', path: '/core/profile', signedIn: true, component: screen('profile') },
+    { name: 'core.inbox', path: '/core/inbox', signedIn: true, component: screen('inbox') },
   ],
   nav: [
     { label: 'nav.audit', route: 'core.audit', group: 'settings' },
     { label: 'nav.profile', route: 'core.profile', group: 'settings' },
+    // No group: the top group, next to Dashboard.
+    { label: 'nav.inbox', route: 'core.inbox' },
   ],
   widgets: [
     { name: 'audit', permission: 'core.audit.view', component: screen('audit widget') },
     { name: 'hello', component: screen('hello widget') },
   ],
   messages: {
-    en: async () => ({ default: { nav: { audit: 'Audit log', profile: 'Profile' } } }),
-    sk: async () => ({ default: { nav: { audit: 'Auditný záznam', profile: 'Profil' } } }),
+    en: async () => ({
+      default: { nav: { audit: 'Audit log', profile: 'Profile', inbox: 'Inbox' } },
+    }),
+    sk: async () => ({
+      default: { nav: { audit: 'Auditný záznam', profile: 'Profil', inbox: 'Doručené' } },
+    }),
   },
 })
 
@@ -122,7 +129,7 @@ test('groups the nav and shows only items and widgets the user may open', async 
   const admin = mountAdmin('/admin/')
   await expect.poll(admin.text).toContain('hello widget')
   // Dashboard first, then Content (demo), then Settings (core).
-  expect(navText()).toMatch(/Prehľad.*Obsah.*Poznámky.*Nastavenia.*Profil/)
+  expect(navText()).toMatch(/Prehľad.*Doručené.*Obsah.*Poznámky.*Nastavenia.*Profil/)
   expect(navText()).not.toContain('Auditný záznam')
   expect(admin.text()).not.toContain('audit widget')
 })
@@ -205,6 +212,25 @@ test('a route with nav keeps its section titled without naming a child', async (
   await expect.poll(text).toContain('loose')
   await expect.poll(navbarTitle).toBe('Priečinky')
   expect(currentEntry()).toEqual([])
+})
+
+test('a group opens and closes on its header, also when the screen is outside it', async () => {
+  const text = mountFolders('/admin/')
+  await expect.poll(text).toContain('Priečinky')
+  const header = () =>
+    [...document.querySelectorAll<HTMLButtonElement>('nav button[aria-expanded]')].find((b) =>
+      b.textContent?.includes('Priečinky'),
+    )
+  const childShown = () =>
+    [...document.querySelectorAll<HTMLElement>('nav a')].some(
+      (a) => a.textContent?.trim() === 'Priečinok A' && a.checkVisibility?.() !== false,
+    )
+  expect(header()?.getAttribute('aria-expanded')).toBe('false')
+  header()!.click()
+  await expect.poll(() => header()?.getAttribute('aria-expanded')).toBe('true')
+  await expect.poll(childShown).toBe(true)
+  header()!.click()
+  await expect.poll(() => header()?.getAttribute('aria-expanded')).toBe('false')
 })
 
 test('a wordmark replaces the mark and the name in the open sidebar', async () => {
