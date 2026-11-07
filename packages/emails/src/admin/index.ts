@@ -18,6 +18,7 @@ export const emailsAdmin = () =>
         name: 'emails.template',
         path: '/emails/templates/:key',
         permission: 'emails.templates.manage',
+        nav: 'emails.templates',
         component: () => import('./TemplateEditorScreen.vue'),
       },
       {

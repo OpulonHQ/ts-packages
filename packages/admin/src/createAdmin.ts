@@ -31,6 +31,7 @@ import {
   failedScreenKey,
   type AdminState,
   type Me,
+  type NavTarget,
   type ShellNavGroup,
   type Status,
 } from './state.ts'
@@ -61,6 +62,8 @@ declare module 'vue-router' {
   interface RouteMeta {
     module?: string
     access?: Access
+    /** The route of the nav entry this screen belongs to (`AdminRoute.nav`). */
+    nav?: string
   }
 }
 
@@ -317,7 +320,18 @@ export const createAdmin = (options: AdminOptions): App => {
     ])
     const items = [
       ...enabled.value.flatMap((m) =>
-        (m.nav ?? []).map((n) => ({ ...n, label: `${m.id}.${n.label}` })),
+        (m.nav ?? []).map((n) => ({
+          ...n,
+          label: `${m.id}.${n.label}`,
+          ...(n.children
+            ? {
+                children: n.children.map((c) => ({
+                  label: typeof c.label === 'string' ? `${m.id}.${c.label}` : c.label,
+                  params: c.params,
+                })),
+              }
+            : {}),
+        })),
       ),
       ...(me.value?.modules.includes('core') && !auditOverride
         ? [
@@ -333,14 +347,21 @@ export const createAdmin = (options: AdminOptions): App => {
     ]
       .filter((n) => allowed(routes.get(n.route)))
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-    const ids = [...new Set(items.map((n) => n.group))].sort(
+    // '' is the top group: `sort` would move an `undefined` group behind every other one
+    // without asking the comparator, and the shell renders the top group only when it is first.
+    const ids = [...new Set(items.map((n) => n.group ?? ''))].sort(
       (a, b) => (a ? (groups[a] ?? 1000) : 0) - (b ? (groups[b] ?? 1000) : 0),
     )
     return ids.map((id) => ({
       ...(id ? { id } : {}),
       items: items
-        .filter((n) => n.group === id)
-        .map((n) => ({ label: n.label, route: n.route, ...(n.icon ? { icon: n.icon } : {}) })),
+        .filter((n) => (n.group ?? '') === id)
+        .map((n) => ({
+          label: n.label,
+          route: n.route,
+          ...(n.icon ? { icon: n.icon } : {}),
+          ...('children' in n && n.children?.length ? { children: n.children } : {}),
+        })),
     }))
   })
 
@@ -390,6 +411,7 @@ export const createAdmin = (options: AdminOptions): App => {
     brand: options.brand,
     me,
     status,
+    navTarget: shallowRef<NavTarget>(),
     stale: computed(
       () => buildId !== undefined && me.value !== undefined && me.value.buildId !== buildId,
     ),
@@ -431,12 +453,12 @@ export const createAdmin = (options: AdminOptions): App => {
       : []),
     ...options.modules.flatMap((m) =>
       m.routes.map((r) => {
-        const { name, path, component, ...access } = r
+        const { name, path, component, nav, ...access } = r
         return {
           path,
           name,
           component: lazy(component),
-          meta: { module: m.id, access: access as Access },
+          meta: { module: m.id, access: access as Access, ...(nav ? { nav } : {}) },
         }
       }),
     ),

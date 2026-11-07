@@ -100,7 +100,7 @@ export default {
   collections: {
     paginationLimit: 'Spresnite vyhľadávanie, aby ste našli výsledky za limitom stránkovania.',
     title: 'Kolekcie',
-    description: 'Články, ľudia a ďalšie kolekcie. Upravte položku a potom ju zverejnite.',
+    description: 'Upravte položku a potom ju zverejnite, aby sa zobrazila na webe.',
     create: 'Nová položka',
     empty: 'Zatiaľ žiadne položky.',
   },

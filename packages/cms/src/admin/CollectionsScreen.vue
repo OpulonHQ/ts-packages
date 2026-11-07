@@ -1,6 +1,6 @@
 <script setup lang="ts">
-/** Content > Collections: the host's collections as tabs, the chosen one's items below. */
-import { CachePurgeNotice, useI18n } from '@opulonjs/admin'
+/** Content > Collections > one collection (a sidebar entry each): its items, newest first. */
+import { CachePurgeNotice, useI18n, useNavTarget } from '@opulonjs/admin'
 import { listDefaultPerPage, listMaxOffset } from '@opulonjs/core/api'
 import { formatDate, type TableQuery, UButton } from '@opulonjs/ui'
 import DataTable from '@opulonjs/ui/components/DataTable'
@@ -24,6 +24,12 @@ const current = computed(() => {
   const wanted = String(route.params.collection ?? '')
   return keys.includes(wanted) ? wanted : keys[0]
 })
+// `/cms/collections` without a key shows the first collection: highlight its entry.
+useNavTarget(() =>
+  current.value === undefined
+    ? undefined
+    : { route: 'cms.collections', params: { collection: current.value } },
+)
 const collection = computed(() =>
   current.value === undefined ? undefined : definitions.collections[current.value],
 )
@@ -75,7 +81,10 @@ async function create() {
 
 <template>
   <section>
-    <PageHeader :title="t('cms.collections.title')" :description="t('cms.collections.description')">
+    <PageHeader
+      :title="collection ? labelText(collection.label, locale) : t('cms.collections.title')"
+      :description="t('cms.collections.description')"
+    >
       <template v-if="collection && content.can('cms.collections.edit')" #actions>
         <UButton
           icon="i-lucide-plus"
@@ -86,17 +95,6 @@ async function create() {
       </template>
     </PageHeader>
     <CachePurgeNotice class="mb-4" />
-    <nav class="mb-4 flex flex-wrap gap-2" :aria-label="t('cms.collections.title')">
-      <UButton
-        v-for="key in keys"
-        :key="key"
-        :to="{ name: 'cms.collections', params: { collection: key } }"
-        :label="labelText(definitions.collections[key]!.label, locale)"
-        :variant="key === current ? 'solid' : 'outline'"
-        color="neutral"
-        :aria-current="key === current ? 'page' : undefined"
-      />
-    </nav>
     <p v-if="failure" role="alert" class="mb-4 text-sm text-error">{{ failure }}</p>
     <DataTable
       v-if="collection"

@@ -4,6 +4,7 @@ import {
   createAdmin,
   defineAdminModule,
   useAdmin,
+  useNavTarget,
 } from '@opulonjs/admin'
 import { defineComponent, h, watch } from 'vue'
 import { beforeAll, expect, onTestFinished, test, vi } from 'vitest'
@@ -124,6 +125,100 @@ test('groups the nav and shows only items and widgets the user may open', async 
   expect(navText()).toMatch(/Prehľad.*Obsah.*Poznámky.*Nastavenia.*Profil/)
   expect(navText()).not.toContain('Auditný záznam')
   expect(admin.text()).not.toContain('audit widget')
+})
+
+// Folders as sidebar entries under one parent; a file opens by id and names its folder.
+const folders = defineAdminModule({
+  id: 'core',
+  routes: [
+    {
+      name: 'core.folders',
+      path: '/core/folders/:folder?',
+      signedIn: true,
+      component: screen('folder list'),
+    },
+    {
+      name: 'core.file',
+      path: '/core/files/:id',
+      signedIn: true,
+      nav: 'core.folders',
+      component: async () => ({
+        default: defineComponent(() => {
+          useNavTarget(() => ({ route: 'core.folders', params: { folder: 'b' } }))
+          return () => h('p', 'file screen')
+        }),
+      }),
+    },
+    {
+      name: 'core.loose',
+      path: '/core/loose',
+      signedIn: true,
+      nav: 'core.folders',
+      component: screen('loose'),
+    },
+  ],
+  nav: [
+    {
+      label: 'nav.folders',
+      route: 'core.folders',
+      icon: 'i-lucide-folder',
+      children: [
+        { label: 'nav.a', params: { folder: 'a' } },
+        { label: { en: 'Folder B', sk: 'Priečinok B' }, params: { folder: 'b' } },
+      ],
+    },
+  ],
+  messages: {
+    en: async () => ({ default: { nav: { folders: 'Folders', a: 'Folder A' } } }),
+    sk: async () => ({ default: { nav: { folders: 'Priečinky', a: 'Priečinok A' } } }),
+  },
+})
+const mountFolders = (path: string, brandOverride = {}) =>
+  lifetime.mount(path, {
+    modules: [...adminModules, folders],
+    brand: { ...brand, ...brandOverride },
+    buildId: 'b1',
+    fetch: hosts.b1.browserFetch({ cookie }),
+  })
+const currentEntry = () =>
+  [...document.querySelectorAll('nav [aria-current="page"]')].map((a) => a.textContent?.trim())
+const navbarTitle = () => document.querySelector('h1[data-slot="title"]')?.textContent?.trim()
+
+test('entries with children list them under their parent, named by key or per locale', async () => {
+  const text = mountFolders('/admin/core/folders/a')
+  await expect.poll(text).toContain('folder list')
+  await expect.poll(navText).toMatch(/Priečinky.*Priečinok A.*Priečinok B/)
+  expect(currentEntry()).toEqual(['Priečinok A'])
+  expect(navbarTitle()).toBe('Priečinok A')
+})
+
+test('a detail screen keeps the entry it names highlighted and titled', async () => {
+  const text = mountFolders('/admin/core/files/7')
+  await expect.poll(text).toContain('file screen')
+  await expect.poll(currentEntry).toEqual(['Priečinok B'])
+  expect(navbarTitle()).toBe('Priečinok B')
+  expect(navText()).toContain('Priečinok A')
+})
+
+test('a route with nav keeps its section titled without naming a child', async () => {
+  const text = mountFolders('/admin/core/loose')
+  await expect.poll(text).toContain('loose')
+  await expect.poll(navbarTitle).toBe('Priečinky')
+  expect(currentEntry()).toEqual([])
+})
+
+test('a wordmark replaces the mark and the name in the open sidebar', async () => {
+  const text = mountFolders('/admin/core/folders/a', {
+    wordmark: '/admin/wordmark.svg',
+    wordmarkDark: '/admin/wordmark-dark.svg',
+  })
+  await expect.poll(text).toContain('folder list')
+  const header = document.querySelector('a[href="/admin/"]')!
+  expect([...header.querySelectorAll('img')].map((i) => [i.getAttribute('src'), i.alt])).toEqual([
+    ['/admin/wordmark.svg', 'Fixture host'],
+    ['/admin/wordmark-dark.svg', 'Fixture host'],
+  ])
+  expect(header.textContent?.trim()).toBe('')
 })
 
 test('a route needing a permission the user lacks falls back to the dashboard', async () => {

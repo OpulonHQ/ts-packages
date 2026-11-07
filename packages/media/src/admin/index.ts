@@ -23,7 +23,14 @@ export const mediaAdmin = () =>
       },
     ],
     nav: [
-      { label: 'nav.library', route: 'media.library', icon: 'i-lucide-images', group: 'content' },
+      // After the cms's Pages, Collections and Menus (10-30), before Redirects (50).
+      {
+        label: 'nav.library',
+        route: 'media.library',
+        icon: 'i-lucide-images',
+        group: 'content',
+        order: 40,
+      },
     ],
     messages: {
       en: () => import('./messages/en.ts'),

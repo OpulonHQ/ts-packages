@@ -17,13 +17,13 @@ import {
   UNavigationMenu,
   useToast,
 } from '@opulonjs/ui'
-import { computed, inject, onUnmounted } from 'vue'
+import { computed, inject, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
-import { failedScreenKey, useAdmin } from '../state.ts'
+import { failedScreenKey, type NavTarget, type ShellNavItem, useAdmin } from '../state.ts'
 import ScreenFailed from './ScreenFailed.vue'
 
-const { brand, me, status, stale, nav, signOut, accountRoute, setLocale } = useAdmin()
+const { brand, me, status, stale, nav, navTarget, signOut, accountRoute, setLocale } = useAdmin()
 const { t, locale, availableLocales } = useI18n()
 const toast = useToast()
 const route = useRoute()
@@ -33,26 +33,75 @@ const uiLocale = computed(() => (locale.value === 'sk' ? nuxtUiSk : nuxtUiEn))
 // Public routes (sign-in) and signed-out states render without the dashboard frame.
 const bare = computed(() => route.meta.access?.public === true || status.value !== 'ready')
 
+const routeParams = computed(() =>
+  Object.fromEntries(
+    Object.entries(route.params).map(([key, value]) => [
+      key,
+      String(Array.isArray(value) ? value[0] : value),
+    ]),
+  ),
+)
+// The nav entry the screen belongs to: the one it names, else its route's `nav`, else its own.
+const current = computed<NavTarget>(
+  () =>
+    navTarget.value ?? {
+      route: route.meta.nav ?? String(route.name ?? ''),
+      params: routeParams.value,
+    },
+)
+const matches = (params: Readonly<Record<string, string>>) =>
+  Object.entries(params).every(([key, value]) => current.value.params?.[key] === value)
+const named = (label: string | Readonly<Record<string, string>>) =>
+  typeof label === 'string'
+    ? t(label)
+    : (label[locale.value] ?? label.en ?? Object.values(label)[0] ?? '')
+// `active` is always set: a detail screen keeps its list's entry highlighted, and an entry with
+// children only opens its group (each child opens the item's route with its params).
+const toItem = (item: ShellNavItem): NavigationMenuItem => {
+  const here = current.value.route === item.route
+  const own = { label: t(item.label), icon: item.icon, active: here }
+  if (!item.children?.length) return { ...own, to: { name: item.route } }
+  return {
+    ...own,
+    value: item.route,
+    children: item.children.map((child) => ({
+      label: named(child.label),
+      to: { name: item.route, params: child.params },
+      active: here && matches(child.params),
+    })),
+  }
+}
 const items = computed<NavigationMenuItem[][]>(() => [
   [
-    { label: t('admin.dashboard'), icon: 'i-lucide-house', to: { name: 'dashboard' } },
-    ...(nav.value[0] && !nav.value[0].id ? nav.value[0].items : []).map((item) => ({
-      label: t(item.label),
-      icon: item.icon,
-      to: { name: item.route },
-    })),
+    {
+      label: t('admin.dashboard'),
+      icon: 'i-lucide-house',
+      to: { name: 'dashboard' },
+      active: current.value.route === 'dashboard',
+    },
+    ...(nav.value[0] && !nav.value[0].id ? nav.value[0].items : []).map(toItem),
   ],
   ...nav.value
     .filter((group) => group.id)
     .map((group) => [
       { label: t(`admin.groups.${group.id}`), type: 'label' as const },
-      ...group.items.map((item) => ({
-        label: t(item.label),
-        icon: item.icon,
-        to: { name: item.route },
-      })),
+      ...group.items.map(toItem),
     ]),
 ])
+
+// A group opens itself for the screen shown and otherwise stays as the user left it.
+const openGroups = ref<string[]>([])
+const groupRoutes = computed(() =>
+  nav.value.flatMap((group) => group.items.filter((i) => i.children?.length).map((i) => i.route)),
+)
+watch(
+  [() => current.value.route, groupRoutes],
+  ([shown, groups]) => {
+    if (groups.includes(shown) && !openGroups.value.includes(shown))
+      openGroups.value = [...openGroups.value, shown]
+  },
+  { immediate: true },
+)
 // Toasts are shared across admin apps, so an unmounted shell must not add one.
 let mounted = true
 onUnmounted(() => (mounted = false))
@@ -96,11 +145,13 @@ const userMenu = computed<DropdownMenuItem[][]>(() => [
     : []),
 ])
 const reload = () => location.reload()
+// The navbar names the section, on its detail screens too (the child's name under a group).
 const title = computed(() => {
-  const current = items.value
-    .flat()
-    .find((i) => i.to && route.name === (i.to as { name: string }).name)
-  return current?.label ?? ''
+  if (current.value.route === 'dashboard') return t('admin.dashboard')
+  const entry = nav.value.flatMap((g) => g.items).find((i) => i.route === current.value.route)
+  if (!entry) return ''
+  const child = entry.children?.find((c) => matches(c.params))
+  return child ? named(child.label) : t(entry.label)
 })
 </script>
 
@@ -144,14 +195,45 @@ const title = computed(() => {
             :to="{ name: 'dashboard' }"
             class="flex min-w-0 items-center gap-2 rounded-md font-semibold text-highlighted focus-visible:outline-2 focus-visible:outline-primary"
           >
-            <img v-if="brand.logo" :src="brand.logo" alt="" class="size-6 shrink-0" />
-            <span v-if="!collapsed" class="truncate">{{ brand.name }}</span>
-            <span v-else class="sr-only">{{ brand.name }}</span>
+            <!-- The full logo (it includes the name) while expanded; the mark alone collapsed. -->
+            <template v-if="brand.wordmark && !collapsed">
+              <img
+                :src="brand.wordmark"
+                :alt="brand.name"
+                class="block h-auto max-h-9 w-auto max-w-full"
+                :class="brand.wordmarkDark && 'dark:hidden'"
+              />
+              <img
+                v-if="brand.wordmarkDark"
+                :src="brand.wordmarkDark"
+                :alt="brand.name"
+                class="hidden h-auto max-h-9 w-auto max-w-full dark:block"
+              />
+            </template>
+            <template v-else>
+              <img
+                v-if="brand.logo"
+                :src="brand.logo"
+                alt=""
+                class="size-6 shrink-0"
+                :class="brand.logoDark && 'dark:hidden'"
+              />
+              <img
+                v-if="brand.logo && brand.logoDark"
+                :src="brand.logoDark"
+                alt=""
+                class="hidden size-6 shrink-0 dark:block"
+              />
+              <span v-if="!collapsed" class="truncate">{{ brand.name }}</span>
+              <span v-else class="sr-only">{{ brand.name }}</span>
+            </template>
           </RouterLink>
         </template>
         <template #default="{ collapsed }">
           <nav :aria-label="t('admin.navigation')">
             <UNavigationMenu
+              v-model="openGroups"
+              type="multiple"
               :collapsed="collapsed"
               :items="items"
               orientation="vertical"

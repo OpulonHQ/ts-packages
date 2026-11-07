@@ -1,6 +1,14 @@
 import type { Brand } from '@opulonjs/ui'
 import type { Me } from '@opulonjs/core/api'
-import { inject, type Component, type ComputedRef, type InjectionKey, type ShallowRef } from 'vue'
+import {
+  inject,
+  onBeforeUnmount,
+  watchEffect,
+  type Component,
+  type ComputedRef,
+  type InjectionKey,
+  type ShallowRef,
+} from 'vue'
 
 export type { Me } from '@opulonjs/core/api'
 
@@ -18,6 +26,17 @@ export interface ShellNavItem {
   readonly label: string
   readonly route: string
   readonly icon?: string
+  /** Entries under it (a namespaced key or a name per admin locale), opening `route` with params. */
+  readonly children?: ReadonlyArray<{
+    readonly label: string | Readonly<Record<string, string>>
+    readonly params: Readonly<Record<string, string>>
+  }>
+}
+
+/** What a screen shows, in nav terms: the route of its nav entry and, under it, its params. */
+export interface NavTarget {
+  readonly route: string
+  readonly params?: Readonly<Record<string, string>>
 }
 
 export interface ShellNavGroup {
@@ -38,6 +57,8 @@ export interface AdminState {
   /** The server runs another build than this admin: ask for a reload. */
   readonly stale: ComputedRef<boolean>
   readonly nav: ComputedRef<ReadonlyArray<ShellNavGroup>>
+  /** The nav entry the current screen names (`useNavTarget`); else the route's own or `nav`. */
+  readonly navTarget: ShallowRef<NavTarget | undefined>
   readonly widgets: ComputedRef<ReadonlyArray<ShellWidget>>
   /** Whether the signed-in user holds a permission (UX only; the API enforces it). */
   readonly can: (permission: string) => boolean
@@ -67,4 +88,23 @@ export const useAdmin = (): AdminState => {
   const state = inject(adminStateKey)
   if (!state) throw new Error('useAdmin must be called inside a createAdmin app')
   return state
+}
+
+/**
+ * Names the sidebar entry a screen belongs to when its route cannot: an item editor opens by id,
+ * but its collection's entry should stay highlighted. Follows `target` while the screen lives.
+ *
+ * useNavTarget(() => item.value && { route: 'cms.collections', params: { collection: item.value.collection } })
+ */
+export const useNavTarget = (target: () => NavTarget | undefined): void => {
+  const { navTarget } = useAdmin()
+  let own: NavTarget | undefined
+  watchEffect(() => {
+    own = target()
+    navTarget.value = own
+  })
+  // The next screen may already have named its own target; leave that one alone.
+  onBeforeUnmount(() => {
+    if (navTarget.value === own) navTarget.value = undefined
+  })
 }

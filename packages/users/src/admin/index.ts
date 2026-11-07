@@ -67,6 +67,7 @@ export const usersAdmin = () =>
         name: 'users.user',
         path: '/users/:id',
         permission: 'users.manage',
+        nav: 'users.users',
         component: () => import('./UserScreen.vue'),
       },
       {

@@ -1,6 +1,12 @@
 import { defineAdminModule, type Lazy } from '@opulonjs/admin'
 import { defineAsyncComponent, defineComponent, h, provide, type Component } from 'vue'
-import { cmsAuditActions, type CmsDefinitions, cmsPermissions, type FieldGroup } from '../api.ts'
+import {
+  cmsAuditActions,
+  type CmsDefinitions,
+  cmsPermissions,
+  type FieldGroup,
+  type Label,
+} from '../api.ts'
 import { cmsContextKey, type CmsPreviewOptions } from './context.ts'
 import EditorFailed from './EditorFailed.vue'
 
@@ -58,6 +64,8 @@ export const cmsAdmin = (options: CmsAdminOptions) => {
         )
   const hasCollections = Object.keys(definitions.collections).length > 0
   const hasMenus = Object.keys(definitions.menus).length > 0
+  // A host name for the sidebar; a plain string is the same name in every admin locale.
+  const navLabel = (label: Label) => (typeof label === 'string' ? { en: label } : label)
   const context = {
     definitions: options.definitions,
     preview: options.preview,
@@ -101,6 +109,7 @@ export const cmsAdmin = (options: CmsAdminOptions) => {
         name: 'cms.page',
         path: '/cms/pages/:id',
         permission: 'cms.pages.view',
+        nav: 'cms.pages',
         component: screen(() => import('./PageScreen.vue')),
       },
       {
@@ -113,6 +122,7 @@ export const cmsAdmin = (options: CmsAdminOptions) => {
         name: 'cms.item',
         path: '/cms/items/:id',
         permission: 'cms.collections.view',
+        nav: 'cms.collections',
         component: screen(() => import('./ItemScreen.vue')),
       },
       {
@@ -134,8 +144,16 @@ export const cmsAdmin = (options: CmsAdminOptions) => {
         component: () => import('./RedirectsScreen.vue'),
       },
     ],
+    // Content reads Pages, Collections, Menus, Media (order 40, media), Redirects, Site settings
+    // whatever order the host lists its modules in; each collection and menu is its own entry.
     nav: [
-      { label: 'nav.pages', route: 'cms.pages', icon: 'i-lucide-file-text', group: 'content' },
+      {
+        label: 'nav.pages',
+        route: 'cms.pages',
+        icon: 'i-lucide-file-text',
+        group: 'content',
+        order: 10,
+      },
       ...(hasCollections
         ? [
             {
@@ -143,6 +161,11 @@ export const cmsAdmin = (options: CmsAdminOptions) => {
               route: 'cms.collections',
               icon: 'i-lucide-library',
               group: 'content',
+              order: 20,
+              children: Object.entries(definitions.collections).map(([key, c]) => ({
+                label: navLabel(c.label),
+                params: { collection: key },
+              })),
             } as const,
           ]
         : []),
@@ -153,20 +176,27 @@ export const cmsAdmin = (options: CmsAdminOptions) => {
               route: 'cms.menus',
               icon: 'i-lucide-menu',
               group: 'content',
+              order: 30,
+              children: Object.entries(definitions.menus).map(([key, m]) => ({
+                label: navLabel(m.label),
+                params: { key },
+              })),
             } as const,
           ]
         : []),
-      {
-        label: 'nav.settings',
-        route: 'cms.settings',
-        icon: 'i-lucide-settings-2',
-        group: 'content',
-      },
       {
         label: 'nav.redirects',
         route: 'cms.redirects',
         icon: 'i-lucide-arrow-right-left',
         group: 'content',
+        order: 50,
+      },
+      {
+        label: 'nav.settings',
+        route: 'cms.settings',
+        icon: 'i-lucide-settings-2',
+        group: 'content',
+        order: 60,
       },
     ],
     messages: {
