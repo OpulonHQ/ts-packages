@@ -231,7 +231,7 @@ const tableColumns = computed<TableColumn<Row>[]>(() => [
         {
           id: 'actions',
           header: '',
-          meta: { class: { th: 'w-px', td: 'text-right' } },
+          meta: { class: { th: 'w-px', td: 'text-right whitespace-nowrap' } },
         } satisfies TableColumn<Row>,
       ]
     : []),
@@ -253,6 +253,8 @@ const onSelect = (_event: Event, row: TableRow<Row>) => props.onRowClick?.(row.o
 const tableUi = computed(() => ({
   td: 'whitespace-normal [overflow-wrap:anywhere]',
   tbody: props.onRowClick ? '[&>tr:has(>[data-slot=td])]:cursor-pointer' : undefined,
+  // A failed load says so above the table; its empty row then holds nothing and takes no room.
+  empty: failed.value ? 'p-0' : undefined,
 }))
 </script>
 
