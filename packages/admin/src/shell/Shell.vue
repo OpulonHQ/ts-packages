@@ -404,7 +404,10 @@ const title = computed(() => {
       </UDashboardPanel>
     </UDashboardGroup>
 
+    <!-- Mounted only while asking: a teleport keeps the place in <body> it took when it mounted,
+      so a dialog mounted with the shell would sit under any slideover opened later. -->
     <ConfirmDialog
+      v-if="discardRequest"
       v-model:open="discardOpen"
       :title="t('admin.discard.title')"
       :description="t('admin.discard.description')"

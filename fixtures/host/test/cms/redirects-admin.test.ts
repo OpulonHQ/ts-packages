@@ -128,6 +128,9 @@ test('the redirect slideover asks before unsaved changes are lost, and closes at
   // Another row asks first; Keep editing keeps the edit.
   row('/second')!.click()
   await expect.poll(discardDialog).toBeTruthy()
+  // Drawn above the slideover: overlays at one level paint in document order, last on top.
+  const dialogs = [...document.querySelectorAll('[role="dialog"]')]
+  expect(dialogs.indexOf(discardDialog()!)).toBe(dialogs.length - 1)
   inDialog('Pokračovať v úpravách').click()
   await expect.poll(discardDialog).toBeUndefined()
   expect(field('to')!.value).toBe('/uno')
