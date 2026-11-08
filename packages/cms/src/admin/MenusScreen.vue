@@ -1,7 +1,6 @@
 <script setup lang="ts">
-/** Content > Menus: the host's menus as tabs; the chosen one's entries, draft and publishing. */
-import { useI18n } from '@opulonjs/admin'
-import { UButton, UCard } from '@opulonjs/ui'
+import { useI18n, useNavTarget } from '@opulonjs/admin'
+import { UCard } from '@opulonjs/ui'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
 import { Schema } from 'effect'
 import { computed, ref, shallowRef, watch, useTemplateRef } from 'vue'
@@ -24,6 +23,9 @@ const current = computed(() => {
   const wanted = String(route.params.key ?? '')
   return keys.includes(wanted) ? wanted : keys[0]
 })
+useNavTarget(() =>
+  current.value === undefined ? undefined : { route: 'cms.menus', params: { key: current.value } },
+)
 const menu = shallowRef<Menu>()
 const items = ref<EditedMenuItem[]>([])
 const revisionPending = ref(false)
@@ -74,7 +76,10 @@ const reload = (done = '') => run(() => content.getMenu(current.value!), done, s
 
 <template>
   <section>
-    <PageHeader :title="t('cms.menus.title')" :description="t('cms.menus.description')">
+    <PageHeader
+      :title="current ? labelText(definitions.menus[current]!.label, locale) : t('cms.menus.title')"
+      :description="t('cms.menus.description')"
+    >
       <template v-if="menu" #actions>
         <PublishActions
           :status="menu.status"
@@ -88,17 +93,6 @@ const reload = (done = '') => run(() => content.getMenu(current.value!), done, s
         />
       </template>
     </PageHeader>
-    <nav class="mb-4 flex flex-wrap gap-2" :aria-label="t('cms.menus.title')">
-      <UButton
-        v-for="key in keys"
-        :key="key"
-        :to="{ name: 'cms.menus', params: { key } }"
-        :label="labelText(definitions.menus[key]!.label, locale)"
-        :variant="key === current ? 'solid' : 'outline'"
-        color="neutral"
-        :aria-current="key === current ? 'page' : undefined"
-      />
-    </nav>
     <ActionStatus :status="status" @reload="reload()" />
     <form
       v-if="menu && current"

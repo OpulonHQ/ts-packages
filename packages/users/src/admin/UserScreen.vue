@@ -94,7 +94,14 @@ const setLocale = (locale: string | null) => {
     <p v-if="status === 'failed'" role="alert" class="text-error">{{ t('users.errors.failed') }}</p>
     <p v-else-if="status === 'notFound'" role="alert">{{ t('users.user.notFound') }}</p>
     <template v-else-if="user">
-      <PageHeader :title="user.name" :description="user.email">
+      <PageHeader
+        :title="user.name"
+        :description="user.email"
+        :breadcrumbs="[
+          { label: t('users.users.title'), to: { name: 'users.users' } },
+          { label: user.name },
+        ]"
+      >
         <template #actions>
           <StatusBadge
             :status="user.deactivated ? 'disabled' : 'enabled'"

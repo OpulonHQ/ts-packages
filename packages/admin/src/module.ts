@@ -35,6 +35,11 @@ export type AdminRoute<Id extends string> = Access & {
   /** Path under `/admin`, e.g. `/demo/notes`. */
   readonly path: `/${string}`
   readonly component: Lazy<Component>
+  /**
+   * The route of the nav entry a screen without one belongs to, so a detail screen keeps its
+   * list highlighted in the sidebar (`cms.pages` for `cms.page`).
+   */
+  readonly nav?: string
 }
 
 /** Built-in nav groups, in this order; hosts add their own through `createAdmin({ navGroups })`. */
@@ -51,6 +56,21 @@ export interface NavItem<Id extends string> {
   readonly group?: NavGroup
   /** Ascending within the group; default 0, ties keep declaration order. */
   readonly order?: number
+  /**
+   * Entries under this one, in an expandable group: each opens the item's route with its own
+   * params (one per collection, one per menu). The item itself then only opens the group.
+   */
+  readonly children?: ReadonlyArray<NavChild>
+}
+
+/** An entry under a nav item; it opens the item's route with `params`. */
+export interface NavChild {
+  /**
+   * Message key inside the module's namespace, or the name per admin locale for names the host
+   * defines (`{ en: 'Posts', sk: 'Články' }`, English or the first one when the locale is missing).
+   */
+  readonly label: string | Readonly<Record<string, string>>
+  readonly params: Readonly<Record<string, string>>
 }
 
 export interface Widget {

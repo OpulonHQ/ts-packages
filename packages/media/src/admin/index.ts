@@ -23,7 +23,13 @@ export const mediaAdmin = () =>
       },
     ],
     nav: [
-      { label: 'nav.library', route: 'media.library', icon: 'i-lucide-images', group: 'content' },
+      {
+        label: 'nav.library',
+        route: 'media.library',
+        icon: 'i-lucide-images',
+        group: 'content',
+        order: 40,
+      },
     ],
     messages: {
       en: () => import('./messages/en.ts'),

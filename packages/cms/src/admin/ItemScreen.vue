@@ -3,7 +3,7 @@
  * One collection item: path, availability and SEO per content locale (routed collections
  * only), the collection's fields, and save draft / publish / unpublish / delete.
  */
-import { useI18n } from '@opulonjs/admin'
+import { useI18n, useNavTarget } from '@opulonjs/admin'
 import { UCard } from '@opulonjs/ui'
 import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
@@ -47,6 +47,12 @@ const collection = computed(() =>
   item.value ? definitions.collections[item.value.collection] : undefined,
 )
 const collectionLabel = computed(() => labelText(collection.value?.label, locale.value))
+
+useNavTarget(() =>
+  item.value
+    ? { route: 'cms.collections', params: { collection: item.value.collection } }
+    : undefined,
+)
 
 const toDraft = (document: ItemDocument): Draft => {
   // A deep, mutable copy: JSON documents only.

@@ -12,8 +12,17 @@ type NuxtUiOptions = NonNullable<Parameters<typeof nuxtUi>[0]>
 export interface Brand {
   /** App name in the sidebar and the document title. */
   readonly name: string
-  /** Logo URL, usually a file in the admin's `public/` (`/admin/logo.svg`). */
+  /**
+   * Square mark URL, usually a file in the admin's `public/` (`/admin/logo.svg`): beside the name
+   * in the sidebar, alone when the sidebar is collapsed.
+   */
   readonly logo?: string
+  /** The mark for dark mode; default `logo`. */
+  readonly logoDark?: string
+  /** A wide logo that includes the name, shown instead of mark and name in the open sidebar. */
+  readonly wordmark?: string
+  /** The wide logo for dark mode; default `wordmark`. */
+  readonly wordmarkDark?: string
   /**
    * Semantic colors to Tailwind palettes, e.g. `{ primary: 'indigo', neutral: 'slate' }`; a
    * name from `palettes` works too. Default: the `neutral` grays, and a primary that is black

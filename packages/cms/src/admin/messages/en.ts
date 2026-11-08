@@ -100,7 +100,7 @@ export default {
   collections: {
     paginationLimit: 'Refine your search to reach results beyond the paging limit.',
     title: 'Collections',
-    description: 'Posts, people and other collections. Edit an item, then publish it.',
+    description: 'Edit an item, then publish it to show it on the website.',
     create: 'New item',
     empty: 'No items yet.',
   },
