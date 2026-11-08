@@ -54,6 +54,8 @@ const props = withDefaults(
     emptyTitle?: string
     emptyDescription?: string
     emptyIcon?: string
+    /** What a failed load says (with a "Try again" button); default: the kit's generic text. */
+    errorMessage?: string
     /** Accessible name of the table. */
     caption?: string
     /** Makes rows clickable (a prop, so hover styling only applies when used). */
@@ -216,7 +218,12 @@ const tableColumns = computed<TableColumn<Row>[]>(() => [
         : String(value)
     },
     meta: {
-      class: { th: align[column.align ?? 'left'], td: align[column.align ?? 'left'] },
+      class: {
+        th: align[column.align ?? 'left'],
+        td: [align[column.align ?? 'left'], column.nowrap ? 'whitespace-nowrap' : '']
+          .filter(Boolean)
+          .join(' '),
+      },
     },
   })),
   ...(slots.actions
@@ -224,7 +231,7 @@ const tableColumns = computed<TableColumn<Row>[]>(() => [
         {
           id: 'actions',
           header: '',
-          meta: { class: { th: 'w-px', td: 'text-right' } },
+          meta: { class: { th: 'w-px', td: 'text-right whitespace-nowrap' } },
         } satisfies TableColumn<Row>,
       ]
     : []),
@@ -240,6 +247,14 @@ const paginationTotal = computed(() =>
   Math.min(current.value.total, (props.maxPage ?? Infinity) * props.perPage),
 )
 const onSelect = (_event: Event, row: TableRow<Row>) => props.onRowClick?.(row.original)
+// Nuxt UI keeps every cell on one line, so a long title or path pushes the columns after it
+// out of the visible box. Cells wrap instead (long words and paths anywhere); `nowrap` columns
+// opt out. Clickable rows get the pointer, the empty and loading rows do not.
+const tableUi = computed(() => ({
+  td: 'whitespace-normal [overflow-wrap:anywhere]',
+  tbody: props.onRowClick ? '[&>tr:has(>[data-slot=td])]:cursor-pointer' : undefined,
+  empty: failed.value ? 'p-0' : undefined,
+}))
 </script>
 
 <template>
@@ -292,7 +307,17 @@ const onSelect = (_event: Event, row: TableRow<Row>) => props.onRowClick?.(row.o
     </div>
 
     <slot v-if="failed" name="error" :refresh="refresh">
-      <p role="alert" class="text-sm text-error">{{ text.loadFailed }}</p>
+      <div role="alert" class="flex flex-wrap items-center gap-2 text-sm text-error">
+        <span>{{ errorMessage ?? text.loadFailed }}</span>
+        <UButton
+          color="neutral"
+          variant="outline"
+          size="xs"
+          icon="i-lucide-rotate-cw"
+          :label="text.retry"
+          @click="refresh"
+        />
+      </div>
     </slot>
 
     <UTable
@@ -301,6 +326,7 @@ const onSelect = (_event: Event, row: TableRow<Row>) => props.onRowClick?.(row.o
       :columns="tableColumns"
       :loading="pending"
       :caption="caption"
+      :ui="tableUi"
       class="rounded-lg border border-default"
       :on-select="onRowClick ? onSelect : undefined"
     >
@@ -312,12 +338,30 @@ const onSelect = (_event: Event, row: TableRow<Row>) => props.onRowClick?.(row.o
           <slot name="actions" :row="row.original" />
         </div>
       </template>
+      <template #loading>
+        <p class="py-6 text-center text-sm text-muted" role="status">{{ text.loading }}</p>
+      </template>
       <template #empty>
-        <EmptyState
-          :title="emptyTitle ?? text.noRecords"
-          :description="emptyDescription"
-          :icon="emptyIcon"
-        />
+        <template v-if="!failed">
+          <EmptyState v-if="filtered" :title="text.noMatches" icon="i-lucide-search-x">
+            <template #actions>
+              <UButton
+                color="neutral"
+                variant="outline"
+                size="sm"
+                icon="i-lucide-x"
+                :label="text.resetFilters"
+                @click="resetFilters"
+              />
+            </template>
+          </EmptyState>
+          <EmptyState
+            v-else
+            :title="emptyTitle ?? text.noRecords"
+            :description="emptyDescription"
+            :icon="emptyIcon"
+          />
+        </template>
       </template>
     </UTable>
 

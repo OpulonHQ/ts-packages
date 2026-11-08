@@ -2,7 +2,7 @@
 /** Content > Collections: the host's collections as tabs, the chosen one's items below. */
 import { CachePurgeNotice, useI18n } from '@opulonjs/admin'
 import { listDefaultPerPage, listMaxOffset } from '@opulonjs/core/api'
-import { type TableQuery, UButton } from '@opulonjs/ui'
+import { formatDate, type TableQuery, UButton } from '@opulonjs/ui'
 import DataTable from '@opulonjs/ui/components/DataTable'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
 import StatusBadge from '@opulonjs/ui/components/StatusBadge'
@@ -46,12 +46,13 @@ const columns = computed(() => [
   ...(collection.value?.routed
     ? [{ key: 'path', label: t('cms.columns.path'), sortable: true }]
     : []),
-  { key: 'status', label: t('cms.columns.status'), sortable: true },
+  { key: 'status', label: t('cms.columns.status'), sortable: true, nowrap: true },
   {
     key: 'updatedAt',
     sortable: true,
+    nowrap: true,
     label: t('cms.columns.updatedAt'),
-    format: (v: unknown) => new Date(String(v)).toLocaleDateString(locale.value),
+    format: (v: unknown) => formatDate(v, locale.value),
   },
 ])
 
@@ -109,9 +110,6 @@ async function create() {
       searchable
       :on-row-click="open"
     >
-      <template #error
-        ><p role="alert" class="text-sm text-error">{{ t('cms.errors.failed') }}</p></template
-      >
       <template #pagination-limit>{{ t('cms.collections.paginationLimit') }}</template>
       <template #title-cell="{ row }">
         <span class="font-medium text-highlighted">{{ row.original.title }}</span>

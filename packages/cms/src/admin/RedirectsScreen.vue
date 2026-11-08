@@ -28,9 +28,9 @@ const load = async (query: TableQuery) =>
 const columns = computed(() => [
   { key: 'from', label: t('cms.redirects.from') },
   { key: 'to', label: t('cms.redirects.to') },
-  { key: 'status', label: t('cms.redirects.status') },
+  { key: 'status', label: t('cms.redirects.status'), nowrap: true },
   ...(redirects.contentLocales.value.length > 1
-    ? [{ key: 'locale', label: t('cms.redirects.locale') }]
+    ? [{ key: 'locale', label: t('cms.redirects.locale'), nowrap: true }]
     : []),
 ])
 const statuses = computed(() => [

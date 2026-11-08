@@ -1,26 +1,28 @@
 <script setup lang="ts">
-import { RouterLink, useApiClient, useI18n } from '@opulonjs/admin'
+import { RouterLink, useApiClient, useI18n, useRouter } from '@opulonjs/admin'
+import { languageName, queryRows, type TablePage, type TableQuery } from '@opulonjs/ui'
 import DataTable from '@opulonjs/ui/components/DataTable'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
 import StatusBadge from '@opulonjs/ui/components/StatusBadge'
-import { ref } from 'vue'
+import { computed } from 'vue'
 import { type EmailTemplateInfo, EmailsGroup } from '../api.ts'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
+const router = useRouter()
 const emails = useApiClient(EmailsGroup)
-const templates = ref<Array<EmailTemplateInfo>>()
-const failed = ref(false)
 
-emails((client) => client.templates()).then(
-  (list) => (templates.value = [...list.templates]),
-  () => (failed.value = true),
-)
+const load = async (query: TableQuery): Promise<TablePage<EmailTemplateInfo>> =>
+  queryRows([...(await emails((client) => client.templates())).templates], ['key'], query)
 
-const columns = [
+const open = (row: EmailTemplateInfo) =>
+  router.push({ name: 'emails.template', params: { key: row.key } })
+
+const columns = computed(() => [
   { key: 'key', label: t('emails.templates.columns.key'), sortable: true },
   {
     key: 'audience',
     label: t('emails.templates.columns.audience'),
+    nowrap: true,
     format: (value: unknown) => t(`emails.templates.audience.${String(value)}`),
   },
   {
@@ -36,12 +38,12 @@ const columns = [
       (value as EmailTemplateInfo['locales'])
         .map(
           (l) =>
-            `${l.locale}: ${t(l.override ? 'emails.templates.overridden' : 'emails.templates.default')}`,
+            `${languageName(l.locale, locale.value)}: ${t(l.override ? 'emails.templates.overridden' : 'emails.templates.default')}`,
         )
         .join(', '),
   },
-  { key: 'enabled', label: t('emails.templates.columns.enabled') },
-]
+  { key: 'enabled', label: t('emails.templates.columns.enabled'), nowrap: true },
+])
 </script>
 
 <template>
@@ -50,19 +52,20 @@ const columns = [
       :title="t('emails.templates.title')"
       :description="t('emails.templates.description')"
     />
-    <p v-if="failed" role="alert" class="text-error">{{ t('emails.templates.failed') }}</p>
     <DataTable
-      v-else-if="templates"
-      :rows="templates"
+      :load="load"
       :columns="columns"
       :empty-title="t('emails.templates.empty')"
+      :error-message="t('emails.templates.failed')"
       :caption="t('emails.templates.title')"
       searchable
+      :on-row-click="open"
     >
       <template #key-cell="{ row }">
         <RouterLink
           :to="{ name: 'emails.template', params: { key: row.original.key } }"
-          class="font-medium text-primary hover:underline"
+          class="font-medium text-highlighted hover:underline"
+          @click.stop
         >
           {{ row.original.key }}
         </RouterLink>

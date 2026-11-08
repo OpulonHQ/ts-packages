@@ -65,7 +65,7 @@ test('the template list shows audience, placeholders and per-locale override sta
     .find((r) => r.includes(order))
   expect(row).toContain('Verejnosť')
   expect(row).toContain('{{name}} {{order}}')
-  expect(row).toContain('en: predvolené, it: upravené')
+  expect(row).toContain('Angličtina: predvolené, Taliančina: upravené')
   expect(row).toContain('Zapnuté')
 })
 

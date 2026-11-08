@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from '@opulonjs/admin'
-import { UButton, UCard, type TableQuery } from '@opulonjs/ui'
+import { formatDateTime, UButton, UCard, type TableQuery } from '@opulonjs/ui'
 import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
 import DataTable from '@opulonjs/ui/components/DataTable'
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
@@ -28,7 +28,8 @@ const columns = computed(() => [
   {
     key: 'createdAt',
     label: t('cms.revisions.date'),
-    format: (v: unknown) => new Date(String(v)).toLocaleString(locale.value),
+    nowrap: true,
+    format: (v: unknown) => formatDateTime(v, locale.value),
   },
   { key: 'author.name', label: t('cms.revisions.author') },
 ])
@@ -130,7 +131,7 @@ async function restore() {
     </p>
     <div v-else-if="state.kind === 'view'" class="mt-6 space-y-4 border-t border-default pt-4">
       <h3 class="font-medium">
-        {{ new Date(state.snapshot.revision.createdAt).toLocaleString(locale) }} ·
+        {{ formatDateTime(state.snapshot.revision.createdAt, locale) }} ·
         {{ state.snapshot.revision.author.name }}
       </h3>
       <RevisionView

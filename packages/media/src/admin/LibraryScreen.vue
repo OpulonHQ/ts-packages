@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /** Content > Media: the flat library with search, type and archived filters, upload and details. */
 import { CachePurgeNotice, useI18n } from '@opulonjs/admin'
-import { UButton, UIcon, USlideover } from '@opulonjs/ui'
+import { formatDate, UButton, UIcon, USlideover } from '@opulonjs/ui'
 import DataTable from '@opulonjs/ui/components/DataTable'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
 import { computed, ref, shallowRef } from 'vue'
@@ -36,7 +36,8 @@ const columns = computed(() => [
   {
     key: 'updatedAt',
     label: t('media.columns.updatedAt'),
-    format: (v: unknown) => new Date(String(v)).toLocaleDateString(locale.value),
+    nowrap: true,
+    format: (v: unknown) => formatDate(v, locale.value),
   },
 ])
 const filters = computed(() => [
