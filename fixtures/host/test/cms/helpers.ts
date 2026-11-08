@@ -192,10 +192,6 @@ export const section = (type: string, data: Record<string, unknown>, id = crypto
   data,
 })
 
-/**
- * Clicks the unsaved-changes bar's "Uložiť koncept" (sk): the bar appears once the draft on screen
- * differs from what was saved, so a test edits first and the button shows a render later.
- */
 export const saveDraft = async () => {
   const find = () =>
     [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Uložiť koncept')

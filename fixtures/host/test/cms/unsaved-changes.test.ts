@@ -3,8 +3,6 @@ import { expect, test } from 'vitest'
 import { useAdminLifetime } from '../admin-lifetime.ts'
 import { page, useCmsHost } from './helpers.ts'
 
-// Runs in the `admin` vitest project (happy-dom); the admin's fetch goes into the test Worker.
-// The editor's admin locale is sk: "Neuložené zmeny" is the bar, "Uložiť koncept" its Save.
 const admin = useAdminLifetime()
 const host = admin.track(useCmsHost())
 const mountAdmin = (path: string) => admin.mount(path, { fetch: host.fetch })
@@ -26,11 +24,9 @@ const goTo = (path: string) => {
 const storedPage = async (id: string) => (await host.call<Page>('GET', `/pages/${id}`)).body
 
 test('a page missing a content locale opens without unsaved changes; an edit brings the bar', async () => {
-  // Only English: the editor fills in an empty Italian locale, which is not a change.
   const created = (await host.create(page({ en: `/unsaved-${crypto.randomUUID()}` }))).body
   const text = mountAdmin(`/admin/cms/pages/${created.id}`)
   await expect.poll(() => input('locales.en.path')).toBeTruthy()
-  // The revision list answers after the editor rendered its draft: a bar would show by now.
   await expect.poll(text).toContain('Zatiaľ žiadne publikované revízie.')
   expect(bar()).toBeNull()
   expect(button('Uložiť koncept')).toBeUndefined()

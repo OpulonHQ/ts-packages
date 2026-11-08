@@ -18,7 +18,6 @@ const uploadButton = () =>
   [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(
     (b) => b.textContent?.trim() === 'Nahrať',
   )
-// An edit so the unsaved-changes bar offers Save: it shows only while the draft has changes.
 const editTitle = async (value: string) => {
   const field = () => document.querySelector<HTMLInputElement>('input[name="data.title.en"]')
   await expect.poll(field).toBeTruthy()
@@ -179,7 +178,6 @@ test.each([
       await expect.poll(() => document.querySelector('[role="dialog"]')).toBeNull()
     }
 
-    // The second item opens without unsaved changes: the first item's upload never reached it.
     expect(text()).not.toContain('Neuložené zmeny')
     expect(cover()?.textContent).not.toContain(filename)
     expect(await storedCover(second.id)).toBe(kept)

@@ -1,11 +1,6 @@
 import { computed, type ComputedRef, onBeforeUnmount, type WritableComputedRef } from 'vue'
 import { type ShellEditor, useAdmin } from './state.ts'
 
-/**
- * What a form holds, minus what an untouched form writes on its own: `null`, `undefined`, `''`,
- * `false`, `[]` and `{}` (nested too) count as empty. Array items keep their place, so moving or
- * adding a section is a change. `undefined` stands for empty.
- */
 export const normalized = (value: unknown): unknown => {
   if (value === null || value === undefined || value === '' || value === false) return undefined
   if (Array.isArray(value)) return value.length === 0 ? undefined : value.map(normalized)

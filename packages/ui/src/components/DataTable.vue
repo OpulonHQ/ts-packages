@@ -253,7 +253,6 @@ const onSelect = (_event: Event, row: TableRow<Row>) => props.onRowClick?.(row.o
 const tableUi = computed(() => ({
   td: 'whitespace-normal [overflow-wrap:anywhere]',
   tbody: props.onRowClick ? '[&>tr:has(>[data-slot=td])]:cursor-pointer' : undefined,
-  // A failed load says so above the table; its empty row then holds nothing and takes no room.
   empty: failed.value ? 'p-0' : undefined,
 }))
 </script>
@@ -343,7 +342,6 @@ const tableUi = computed(() => ({
         <p class="py-6 text-center text-sm text-muted" role="status">{{ text.loading }}</p>
       </template>
       <template #empty>
-        <!-- A failed load says so above the table; "No pages yet." would be a second, false answer. -->
         <template v-if="!failed">
           <EmptyState v-if="filtered" :title="text.noMatches" icon="i-lucide-search-x">
             <template #actions>
