@@ -1,8 +1,4 @@
 <script setup lang="ts">
-/**
- * Users > a user: roles (saved from the unsaved-changes bar), admin locale (applies at once),
- * deactivation and reactivation.
- */
 import { AuditTimeline, useAdmin, useI18n, useRoute, useUnsavedChanges } from '@opulonjs/admin'
 import { UButton, UCard, UCheckbox } from '@opulonjs/ui'
 import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
@@ -28,7 +24,6 @@ const timeline = ref<{ refresh: () => Promise<void> }>()
 
 const sorted = (ids: ReadonlyArray<string>) => [...ids].sort()
 const savedRoleIds = computed(() => sorted(user.value?.roleIds ?? []))
-// The roles card is an editor: the bar saves it, and leaving asks while toggles are unsaved.
 const roleChanges = useUnsavedChanges({
   current: () => sorted(roleIds.value),
   saved: () => savedRoleIds.value,
@@ -38,7 +33,6 @@ const roleChanges = useUnsavedChanges({
 })
 
 let latest = 0
-/** Reads the user again; unsaved role toggles stay unless `resetRoles` (first load, saved). */
 const load = (resetRoles = true) => {
   const ticket = ++latest
   return users((client) => client.users({ query: { id } })).then(
@@ -65,7 +59,6 @@ function toggle(roleId: string, on: boolean | 'indeterminate') {
   roleIds.value = on === true ? [...rest, roleId] : rest
 }
 
-/** Runs one change, then reads the user again; only saved roles replace the toggles on screen. */
 async function run(change: () => Promise<void>, done: string, savesRoles = false) {
   busy.value = true
   notice.value = undefined
@@ -78,7 +71,6 @@ async function run(change: () => Promise<void>, done: string, savesRoles = false
     notice.value = { error: true, text: t(failureKey(error)) }
   } finally {
     confirming.value = false
-    // Busy until the user is read again, so saved toggles never show as unsaved in between.
     await load(saved && savesRoles)
     busy.value = false
     await timeline.value?.refresh()

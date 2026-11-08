@@ -14,10 +14,6 @@ const db = useTestDatabase()
 const shop = admin.track(makeShop(() => db.url))
 const order = 'shop.order_confirmed'
 
-/**
- * The screen's writes (`PUT /path`), a predicate that makes matching requests fail, and one that
- * holds matching requests until the promise it returns settles.
- */
 const writes: string[] = []
 let failing: ((request: Request) => boolean) | undefined
 let holding: ((request: Request) => Promise<void> | undefined) | undefined
@@ -61,7 +57,6 @@ const text = () => document.body.textContent ?? ''
 const button = (label: string) =>
   [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === label)!
 const bar = () => document.querySelector('[role="region"][aria-label="Neuložené zmeny"]')
-/** Clicks the unsaved-changes bar's Save once it shows and no request of the editor runs. */
 const saveFromBar = async () => {
   const save = () =>
     [...(bar()?.querySelectorAll('button') ?? [])].find((b) => b.textContent?.trim() === 'Uložiť')
@@ -185,7 +180,6 @@ test('a language the server refuses keeps its changes and shows why; the others 
   await expect.poll(text).toContain('undeclared placeholder "nobody"')
   expect((await overrideOf('en'))?.subject).toBe('Order {{order}} is on its way')
   expect(await overrideOf('it')).toEqual(italian)
-  // The refused language stays unsaved and its tab is shown.
   expect(bar()).toBeTruthy()
   expect(subjectField('it')!.value).toBe('Ciao {{nobody}}')
   await expect

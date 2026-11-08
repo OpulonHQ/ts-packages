@@ -48,10 +48,6 @@ export interface ShellEditor {
   readonly within?: () => Element | null | undefined
 }
 
-/**
- * Whether leaving would lose the editor's changes: they are unsaved and no save in flight carries
- * them (a save of several requests carries them only once it has finished).
- */
 export const losesChanges = (editor: ShellEditor): boolean =>
   editor.dirty() && (editor.guardWhileBusy === true || !editor.busy())
 

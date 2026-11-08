@@ -101,7 +101,6 @@ test('a forgotten password is reset through the emailed link', async () => {
 const button = (label: string, root: ParentNode = document) =>
   [...root.querySelectorAll('button')].find((b) => b.textContent?.trim() === label)
 const bar = () => document.querySelector('[role="region"][aria-label="Unsaved changes"]')
-/** Clicks the unsaved-changes bar's Save once it shows and no request of the screen runs. */
 const saveFromBar = async () => {
   await expect.poll(() => bar() && button('Save', bar()!)?.disabled).toBe(false)
   button('Save', bar()!)!.click()
@@ -238,7 +237,6 @@ test.each([
   },
 )
 
-/** Whether the checkbox labelled `label` is checked. */
 const checked = (label: string) => {
   const target = [...document.querySelectorAll('label')].find(
     (l) => l.textContent?.trim() === label,
@@ -259,7 +257,6 @@ test('unsaved role toggles survive a language change and a refused save', async 
     cookie: await host.signIn(owner.email, owner.password),
     body: { name: 'Log readers', permissions: ['emails.log.view'] },
   })
-  // A manager may change the language of a member, but not grant what the manager lacks.
   const manager = await seedUser(db.url, { permissions: ['users.manage'] })
   const member = await seedUser(db.url, { name: 'Mara Member', permissions: [] })
   const jar = { cookie: await host.signIn(manager.email, manager.password) }
@@ -291,7 +288,6 @@ test.each([
     const admin = mountAdmin(screen, { cookie: await host.signIn(owner.email, owner.password) })
     await expect.poll(() => button(open)?.disabled).toBe(false)
 
-    // Nothing typed yet: Cancel and Escape close without a question.
     button(open)!.click()
     await expect.poll(() => field(name)).toBeTruthy()
     button('Cancel')!.click()
@@ -315,7 +311,6 @@ test.each([
     await expect.poll(discardDialog).toBeTruthy()
     button('Keep editing', discardDialog())!.click()
     await expect.poll(discardDialog).toBeUndefined()
-    // The × asks too; Keep editing leaves the slideover open with what was typed.
     const closeButton = () => document.querySelector<HTMLButtonElement>('button[data-slot="close"]')
     closeButton()!.click()
     await expect.poll(discardDialog).toBeTruthy()
@@ -349,7 +344,6 @@ test('a permission unchecked and checked again leaves the role without unsaved c
   row('Two duties')!.click()
   await expect.poll(() => field('name')?.value).toBe('Two duties')
 
-  // Checking it again puts the stored first permission last: still the same set.
   const first = labels[stored[0]!]!
   check(first)
   await expect.poll(() => checked(first)).toBe('false')

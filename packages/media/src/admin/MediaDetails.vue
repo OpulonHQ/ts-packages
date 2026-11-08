@@ -1,8 +1,4 @@
 <script setup lang="ts">
-/**
- * One media item: preview, alt text and caption per content locale, replace, archive. Alt text
- * and caption are an editor: closing the details or leaving asks while they are unsaved.
- */
 import { CachePurgeNotice, sameContent, useI18n, useUnsavedChanges } from '@opulonjs/admin'
 import { UBadge, UButton } from '@opulonjs/ui'
 import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
@@ -46,7 +42,6 @@ const changes = useUnsavedChanges({
   bar: false,
   within: () => root.value,
 })
-// Replace, archive and restore answer with the item: unsaved text stays; another item replaces it.
 watch(
   () => props.item,
   (item, previous) => {

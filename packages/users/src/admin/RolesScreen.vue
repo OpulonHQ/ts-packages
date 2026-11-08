@@ -1,8 +1,4 @@
 <script setup lang="ts">
-/**
- * Users > Roles: roles with their permissions, created and edited from the composed catalog in a
- * slideover that asks before unsaved changes are lost.
- */
 import { useAdmin, useCloseGuard, useI18n, useUnsavedChanges } from '@opulonjs/admin'
 import { humanize, UButton, UCheckbox, UForm, USlideover } from '@opulonjs/ui'
 import DataTable from '@opulonjs/ui/components/DataTable'
@@ -23,14 +19,12 @@ const { me } = useAdmin()
 const users = useUsersClient()
 const roles = shallowRef<ReadonlyArray<RoleInfo>>()
 const failed = ref(false)
-/** The role being created (no id) or edited, and the form as it opened. */
 const editing = ref<RoleForm>()
 const opened = shallowRef<RoleForm>()
 const notice = ref<{ error: boolean; text: string }>()
 const busy = ref(false)
 const formId = useId()
 
-// Permissions compare as a set: unchecking and checking one again is no change.
 const comparable = (form: RoleForm | undefined) =>
   form && { ...form, permissions: [...form.permissions].sort() }
 const changes = useUnsavedChanges({

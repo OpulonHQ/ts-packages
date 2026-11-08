@@ -1,8 +1,4 @@
 <script setup lang="ts">
-/**
- * One email template: the wording per locale (saved from the unsaved-changes bar, every changed
- * locale at once), preview, test send, reset to default, and the instant "Send this email" switch.
- */
 import { sameContent, useApiClient, useI18n, useRoute, useUnsavedChanges } from '@opulonjs/admin'
 import { UButton, UInput, USelectMenu, USwitch } from '@opulonjs/ui'
 import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
@@ -64,7 +60,6 @@ const toDraft = (content: EmailContent | null | undefined): Draft => ({
   body: content?.body ?? null,
 })
 const entry = (locale: string) => template.value?.locales.find((l) => l.locale === locale)
-/** What emails in `locale` use now: its saved override, else the default wording. */
 const savedDraft = (locale: string) => toDraft(entry(locale)?.override ?? entry(locale)?.default)
 const locales = computed(() => template.value?.locales.map((l) => l.locale) ?? [])
 const content = (locale: string): EmailContent => ({
@@ -80,7 +75,6 @@ useUnsavedChanges({
   discard: () => locales.value.forEach((l) => (drafts[l] = savedDraft(l))),
   busy: () => busy.value,
   saveLabel: () => t('emails.editor.save'),
-  // One request per language: leaving after the first would drop the others.
   guardWhileBusy: true,
 })
 
@@ -120,7 +114,6 @@ async function save(locale: string) {
   return true
 }
 
-/** Saves every locale with changes, one after another; a failed one keeps its changes. */
 async function saveChanged() {
   requests.value++
   try {
