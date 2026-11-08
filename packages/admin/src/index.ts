@@ -22,6 +22,8 @@ export type {
   Widget,
 } from './module.ts'
 export { useAdmin, useNavTarget } from './state.ts'
+export { sameContent, useLeaveGuard, useUnsavedChanges } from './unsaved.ts'
+export type { UnsavedChanges, UnsavedChangesOptions } from './unsaved.ts'
 export type { AdminState, Me, NavTarget } from './state.ts'
 export type { Brand } from '@opulonjs/ui'
 // Module screens use the shell's i18n instance and router through these, so they never pin

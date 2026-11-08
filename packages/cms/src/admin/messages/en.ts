@@ -115,6 +115,10 @@ export default {
     title: 'Site settings',
     description: 'Site name, default SEO and the site-wide details. Publish to show changes.',
   },
+  unpublish: {
+    title: 'Take it off the website?',
+    description: 'Visitors stop seeing it until you publish it again. The draft stays.',
+  },
   site: { unpublished: 'Unpublished. The website no longer shows it.' },
   menus: {
     title: 'Menus',

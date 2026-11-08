@@ -4,6 +4,7 @@ import { createWorker, PgFromHyperdrive } from '@opulonjs/core/workers'
 import { Mailer } from '@opulonjs/emails/server'
 import { R2MediaStorage } from '@opulonjs/media/server'
 import { Layer } from 'effect'
+import { expect } from 'vitest'
 import { adminQuery } from '../../../../test/postgres/admin.ts'
 import { useTestDatabase } from '../../../../test/postgres/index.ts'
 import { server } from '../../server/opulon.ts'
@@ -190,3 +191,10 @@ export const section = (type: string, data: Record<string, unknown>, id = crypto
   type,
   data,
 })
+
+export const saveDraft = async () => {
+  const find = () =>
+    [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Uložiť koncept')
+  await expect.poll(find).toBeDefined()
+  find()!.click()
+}

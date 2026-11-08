@@ -8,7 +8,7 @@ import { adminModules } from '../../admin/modules.ts'
 import { definitions } from '../../cms/definitions.ts'
 import { server } from '../../server/opulon.ts'
 import { useAdminLifetime } from '../admin-lifetime.ts'
-import { useCmsHost } from './helpers.ts'
+import { saveDraft, useCmsHost } from './helpers.ts'
 
 const admin = useAdminLifetime()
 const host = admin.track(useCmsHost())
@@ -113,11 +113,7 @@ test('a reference picker searches beyond page one, retains selections and discar
   expect(document.querySelector('[aria-label="Odstrániť Picker 31"]')).toBeTruthy()
   picker()?.querySelector<HTMLElement>('tbody tr')?.click()
   await expect.poll(() => document.querySelector('[aria-label="Odstrániť Picker 30"]')).toBeTruthy()
-  const save = [...document.querySelectorAll('button')].find(
-    (button) => button.textContent?.trim() === 'Uložiť koncept',
-  )
-  expect(save).toBeTruthy()
-  save?.click()
+  await saveDraft()
   await expect
     .poll(
       async () =>
@@ -137,10 +133,7 @@ test('a single item link resolves a target beyond page one and can be cleared an
   const clear = () => document.querySelector<HTMLButtonElement>('[aria-label="Odstrániť Link 31"]')
   await expect.poll(clear).toBeTruthy()
   clear()?.click()
-  const save = [...document.querySelectorAll('button')].find(
-    (button) => button.textContent?.trim() === 'Uložiť koncept',
-  )
-  save?.click()
+  await saveDraft()
   await expect
     .poll(async () => (await host.call<SiteSettings>('GET', '/settings')).body.draft.data.cta)
     .toBeUndefined()
@@ -242,10 +235,7 @@ test('a deleted saved reference is marked missing and remains removable without 
   await expect.poll(remove).toBeTruthy()
   expect(document.querySelector('[role="alert"]')).toBeNull()
   remove()?.click()
-  const save = [...document.querySelectorAll('button')].find(
-    (button) => button.textContent?.trim() === 'Uložiť koncept',
-  )
-  save?.click()
+  await saveDraft()
   await expect
     .poll(
       async () => (await host.call<Item>('GET', `/items/${post.id}`)).body.draft.data.categories,

@@ -3,7 +3,7 @@
  * One collection item: path, availability and SEO per content locale (routed collections
  * only), the collection's fields, and save draft / publish / unpublish / delete.
  */
-import { useI18n, useNavTarget } from '@opulonjs/admin'
+import { CachePurgeNotice, useI18n, useNavTarget } from '@opulonjs/admin'
 import { UCard } from '@opulonjs/ui'
 import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
@@ -15,7 +15,7 @@ import FieldsForm from './FieldsForm.vue'
 import LocaleDetails from './LocaleDetails.vue'
 import PublishActions from './PublishActions.vue'
 import ActionStatus from './ActionStatus.vue'
-import { useAction, useCmsContext, useContent, useFocusReturn } from './use-cms.ts'
+import { useAction, useCmsContext, useContent, useDraftChanges, useFocusReturn } from './use-cms.ts'
 
 interface Draft {
   locales: Record<string, PageLocale>
@@ -31,6 +31,7 @@ const { pending, status, run, invalidate } = useAction(() => t('cms.errors.faile
 
 const item = shallowRef<Item>()
 const draft = ref<Draft>()
+const baseline = shallowRef<Draft>()
 const missing = ref(false)
 const confirming = ref(false)
 const revisionPending = ref(false)
@@ -73,6 +74,7 @@ const toDraft = (document: ItemDocument): Draft => {
 const show = (next: Item) => {
   item.value = next
   draft.value = toDraft(next.draft)
+  baseline.value = toDraft(next.draft)
 }
 
 let loadTicket = 0
@@ -83,6 +85,7 @@ watch(
     invalidate()
     item.value = undefined
     draft.value = undefined
+    baseline.value = undefined
     missing.value = false
     try {
       const next = await content.getItem(id)
@@ -104,21 +107,33 @@ const publish = () =>
       const saved = await saveDraft()
       if (!current()) return
       item.value = saved
+      baseline.value = toDraft(saved.draft)
       return content.publishItem(saved.id, saved.version)
     },
     t('cms.page.published'),
     show,
   )
 const unpublish = () =>
-  run(() => content.unpublishItem(item.value!.id), t('cms.item.unpublished'), show)
+  run(
+    () => content.unpublishItem(item.value!.id),
+    t('cms.item.unpublished'),
+    (next) => (item.value = next),
+  )
 async function remove() {
   confirming.value = false
   const collectionKey = item.value!.collection
   await run(() => content.removeItem(item.value!.id), '')
-  if (status.value?.kind === 'ok')
-    await router.push({ name: 'cms.collections', params: { collection: collectionKey } })
+  if (status.value?.kind !== 'ok') return
+  draft.value = baseline.value
+  await router.push({ name: 'cms.collections', params: { collection: collectionKey } })
 }
 const reload = (done = '') => run(() => content.getItem(item.value!.id), done, show)
+useDraftChanges({
+  draft,
+  baseline,
+  save,
+  busy: () => pending.value || revisionPending.value,
+})
 </script>
 
 <template>
@@ -143,7 +158,6 @@ const reload = (done = '') => run(() => content.getItem(item.value!.id), done, s
             :can-edit="canEdit"
             :can-publish="content.can('cms.collections.publish')"
             deletable
-            @save="save"
             @publish="publish"
             @unpublish="unpublish"
             @delete="confirming = true"
@@ -151,6 +165,7 @@ const reload = (done = '') => run(() => content.getItem(item.value!.id), done, s
         </template>
       </PageHeader>
 
+      <CachePurgeNotice :pending="pending || revisionPending" class="mb-4" />
       <ActionStatus :status="status" @reload="reload()" />
 
       <form ref="form" tabindex="-1" :aria-label="item.title" @submit.prevent="save">

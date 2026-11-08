@@ -33,6 +33,17 @@ export interface ShellNavItem {
   }>
 }
 
+/** An open editor's unsaved state, as `useUnsavedChanges` registers it with the shell. */
+export interface ShellEditor {
+  readonly dirty: () => boolean
+  readonly busy: () => boolean
+  readonly save?: () => unknown
+  readonly discard?: () => void
+  readonly saveLabel?: () => string
+  /** Whether the shell shows the bar for it (false: its own buttons, or a widget's guard). */
+  readonly bar: boolean
+}
+
 /** What a screen shows, in nav terms: the route of its nav entry and, under it, its params. */
 export interface NavTarget {
   readonly route: string
@@ -59,6 +70,14 @@ export interface AdminState {
   readonly nav: ComputedRef<ReadonlyArray<ShellNavGroup>>
   /** The nav entry the current screen names (`useNavTarget`); else the route's own or `nav`. */
   readonly navTarget: ShallowRef<NavTarget | undefined>
+  /** Open editors, oldest first: the shell's bar and Cmd/Ctrl+S serve the newest with a bar. */
+  readonly editors: ReadonlyArray<ShellEditor>
+  /** Adds an editor (`useUnsavedChanges`, `useLeaveGuard`); returns its removal. */
+  readonly registerEditor: (editor: ShellEditor) => () => void
+  /** Asks whether to discard unsaved changes; one question at a time. */
+  readonly confirmDiscard: () => Promise<boolean>
+  /** The open question's answer, for the shell's dialog. */
+  readonly discardRequest: ShallowRef<((discard: boolean) => void) | undefined>
   readonly widgets: ComputedRef<ReadonlyArray<ShellWidget>>
   /** Whether the signed-in user holds a permission (UX only; the API enforces it). */
   readonly can: (permission: string) => boolean

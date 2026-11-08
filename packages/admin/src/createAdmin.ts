@@ -7,6 +7,7 @@ import {
   createApp,
   defineAsyncComponent,
   isVNode,
+  shallowReactive,
   shallowRef,
   type App,
   type FunctionalComponent,
@@ -32,6 +33,7 @@ import {
   type AdminState,
   type Me,
   type NavTarget,
+  type ShellEditor,
   type ShellNavGroup,
   type Status,
 } from './state.ts'
@@ -405,11 +407,35 @@ export const createAdmin = (options: AdminOptions): App => {
       if (me.value && shows()) me.value = { ...me.value, locale }
     })
   }
+  const editors = shallowReactive<ShellEditor[]>([])
+  const registerEditor = (editor: ShellEditor) => {
+    editors.push(editor)
+    return () => {
+      const index = editors.indexOf(editor)
+      if (index >= 0) editors.splice(index, 1)
+    }
+  }
+  const unsaved = () => editors.some((editor) => editor.dirty() && !editor.busy())
+  const discardRequest = shallowRef<(discard: boolean) => void>()
+  let asking: Promise<boolean> | undefined
+  const confirmDiscard = () =>
+    (asking ??= new Promise<boolean>((resolve) => {
+      discardRequest.value = (discard) => {
+        discardRequest.value = undefined
+        asking = undefined
+        resolve(discard)
+      }
+    }))
+
   const state: AdminState = {
     brand: options.brand,
     me,
     status,
     navTarget: shallowRef<NavTarget>(),
+    editors,
+    registerEditor,
+    confirmDiscard,
+    discardRequest,
     stale: computed(
       () => buildId !== undefined && me.value !== undefined && me.value.buildId !== buildId,
     ),
@@ -473,6 +499,15 @@ export const createAdmin = (options: AdminOptions): App => {
   })
   // Leave guards run before beforeEach, so a host leave guard's error stays in the console.
   let latest: RouteLocationNormalized | undefined
+  router.beforeEach((to, from) =>
+    unmounted ||
+    status.value !== 'ready' ||
+    to.redirectedFrom !== undefined ||
+    to.path === from.path ||
+    !unsaved()
+      ? true
+      : confirmDiscard(),
+  )
   router.beforeEach(async (to) => {
     latest = to
     await ready

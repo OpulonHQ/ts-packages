@@ -5,7 +5,7 @@ import { expect, onTestFinished, test, vi } from 'vitest'
 import { adminModules, cmsOptions } from '../../admin/modules.ts'
 import { definitions } from '../../cms/definitions.ts'
 import { useAdminLifetime } from '../admin-lifetime.ts'
-import { page, section, useCmsHost } from './helpers.ts'
+import { page, saveDraft, section, useCmsHost } from './helpers.ts'
 
 const admin = useAdminLifetime()
 const host = admin.track(useCmsHost())
@@ -149,7 +149,7 @@ test('the live preview is the server preview, per preview language', async () =>
   ready()
   type('sections.0.title.en', 'Saved title')
   type('sections.1.note', 'Saved note')
-  button('Uložiť koncept')!.click()
+  await saveDraft()
   await expect.poll(text).toContain('Koncept uložený.')
   const saved = await serverPreview(created.id, 'en')
   expect(saved.sections[0]!.data.title).toBe('Saved title')
@@ -213,7 +213,7 @@ test('rich text a custom widget types reaches the frame sanitized, as the server
   await expect.poll(() => lastPreview(posted)?.sections[0]?.data.body).toBe('<p>Hi</p>')
   const live = lastPreview(posted)
 
-  button('Uložiť koncept')!.click()
+  await saveDraft()
   await expect.poll(text).toContain('Koncept uložený.')
   expect(live).toEqual(await serverPreview(created.id, 'en'))
 })
@@ -278,7 +278,7 @@ test('the live preview is the draft as Save stores it', async () => {
   expect(live!.seo.title).toBe('Padded title')
   expect(live!.sections[1]!.data).toEqual({ count: 3 })
 
-  button('Uložiť koncept')!.click()
+  await saveDraft()
   await expect.poll(text).toContain('Koncept uložený.')
   expect(live).toEqual(await serverPreview(created.id, 'en'))
 })
@@ -354,7 +354,7 @@ test('a click in the Italian preview edits and saves the Italian text', async ()
   typing.value = 'Titolo dal riquadro'
   typing.dispatchEvent(new Event('input'))
 
-  button('Uložiť koncept')!.click()
+  await saveDraft()
   await expect.poll(text).toContain('Koncept uložený.')
   expect((await stored(created.id)).draft.sections[0]!.data.title).toEqual({
     en: 'First',

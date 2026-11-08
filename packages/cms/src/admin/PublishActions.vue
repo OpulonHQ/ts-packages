@@ -1,8 +1,9 @@
 <script setup lang="ts">
-/** Status and the draft/publish buttons of an item, the site settings or a menu. */
-import { CachePurgeNotice, useI18n } from '@opulonjs/admin'
+import { useI18n } from '@opulonjs/admin'
 import { UButton } from '@opulonjs/ui'
+import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
 import StatusBadge from '@opulonjs/ui/components/StatusBadge'
+import { ref } from 'vue'
 import type { PageStatus } from '../api.ts'
 
 defineProps<{
@@ -11,28 +12,23 @@ defineProps<{
   pending: boolean
   canEdit: boolean
   canPublish: boolean
-  /** Offers delete (items). */
   deletable?: boolean
 }>()
-defineEmits<{ save: []; publish: []; unpublish: []; delete: [] }>()
+const emit = defineEmits<{ publish: []; unpublish: []; delete: [] }>()
 
 const { t } = useI18n()
+const unpublishing = ref(false)
+const unpublish = () => {
+  unpublishing.value = false
+  emit('unpublish')
+}
 </script>
 
 <template>
-  <CachePurgeNotice :pending="pending" />
   <StatusBadge
     :status="status"
     :label="t(`cms.status.${status}`)"
     :color="status === 'changed' ? 'warning' : undefined"
-  />
-  <UButton
-    v-if="canEdit"
-    :label="t('cms.page.save')"
-    color="neutral"
-    variant="outline"
-    :loading="pending"
-    @click="$emit('save')"
   />
   <UButton
     v-if="canEdit && canPublish"
@@ -47,7 +43,7 @@ const { t } = useI18n()
     color="neutral"
     variant="ghost"
     :disabled="pending"
-    @click="$emit('unpublish')"
+    @click="unpublishing = true"
   />
   <UButton
     v-if="canEdit && deletable"
@@ -57,5 +53,13 @@ const { t } = useI18n()
     icon="i-lucide-trash-2"
     :disabled="pending"
     @click="$emit('delete')"
+  />
+  <ConfirmDialog
+    v-model:open="unpublishing"
+    :title="t('cms.unpublish.title')"
+    :description="t('cms.unpublish.description')"
+    :confirm-label="t('cms.page.unpublish')"
+    danger
+    @confirm="unpublish"
   />
 </template>

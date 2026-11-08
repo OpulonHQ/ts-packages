@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useI18n, useNavTarget } from '@opulonjs/admin'
+import { CachePurgeNotice, useI18n, useNavTarget } from '@opulonjs/admin'
 import { UCard } from '@opulonjs/ui'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
 import { Schema } from 'effect'
@@ -10,7 +10,7 @@ import RevisionHistory from './RevisionHistory.vue'
 import MenuItemsEditor, { type EditedMenuItem } from './MenuItemsEditor.vue'
 import PublishActions from './PublishActions.vue'
 import ActionStatus from './ActionStatus.vue'
-import { useAction, useCmsContext, useContent, useFocusReturn } from './use-cms.ts'
+import { useAction, useCmsContext, useContent, useDraftChanges, useFocusReturn } from './use-cms.ts'
 
 const { t, locale } = useI18n()
 const content = useContent()
@@ -28,6 +28,7 @@ useNavTarget(() =>
 )
 const menu = shallowRef<Menu>()
 const items = ref<EditedMenuItem[]>([])
+const baseline = shallowRef<EditedMenuItem[]>()
 const revisionPending = ref(false)
 const canEdit = computed(() => content.can('cms.site.edit'))
 const locked = computed(() => !canEdit.value || pending.value || revisionPending.value)
@@ -37,17 +38,22 @@ useFocusReturn(
   () => form.value,
 )
 
-const show = (next: Menu) => {
-  menu.value = next
-  items.value = next.draft.items.map(function copy(item): EditedMenuItem {
+const editable = (next: Menu) =>
+  next.draft.items.map(function copy(item): EditedMenuItem {
     return { ...item, label: { ...item.label }, children: item.children.map(copy) }
   })
+const show = (next: Menu) => {
+  menu.value = next
+  items.value = editable(next)
+  baseline.value = editable(next)
 }
 watch(
   current,
   async (key) => {
     invalidate()
     menu.value = undefined
+    baseline.value = undefined
+    items.value = []
     status.value = undefined
     if (key) await run(() => content.getMenu(key), '', show)
   },
@@ -64,14 +70,25 @@ const publish = () =>
       const saved = await saveDraft()
       if (!current()) return
       menu.value = saved
+      baseline.value = editable(saved)
       return content.publishMenu(saved.key, saved.version)
     },
     t('cms.page.published'),
     show,
   )
 const unpublish = () =>
-  run(() => content.unpublishMenu(current.value!), t('cms.site.unpublished'), show)
+  run(
+    () => content.unpublishMenu(current.value!),
+    t('cms.site.unpublished'),
+    (next) => (menu.value = next),
+  )
 const reload = (done = '') => run(() => content.getMenu(current.value!), done, show)
+useDraftChanges({
+  draft: items,
+  baseline,
+  save,
+  busy: () => pending.value || revisionPending.value,
+})
 </script>
 
 <template>
@@ -87,12 +104,12 @@ const reload = (done = '') => run(() => content.getMenu(current.value!), done, s
           :pending="pending || revisionPending"
           :can-edit="canEdit"
           :can-publish="content.can('cms.site.publish')"
-          @save="save"
           @publish="publish"
           @unpublish="unpublish"
         />
       </template>
     </PageHeader>
+    <CachePurgeNotice :pending="pending || revisionPending" class="mb-4" />
     <ActionStatus :status="status" @reload="reload()" />
     <form
       v-if="menu && current"
