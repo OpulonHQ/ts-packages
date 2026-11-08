@@ -1,5 +1,32 @@
 # @opulonjs/admin
 
+## 0.2.0
+
+### Minor Changes
+
+- 516ae41: The sidebar lists what you can open and keeps your place. A `NavItem` takes `children` (`NavChild`: a message key or a name per admin locale, and route params): the item becomes an expandable group whose entries open its route with their params, drawn as a tree (a line down the side, a rounded branch and a dot into each entry, darker on the current one), and a group opens itself when you are in it and otherwise stays as you left it. cms lists every collection under Collections and every menu under Menus, so their screens lose the row of tab buttons and take the collection's or menu's name as their title. A route's `nav` names the nav entry a screen without one belongs to (`cms.page` → Pages, `cms.item` → Collections, `users.user` → Users, `emails.template` → Email templates), and `useNavTarget()` names the exact entry when the route cannot (an item editor names its collection); the entry stays highlighted and the navbar shows its name on detail screens, where it was empty. Content reads Pages, Collections, Menus, Media, Redirects, Site settings in every host (`order` 10 to 60); a host's own Content item with the default `order` 0 now sorts above Pages, so give it an `order` above 60 to keep it after them. Nav items without a `group` now show next to Dashboard as documented; they were dropped whenever another group existed. The user screen gets a breadcrumb back to Users.
+
+  `Brand` takes `wordmark` (a wide logo that includes the name, shown instead of mark and name in the open sidebar) and `wordmarkDark`, and `logoDark` for the square mark.
+
+- 8f1f383: Every editor saves and asks the same way. `useCloseGuard({ isOpen, close, dirty })` guards a slideover that holds a small record's form: bound as `v-model:open`, `:dismissible` and `@close:prevent`, it makes Cancel, ×, Escape and an outside click ask "Discard unsaved changes?" while the form has unsaved changes and close at once while it has none, and `leave()` asks the same before another row or a new record replaces the form (one question at a time, so its answer applies to the request that asked). `useUnsavedChanges` takes `within` (the element holding a form inside a dialog: Cmd/Ctrl+S saves while that dialog is open, but not behind another dialog over it, such as a delete confirmation) and `guardWhileBusy` (leaving keeps asking while a save of several requests runs, since leaving would cut it short).
+
+  Roles, invitations and redirects open in a slideover instead of a card above the list: the form in the body, its message at the top (success green, failure red), Cancel and the primary action ("Save", "Send the invitation"; Delete for an existing redirect, whose confirmation now says what deleting does) in the footer. Each form registers with `useUnsavedChanges({ bar: false, within })`, so leaving the screen asks and Cmd/Ctrl+S saves it from inside the slideover; a new role or invitation with nothing typed has no unsaved changes, and a role's permissions compare as a set, so unchecking and checking one again is no change. A saved role, a sent invitation or a saved or deleted redirect closes the slideover and says so above the list; Super admin still only explains that it cannot be edited; Import CSV stays in the header. The media details slideover asks the same before it closes or another item opens while alt text or a caption is unsaved, and an upload asks before it starts; that text survives Replace file, Archive and Restore, Cmd/Ctrl+S saves it, and the fields are locked while a request runs.
+
+  The user screen's roles save from the unsaved-changes bar ("Save roles" is gone), and a language change, a deactivation, a reactivation or a refused save no longer resets unsaved role toggles; the admin language still applies at once; messages are green or red. The email template editor saves from the bar: Save stores every language whose subject or body differs from what emails use (its override, else the default), one after another, with the fields locked meanwhile and leaving asking until the last one is stored; a refused language keeps its changes, shows why and opens its tab while the others save, and Discard puts every language back. The per-language Save button is gone; Preview, Send me a test and Reset to default stay, and a language with unsaved changes notes that the test uses the saved wording. "Send this email" still applies at once and now says whether it was saved (a failure turned it back without a word); Reset to default waits in its dialog until done.
+
+- d3f7e8a: Unsaved changes are never missed. `useUnsavedChanges({ current, saved, save, discard, busy?, saveLabel?, bar? })` registers an editor with the shell: while what is on screen differs from what was saved (`sameContent`: empty values a form writes on its own, `null`, `''`, `false`, `[]` and `{}`, do not count), the shell shows `UnsavedChangesBar` under the screen (always in view) with "Unsaved changes", Discard (asks first, then puts the saved values back without a request) and the editor's Save; Cmd/Ctrl+S saves (not behind an open dialog); a polite live region announces the bar; leaving for another path, signing out or reloading asks "Discard unsaved changes?" once (not for a redirect a guard starts, not after the session ended, not while the editor's own save is in flight, which carries its changes); the new-version Reload asks too. `useLeaveGuard(dirty)` adds state that saves on its own (a widget) to the guard without the bar; `confirmDiscard()` asks before an in-screen switch replaces edits.
+
+  The page, item, site settings and menu editors use it: "Save draft" moves from the header to the bar, and the header keeps the status, Publish (saves what is on screen first), Unpublish and Delete. The page editor uses `PublishActions` like the others. Unpublish asks first ("Take it off the website?") and no longer replaces edits on screen with the saved draft. The cache-purge notice sits under the header on every editor.
+
+### Patch Changes
+
+- Updated dependencies [5d53e23]
+- Updated dependencies [8002758]
+- Updated dependencies [516ae41]
+- Updated dependencies [d3f7e8a]
+  - @opulonjs/ui@0.2.0
+  - @opulonjs/core@0.2.0
+
 ## 0.1.0
 
 ### Minor Changes
