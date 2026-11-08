@@ -52,7 +52,6 @@ const locales = computed(() => pages.contentLocales.value)
 const canEdit = computed(() => pages.can('cms.pages.edit'))
 const locked = computed(() => !canEdit.value || pending.value || revisionPending.value)
 const form = useTemplateRef<HTMLFormElement>('form')
-// One content language for the whole editor and the preview.
 const contentLocale = useContentLocale(() => locales.value, status)
 useFocusReturn(
   () => pending.value || revisionPending.value,
@@ -88,7 +87,6 @@ async function focusField(sectionId: string, field: string | undefined, locale: 
   const panel = document.getElementById(`${panels}-${sectionId}`)
   if (!panel) return
   selection.value = { kind: 'section', id: sectionId }
-  // The click came from the preview in `locale`: edit that language.
   contentLocale.value = locale
   await nextTick()
   const wrapper = [...panel.querySelectorAll<HTMLElement>('[data-field]')].find(

@@ -20,7 +20,6 @@ const props = defineProps<{
   disabled?: boolean
 }>()
 const emit = defineEmits<{ restored: []; reload: []; busy: [value: boolean] }>()
-/** The editor's content language, which the revision shown follows. */
 const contentLocale = defineModel<string>('contentLocale')
 const { t, locale } = useI18n()
 const api = useRevisions()

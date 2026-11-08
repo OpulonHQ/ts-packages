@@ -1,7 +1,4 @@
 <script setup lang="ts">
-/** A level of a menu: each entry's label in `locale` (the editor's content language; the other
- *  locales' stay mounted and hidden), its link and its children (nested up to the menu's depth).
- *  Edits `items` in place. */
 import { useI18n } from '@opulonjs/admin'
 import { UButton } from '@opulonjs/ui'
 import FieldText from '@opulonjs/ui/components/Field/Text'
@@ -21,7 +18,6 @@ const props = defineProps<{
   level: number
   depth: number
   locales: ReadonlyArray<string>
-  /** The content locale whose labels show; default: the first. */
   locale?: string
   /** Form path prefix, e.g. `items` or `items.0.children`. */
   name: string

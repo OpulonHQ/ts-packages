@@ -132,15 +132,9 @@ export const useContent = () => {
   }
 }
 
-/** The locale a form shows: `locale` when it is one of `locales`, else the first. */
 export const shownLocale = (locales: ReadonlyArray<string>, locale: string | undefined) =>
   locale !== undefined && locales.includes(locale) ? locale : (locales[0] ?? '')
 
-/**
- * While there are several content locales: "All languages" next to the label of a value every
- * locale shares (`shared`, shown), and the language of a localized value (`language`, read to
- * screen readers only: the editor's language switch already shows it).
- */
 export const useLocaleHints = (locales: () => ReadonlyArray<string>) => {
   const { t, locale } = useI18n()
   return {
@@ -150,12 +144,6 @@ export const useLocaleHints = (locales: () => ReadonlyArray<string>) => {
   }
 }
 
-/**
- * The content locale an editor shows, one for all its localized fields (the editor's language
- * switch): the one last chosen in any cms editor of this admin (until the page reloads), else
- * the first content locale. A save the server refuses for a value of one locale switches to
- * that locale, so the editor sees the value named.
- */
 export const useContentLocale = (
   locales: () => ReadonlyArray<string>,
   status: Ref<ActionResult | undefined>,

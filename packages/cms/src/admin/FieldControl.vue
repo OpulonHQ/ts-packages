@@ -24,9 +24,7 @@ const props = defineProps<{
   field: Field
   name: string
   label: string
-  /** Next to the label: "All languages" for a field every locale shares (`CmsWidgetProps`). */
   hint?: string
-  /** Read to screen readers only: the language a localized value is in. Built-in widgets only. */
   srHint?: string
   disabled?: boolean
 }>()

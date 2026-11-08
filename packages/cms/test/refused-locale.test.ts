@@ -12,8 +12,6 @@ import {
   normalizeDocument,
 } from '../src/server/document.ts'
 
-// Every refusal server/document.ts writes, produced by the server code itself, and the content
-// locale the editor turns to for it (undefined: the message names none).
 const locales = ['en', 'it']
 const hero = {
   label: 'Hero',

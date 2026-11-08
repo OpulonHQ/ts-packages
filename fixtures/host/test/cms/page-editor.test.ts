@@ -362,7 +362,6 @@ test('a click in the Italian preview turns the whole editor to Italian, and its 
   await pick(region('Náhľad')!, 'Taliančina')
   await expect.poll(() => (select(hero!.id, 'title'), focused())).toBe('sections.0.title.it')
 
-  // Not just the clicked field: the page's path and SEO are in Italian too.
   button('Nastavenia stránky', outline())!.click()
   await expect.poll(() => shown('locales.it.path')).toBe(true)
   expect(shown('locales.en.path')).toBe(false)

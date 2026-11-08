@@ -17,7 +17,6 @@ const data = defineModel<Record<string, unknown>>('data', { required: true })
 const props = defineProps<{
   group: FieldGroup
   locales: ReadonlyArray<string>
-  /** The content locale whose controls show; default: the first. */
   locale?: string
   /** Form path prefix, e.g. `sections.0`; controls are named `<prefix>.<field>[.<locale>]`. */
   name: string

@@ -14,7 +14,6 @@ const props = defineProps<{ page: Page; draft: PageDocument; url: CmsPreviewOpti
 const emit = defineEmits<{
   select: [sectionId: string, field: string | undefined, locale: string]
 }>()
-/** The preview's language; bound to the editor's content language, chosen here otherwise. */
 const contentLocale = defineModel<string>('contentLocale')
 
 const { t, locale: adminLocale } = useI18n()

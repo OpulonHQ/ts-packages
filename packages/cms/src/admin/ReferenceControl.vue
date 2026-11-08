@@ -117,7 +117,6 @@ const selectedTitle = (id: string) => {
   <fieldset class="space-y-2" :aria-describedby="hint || srHint ? hintId : undefined">
     <legend class="flex w-full items-center justify-between gap-1 text-sm">
       <span class="font-medium text-highlighted">{{ label }}</span>
-      <!-- On the legend's row, but it describes the group (aria-describedby), not names it. -->
       <span v-if="hint" :id="hintId" aria-hidden="true" class="text-muted">{{ hint }}</span>
     </legend>
     <span v-if="!hint && srHint" :id="hintId" class="sr-only">{{ srHint }}</span>

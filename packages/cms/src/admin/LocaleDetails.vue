@@ -1,9 +1,4 @@
 <script setup lang="ts">
-/**
- * Path, availability and SEO of a page or a routed item in `locale`, the editor's content
- * language; the other locales' fields stay mounted and hidden. With several content locales each
- * field's description names its language for screen readers. Edits in place.
- */
 import { useI18n } from '@opulonjs/admin'
 import { MediaPicker } from '@opulonjs/media/admin'
 import FieldText from '@opulonjs/ui/components/Field/Text'
@@ -16,7 +11,6 @@ import { shownLocale, useLocaleHints } from './use-cms.ts'
 const props = defineProps<{
   value: Record<string, PageLocale>
   locales: ReadonlyArray<string>
-  /** The content locale whose fields show; default: the first. */
   locale?: string
   disabled?: boolean
   namePrefix?: string

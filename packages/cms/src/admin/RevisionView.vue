@@ -1,10 +1,4 @@
 <script setup lang="ts">
-/**
- * A revision's snapshot in the editor's read-only forms, in one content language with its own
- * switch. The languages are the content locales and any other the snapshot holds; one the
- * snapshot lacks shows empty. Choosing a content locale here chooses it for the editor too; a
- * locale only the snapshot holds stays a choice of this view, until the editor's language changes.
- */
 import { useI18n } from '@opulonjs/admin'
 import LocaleSwitch from '@opulonjs/ui/components/LocaleSwitch'
 import { computed, ref, shallowRef, watch } from 'vue'
@@ -31,7 +25,6 @@ const locales = computed(() => {
   const own = 'locales' in document ? Object.keys(document.locales) : []
   return [...new Set([...content.contentLocales.value, ...own])]
 })
-// A locale the site no longer has: shown here only, so the editor's switch keeps a real one.
 const snapshotOnly = ref<string>()
 watch(contentLocale, () => (snapshotOnly.value = undefined))
 const shown = computed({
@@ -46,10 +39,8 @@ const shown = computed({
     } else snapshotOnly.value = code
   },
 })
-/** Path, availability and SEO in every language shown, empty where the snapshot has none. */
 const withLocales = (own: Readonly<Record<string, PageLocale>>) =>
   Object.fromEntries(locales.value.map((code) => [code, own[code] ?? emptyLocale()]))
-// A mutable copy for the read-only forms, which write empty values on their own.
 const editable = (snapshot: RevisionSnapshot): RevisionSnapshot => {
   const clone = structuredClone(snapshot)
   if (clone.kind === 'page') {

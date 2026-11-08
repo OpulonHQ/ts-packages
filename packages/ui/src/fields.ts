@@ -20,7 +20,6 @@ export interface FieldProps {
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl'
 }
 
-/** `UFormField`'s `ui` for an `srHint`: the hint stays in the control's description, unseen. */
 export const srOnlyHint = { hint: 'sr-only' }
 
 export interface SelectItem {

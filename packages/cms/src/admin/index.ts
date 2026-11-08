@@ -88,7 +88,6 @@ export const cmsAdmin = (options: CmsAdminOptions) => {
       ]),
     ),
   }
-  // The chosen content language lives as long as the admin app, shared by its cms screens.
   const contentLocales = new WeakMap<App, Ref<string | undefined>>()
   const contentLocale = (app: App) => {
     const known = contentLocales.get(app)
@@ -97,7 +96,6 @@ export const cmsAdmin = (options: CmsAdminOptions) => {
     contentLocales.set(app, created)
     return created
   }
-  // Screens read the definitions, widgets and content language through provide/inject.
   const screen =
     (load: Lazy<Component>): Lazy<Component> =>
     async () => {
