@@ -115,7 +115,6 @@ test('the redirect slideover asks before unsaved changes are lost, and closes at
   mountAdmin('/admin/cms/redirects')
   await expect.poll(() => row('/second')).toBeDefined()
 
-  // Unchanged: Escape closes without a question.
   row('/first')!.click()
   await expect.poll(() => field('to')?.value).toBe('/one')
   document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
@@ -125,7 +124,6 @@ test('the redirect slideover asks before unsaved changes are lost, and closes at
   row('/first')!.click()
   await expect.poll(() => field('to')?.value).toBe('/one')
   type('to', '/uno')
-  // Another row asks first; Keep editing keeps the edit.
   row('/second')!.click()
   await expect.poll(discardDialog).toBeTruthy()
   // Drawn above the slideover: overlays at one level paint in document order, last on top.
@@ -182,14 +180,12 @@ test('Cmd/Ctrl+S saves the open redirect, but not behind its delete confirmation
   await expect.poll(text).toContain('Presmerovanie uložené.')
   expect((await stored()).find((r) => r.id === created.id)?.to).toBe('/two')
 
-  // The list reloads after the save; open the row once it shows the saved target.
   await expect.poll(() => row('/keys')?.textContent).toContain('/two')
   row('/keys')!.click()
   await expect.poll(() => field('to')?.value).toBe('/two')
   type('to', '/three')
   button('Vymazať')!.click()
   await expect.poll(() => buttons('Vymazať').length).toBe(2)
-  // Behind the confirmation the shortcut saves nothing; deleting goes ahead.
   expect(shortcut()).toBe(true)
   buttons('Vymazať').at(-1)!.click()
   await expect.poll(text).toContain('Presmerovanie vymazané.')

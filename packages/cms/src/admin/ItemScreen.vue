@@ -39,7 +39,6 @@ const { pending, status, run, invalidate } = useAction(() => t('cms.errors.faile
 
 const item = shallowRef<Item>()
 const draft = ref<Draft>()
-// The draft as last saved, the unsaved-changes bar's comparison and Discard's copy.
 const baseline = shallowRef<Draft>()
 const missing = ref(false)
 const confirming = ref(false)
@@ -59,7 +58,6 @@ const collection = computed(() =>
 )
 const collectionLabel = computed(() => labelText(collection.value?.label, locale.value))
 
-// The item opens by id; keep its collection's sidebar entry highlighted.
 useNavTarget(() =>
   item.value
     ? { route: 'cms.collections', params: { collection: item.value.collection } }
@@ -124,7 +122,6 @@ const publish = () =>
     t('cms.page.published'),
     show,
   )
-// Unpublishing leaves the draft as it was, so edits on screen stay on screen.
 const unpublish = () =>
   run(
     () => content.unpublishItem(item.value!.id),
@@ -136,7 +133,6 @@ async function remove() {
   const collectionKey = item.value!.collection
   await run(() => content.removeItem(item.value!.id), '')
   if (status.value?.kind !== 'ok') return
-  // Deleted: nothing is left to save, so leaving does not ask.
   draft.value = baseline.value
   await router.push({ name: 'cms.collections', params: { collection: collectionKey } })
 }

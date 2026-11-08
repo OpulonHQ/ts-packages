@@ -177,11 +177,6 @@ export interface ActionResult {
   message: string
 }
 
-/**
- * A cms editor's draft against the copy it last saved (`baseline`, taken when the editor shows a
- * document): the shell's unsaved-changes bar with "Save draft" and Discard, the leave guard and
- * Cmd/Ctrl+S.
- */
 export const useDraftChanges = <D>(options: {
   readonly draft: Ref<D | undefined>
   readonly baseline: ShallowRef<D | undefined>

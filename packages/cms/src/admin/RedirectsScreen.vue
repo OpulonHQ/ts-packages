@@ -1,8 +1,4 @@
 <script setup lang="ts">
-/**
- * Content > Redirects: list, CSV import, and exact-path redirects created, edited and deleted in a
- * slideover that asks before unsaved changes are lost.
- */
 import { CachePurgeNotice, useCloseGuard, useI18n, useUnsavedChanges } from '@opulonjs/admin'
 import { queryRows, type TableQuery, UButton, USlideover } from '@opulonjs/ui'
 import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
@@ -28,7 +24,6 @@ const pending = ref(false)
 const status = ref<{ kind: 'ok' | 'error'; message: string }>()
 const imported = ref<RedirectImportResult>()
 const confirming = ref(false)
-/** The form: a new redirect (no id) or the one being edited, and the form as it opened. */
 const editing = ref<RedirectForm>()
 const opened = shallowRef<RedirectForm>()
 const formId = useId()

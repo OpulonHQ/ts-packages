@@ -1,8 +1,4 @@
 <script setup lang="ts">
-/**
- * Content > Media: the flat library with search, type and archived filters, upload and details in
- * a slideover that asks before unsaved alt text or captions are lost.
- */
 import { CachePurgeNotice, useCloseGuard, useI18n } from '@opulonjs/admin'
 import { formatDate, UButton, UIcon, USlideover } from '@opulonjs/ui'
 import DataTable from '@opulonjs/ui/components/DataTable'
@@ -66,14 +62,12 @@ async function upload(event: Event) {
   const input = event.target as HTMLInputElement
   const files = [...(input.files ?? [])]
   input.value = ''
-  // Each upload opens in the details: ask before it would replace unsaved text, not after.
   if (files.length === 0 || !(await leave())) return
   uploading.value = true
   failure.value = undefined
   try {
     for (const file of files) {
       const uploaded = await media.upload(file)
-      // Text typed into an earlier upload of this batch keeps its details open.
       if (!details.value?.dirty) selected.value = uploaded
     }
   } catch (error) {

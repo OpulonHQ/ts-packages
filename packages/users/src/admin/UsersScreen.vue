@@ -1,8 +1,4 @@
 <script setup lang="ts">
-/**
- * Users: the staff list, and the invitation form in a slideover that asks before unsaved changes
- * are lost.
- */
 import { useCloseGuard, useI18n, useRouter, useUnsavedChanges } from '@opulonjs/admin'
 import { listDefaultPerPage, listMaxOffset } from '@opulonjs/core/api'
 import { type TableQuery, UButton, UCheckbox, UForm, USlideover } from '@opulonjs/ui'
@@ -27,7 +23,6 @@ const list = shallowRef<{
   roles: ReadonlyArray<{ id: string; name: string }>
 }>()
 const blank = (): InviteForm => ({ email: null, roleIds: [] })
-/** The open invitation form; a new one is blank, so it has no unsaved changes until typed in. */
 const invite = ref<InviteForm>()
 const notice = ref<{ error: boolean; text: string }>()
 const busy = ref(false)
