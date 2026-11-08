@@ -41,7 +41,6 @@ const routeParams = computed(() =>
     ]),
   ),
 )
-// The nav entry the screen belongs to: the one it names, else its route's `nav`, else its own.
 const current = computed<NavTarget>(
   () =>
     navTarget.value ?? {
@@ -55,8 +54,6 @@ const named = (label: string | Readonly<Record<string, string>>) =>
   typeof label === 'string'
     ? t(label)
     : (label[locale.value] ?? label.en ?? Object.values(label)[0] ?? '')
-// `active` is always set: a detail screen keeps its list's entry highlighted, and an entry with
-// children only opens its group (each child opens the item's route with its params).
 const toItem = (item: ShellNavItem): NavigationMenuItem => {
   const here = current.value.route === item.route
   const own = { label: t(item.label), icon: item.icon, active: here }
@@ -89,9 +86,6 @@ const items = computed<NavigationMenuItem[][]>(() => [
     ]),
 ])
 
-// An open group's entries hang from a tree: the line runs down past every entry but the last, a
-// rounded branch leads into each one and ends in a dot, darker on the entry you are on. The
-// collapsed sidebar's popover keeps Nuxt UI's plain list.
 const treeUi = {
   childList: 'border-s-0',
   childItem: [
@@ -99,13 +93,10 @@ const treeUi = {
     'before:absolute before:inset-y-0 before:start-0 before:border-s before:border-accented last:before:hidden',
     'after:absolute after:start-0 after:top-0 after:h-1/2 after:w-2.5 after:rounded-es-md after:border-s after:border-b after:border-accented',
     '[--tree-dot:var(--ui-border-accented)] has-[[data-active]]:[--tree-dot:var(--ui-text-highlighted)]',
-    // The branch is the bottom border of a box ending at the middle, so its 1px line sits half a
-    // pixel above it: the 5px dot centres on the line and starts where the branch ends (10px).
     'bg-[radial-gradient(circle_at_12.5px_calc(50%_-_0.5px),var(--tree-dot)_2.5px,transparent_3px)] bg-no-repeat',
   ].join(' '),
 }
 
-// A group opens itself for the screen shown and otherwise stays as the user left it.
 const openGroups = ref<string[]>([])
 const groupRoutes = computed(() =>
   nav.value.flatMap((group) => group.items.filter((i) => i.children?.length).map((i) => i.route)),
@@ -161,7 +152,6 @@ const userMenu = computed<DropdownMenuItem[][]>(() => [
     : []),
 ])
 const reload = () => location.reload()
-// The navbar names the section, on its detail screens too (the child's name under a group).
 const title = computed(() => {
   if (current.value.route === 'dashboard') return t('admin.dashboard')
   const entry = nav.value.flatMap((g) => g.items).find((i) => i.route === current.value.route)
@@ -211,7 +201,6 @@ const title = computed(() => {
             :to="{ name: 'dashboard' }"
             class="flex min-w-0 items-center gap-2 rounded-md font-semibold text-highlighted focus-visible:outline-2 focus-visible:outline-primary"
           >
-            <!-- The full logo (it includes the name) while expanded; the mark alone collapsed. -->
             <template v-if="brand.wordmark && !collapsed">
               <img
                 :src="brand.wordmark"
