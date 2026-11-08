@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { CachePurgeNotice, useI18n, useNavTarget } from '@opulonjs/admin'
 import { UCard } from '@opulonjs/ui'
+import LocaleSwitch from '@opulonjs/ui/components/LocaleSwitch'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
 import { Schema } from 'effect'
 import { computed, ref, shallowRef, watch, useTemplateRef } from 'vue'
@@ -10,7 +11,14 @@ import RevisionHistory from './RevisionHistory.vue'
 import MenuItemsEditor, { type EditedMenuItem } from './MenuItemsEditor.vue'
 import PublishActions from './PublishActions.vue'
 import ActionStatus from './ActionStatus.vue'
-import { useAction, useCmsContext, useContent, useDraftChanges, useFocusReturn } from './use-cms.ts'
+import {
+  useAction,
+  useCmsContext,
+  useContent,
+  useContentLocale,
+  useDraftChanges,
+  useFocusReturn,
+} from './use-cms.ts'
 
 const { t, locale } = useI18n()
 const content = useContent()
@@ -32,6 +40,8 @@ const baseline = shallowRef<EditedMenuItem[]>()
 const revisionPending = ref(false)
 const canEdit = computed(() => content.can('cms.site.edit'))
 const locked = computed(() => !canEdit.value || pending.value || revisionPending.value)
+const locales = computed(() => content.contentLocales.value)
+const contentLocale = useContentLocale(() => locales.value, status)
 const form = useTemplateRef<HTMLFormElement>('form')
 useFocusReturn(
   () => pending.value || revisionPending.value,
@@ -111,6 +121,7 @@ useDraftChanges({
     </PageHeader>
     <CachePurgeNotice :pending="pending || revisionPending" class="mb-4" />
     <ActionStatus :status="status" @reload="reload()" />
+    <LocaleSwitch v-if="menu && current" v-model="contentLocale" :locales="locales" class="mb-4" />
     <form
       v-if="menu && current"
       ref="form"
@@ -127,7 +138,8 @@ useDraftChanges({
             v-model:items="items"
             :level="1"
             :depth="definitions.menus[current]!.depth ?? 3"
-            :locales="content.contentLocales.value"
+            :locales="locales"
+            :locale="contentLocale"
             name="items"
             :disabled="locked"
           />
@@ -136,6 +148,7 @@ useDraftChanges({
     </form>
     <RevisionHistory
       v-if="menu && current"
+      v-model:content-locale="contentLocale"
       :version="menu.version"
       kind="menu"
       :document-ref="current"

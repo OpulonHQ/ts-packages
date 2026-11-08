@@ -4,12 +4,20 @@ import { listDefaultPerPage, listMaxOffset, listMaxPerPage } from '@opulonjs/cor
 import { type TableQuery, UButton, UCheckbox } from '@opulonjs/ui'
 import DataTable from '@opulonjs/ui/components/DataTable'
 import { Schema } from 'effect'
-import { computed, ref, shallowRef, watch } from 'vue'
+import { computed, ref, shallowRef, useId, watch } from 'vue'
 import type { Field, ItemSummary } from '../api.ts'
 import { useContent } from './use-cms.ts'
 
 const model = defineModel<unknown>()
-const props = defineProps<{ field: Field; name: string; label: string; disabled?: boolean }>()
+const props = defineProps<{
+  field: Field
+  name: string
+  label: string
+  hint?: string
+  srHint?: string
+  disabled?: boolean
+}>()
+const hintId = useId()
 const { t } = useI18n()
 const content = useContent()
 type SelectedReference =
@@ -106,8 +114,12 @@ const selectedTitle = (id: string) => {
 </script>
 
 <template>
-  <fieldset class="space-y-2">
-    <legend class="text-sm font-medium text-highlighted">{{ label }}</legend>
+  <fieldset class="space-y-2" :aria-describedby="hint || srHint ? hintId : undefined">
+    <legend class="flex w-full items-center justify-between gap-1 text-sm">
+      <span class="font-medium text-highlighted">{{ label }}</span>
+      <span v-if="hint" :id="hintId" aria-hidden="true" class="text-muted">{{ hint }}</span>
+    </legend>
+    <span v-if="!hint && srHint" :id="hintId" class="sr-only">{{ srHint }}</span>
     <div
       v-if="selected.length"
       class="flex flex-wrap gap-2"

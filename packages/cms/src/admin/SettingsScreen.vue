@@ -2,6 +2,7 @@
 /** Content > Site settings: global SEO and the host's fields, with draft and publishing. */
 import { CachePurgeNotice, useI18n } from '@opulonjs/admin'
 import { UCard } from '@opulonjs/ui'
+import LocaleSwitch from '@opulonjs/ui/components/LocaleSwitch'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
 import { computed, onMounted, ref, shallowRef, useTemplateRef } from 'vue'
 import type { SiteSettings } from '../api.ts'
@@ -9,7 +10,14 @@ import RevisionHistory from './RevisionHistory.vue'
 import FieldsForm from './FieldsForm.vue'
 import PublishActions from './PublishActions.vue'
 import ActionStatus from './ActionStatus.vue'
-import { useAction, useCmsContext, useContent, useDraftChanges, useFocusReturn } from './use-cms.ts'
+import {
+  useAction,
+  useCmsContext,
+  useContent,
+  useContentLocale,
+  useDraftChanges,
+  useFocusReturn,
+} from './use-cms.ts'
 
 const { t } = useI18n()
 const content = useContent()
@@ -22,6 +30,8 @@ const baseline = shallowRef<Record<string, unknown>>()
 const revisionPending = ref(false)
 const canEdit = computed(() => content.can('cms.site.edit'))
 const locked = computed(() => !canEdit.value || pending.value || revisionPending.value)
+const locales = computed(() => content.contentLocales.value)
+const contentLocale = useContentLocale(() => locales.value, status)
 const form = useTemplateRef<HTMLFormElement>('form')
 useFocusReturn(
   () => pending.value || revisionPending.value,
@@ -81,6 +91,7 @@ useDraftChanges({
     </PageHeader>
     <CachePurgeNotice :pending="pending || revisionPending" class="mb-4" />
     <ActionStatus :status="status" @reload="reload()" />
+    <LocaleSwitch v-if="settings" v-model="contentLocale" :locales="locales" class="mb-4" />
     <form
       v-if="settings"
       ref="form"
@@ -93,7 +104,8 @@ useDraftChanges({
           <FieldsForm
             v-model:data="data"
             :group="definitions.settings"
-            :locales="content.contentLocales.value"
+            :locales="locales"
+            :locale="contentLocale"
             name="data"
             :disabled="locked"
           />
@@ -102,6 +114,7 @@ useDraftChanges({
     </form>
     <RevisionHistory
       v-if="settings"
+      v-model:content-locale="contentLocale"
       :version="settings.version"
       kind="settings"
       :document-ref="'site'"

@@ -5,7 +5,7 @@
 import UFormField from '@nuxt/ui/components/FormField.vue'
 import UTextarea from '@nuxt/ui/components/Textarea.vue'
 import { computed } from 'vue'
-import type { FieldProps } from '../../fields.ts'
+import { srOnlyHint, type FieldProps } from '../../fields.ts'
 
 const model = defineModel<string | null>()
 const value = computed({
@@ -25,7 +25,8 @@ withDefaults(defineProps<FieldProps & { rows?: number; autoresize?: boolean }>()
     :label="label"
     :description="description"
     :help="help"
-    :hint="hint"
+    :hint="hint ?? srHint"
+    :ui="hint === undefined && srHint !== undefined ? srOnlyHint : undefined"
     :required="required"
     :size="size"
   >

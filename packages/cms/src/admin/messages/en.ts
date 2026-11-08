@@ -135,6 +135,7 @@ export default {
     addChild: 'Add sub-entry',
     remove: 'Remove entry',
   },
+  fields: { allLanguages: 'All languages' },
   reference: {
     missing: 'Missing or deleted item ({id})',
     selected: 'Selected items',

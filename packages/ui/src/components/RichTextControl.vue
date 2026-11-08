@@ -7,6 +7,7 @@
  */
 import type { EditorSlots, EditorToolbarItem } from '@nuxt/ui'
 import UButton from '@nuxt/ui/components/Button.vue'
+import { useFormField } from '@nuxt/ui/composables'
 import UEditor from '@nuxt/ui/components/Editor.vue'
 import UEditorToolbar from '@nuxt/ui/components/EditorToolbar.vue'
 import UInput from '@nuxt/ui/components/Input.vue'
@@ -19,7 +20,12 @@ type Editor = Parameters<NonNullable<EditorSlots['default']>>[0]['editor']
 
 const model = defineModel<string | null>()
 const props = withDefaults(
-  defineProps<{ toolbar?: ReadonlyArray<RichTextButton> | undefined; disabled?: boolean }>(),
+  defineProps<{
+    toolbar?: ReadonlyArray<RichTextButton> | undefined
+    disabled?: boolean
+    /** The editable area's accessible name: a field's label cannot point at it. */
+    label?: string
+  }>(),
   { toolbar: () => defaultRichTextToolbar, disabled: false },
 )
 const text = useKitText()
@@ -30,6 +36,22 @@ watch([() => props.disabled, () => editorRef.value?.editor], ([disabled, editor]
   editor.setEditable(!disabled)
   editor.view.dom.setAttribute('aria-disabled', String(disabled))
 })
+// Nuxt UI's own inputs take their description (hint, help, error) from the form field around
+// them; UEditor does not, so the editable area gets the field's ids here, and its name from
+// `label` (a <label for> cannot name a contenteditable element).
+const field = useFormField()
+watch(
+  [() => editorRef.value?.editor, () => field.ariaAttrs.value, () => props.label],
+  ([editor, aria, label]) => {
+    if (!editor) return
+    const dom = editor.view.dom
+    const describedBy = aria?.['aria-describedby']
+    if (describedBy) dom.setAttribute('aria-describedby', describedBy)
+    else dom.removeAttribute('aria-describedby')
+    if (label) dom.setAttribute('aria-label', label)
+    else dom.removeAttribute('aria-label')
+  },
+)
 defineExpose({
   /** Inserts HTML or text at the cursor, e.g. a `{{placeholder}}` token. */
   insert: (content: string) => {

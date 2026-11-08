@@ -9,11 +9,18 @@ export interface FieldProps {
   help?: string
   /** Next to the label, e.g. "Optional". */
   hint?: string
+  /**
+   * Not shown; screen readers read it in the control's description, e.g. the language of a
+   * per-language field whose language a switch above already shows. Ignored next to `hint`.
+   */
+  srHint?: string
   placeholder?: string
   required?: boolean
   disabled?: boolean
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl'
 }
+
+export const srOnlyHint = { hint: 'sr-only' }
 
 export interface SelectItem {
   label: string

@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { useI18n } from '@opulonjs/admin'
-import { computed, shallowRef, watch } from 'vue'
-import { labelText } from '../api.ts'
+import LocaleSwitch from '@opulonjs/ui/components/LocaleSwitch'
+import { computed, ref, shallowRef, watch } from 'vue'
+import { labelText, type PageLocale } from '../api.ts'
+import { emptyLocale } from '../localize.ts'
 import FieldsForm from './FieldsForm.vue'
 import LocaleDetails from './LocaleDetails.vue'
 import MenuItemsEditor, { type EditedMenuItem } from './MenuItemsEditor.vue'
-import { useCmsContext, useContent } from './use-cms.ts'
+import { shownLocale, useCmsContext, useContent } from './use-cms.ts'
 import type { RevisionSnapshot } from './use-revisions.ts'
 
 const props = defineProps<{
@@ -13,20 +15,53 @@ const props = defineProps<{
   documentRef: string
   collection?: string
 }>()
+const contentLocale = defineModel<string>('contentLocale')
 const { t, locale } = useI18n()
 const { definitions } = useCmsContext()
 const content = useContent()
-const form = shallowRef(structuredClone(props.snapshot))
+
+const locales = computed(() => {
+  const document = props.snapshot.revision.document
+  const own = 'locales' in document ? Object.keys(document.locales) : []
+  return [...new Set([...content.contentLocales.value, ...own])]
+})
+const snapshotOnly = ref<string>()
+watch(contentLocale, () => (snapshotOnly.value = undefined))
+const shown = computed({
+  get: () =>
+    snapshotOnly.value !== undefined && locales.value.includes(snapshotOnly.value)
+      ? snapshotOnly.value
+      : shownLocale(locales.value, contentLocale.value),
+  set: (code: string) => {
+    if (content.contentLocales.value.includes(code)) {
+      snapshotOnly.value = undefined
+      contentLocale.value = code
+    } else snapshotOnly.value = code
+  },
+})
+const withLocales = (own: Readonly<Record<string, PageLocale>>) =>
+  Object.fromEntries(locales.value.map((code) => [code, own[code] ?? emptyLocale()]))
+const editable = (snapshot: RevisionSnapshot): RevisionSnapshot => {
+  const clone = structuredClone(snapshot)
+  if (clone.kind === 'page') {
+    const { revision } = clone
+    const document = { ...revision.document, locales: withLocales(revision.document.locales) }
+    return { kind: 'page', revision: { ...revision, document } }
+  }
+  if (clone.kind === 'item') {
+    const { revision } = clone
+    const document = { ...revision.document, locales: withLocales(revision.document.locales) }
+    return { kind: 'item', revision: { ...revision, document } }
+  }
+  return clone
+}
+const form = shallowRef(editable(props.snapshot))
 watch(
   () => props.snapshot,
   (snapshot) => {
-    form.value = structuredClone(snapshot)
+    form.value = editable(snapshot)
   },
 )
-const locales = computed(() => {
-  const document = props.snapshot.revision.document
-  return 'locales' in document ? Object.keys(document.locales) : content.contentLocales.value
-})
 const menuItems = computed<EditedMenuItem[]>(() =>
   form.value.kind === 'menu'
     ? form.value.revision.document.items.map(function copy(item): EditedMenuItem {
@@ -38,10 +73,12 @@ const menuItems = computed<EditedMenuItem[]>(() =>
 
 <template>
   <div class="space-y-4">
+    <LocaleSwitch v-model="shown" :locales="locales" />
     <template v-if="snapshot.kind === 'page' && form.kind === 'page'">
       <LocaleDetails
         :value="form.revision.document.locales"
         :locales="locales"
+        :locale="shown"
         disabled
         name-prefix="revision.locales"
       />
@@ -61,6 +98,7 @@ const menuItems = computed<EditedMenuItem[]>(() =>
           :data="section.data"
           :group="definitions.sections[section.type]!"
           :locales="locales"
+          :locale="shown"
           :name="`revision.sections.${index}`"
           disabled
         />
@@ -73,6 +111,7 @@ const menuItems = computed<EditedMenuItem[]>(() =>
       <LocaleDetails
         :value="form.revision.document.locales"
         :locales="locales"
+        :locale="shown"
         disabled
         name-prefix="revision.locales"
       />
@@ -81,6 +120,7 @@ const menuItems = computed<EditedMenuItem[]>(() =>
         :data="form.revision.document.data"
         :group="definitions.collections[collection]!"
         :locales="locales"
+        :locale="shown"
         name="revision.data"
         disabled
       />
@@ -93,6 +133,7 @@ const menuItems = computed<EditedMenuItem[]>(() =>
       :data="form.revision.document.data"
       :group="definitions.settings"
       :locales="locales"
+      :locale="shown"
       name="revision.data"
       disabled
     />
@@ -103,6 +144,7 @@ const menuItems = computed<EditedMenuItem[]>(() =>
         :level="1"
         :depth="definitions.menus[documentRef]?.depth ?? 3"
         :locales="locales"
+        :locale="shown"
         name="revision.items"
         disabled
       />

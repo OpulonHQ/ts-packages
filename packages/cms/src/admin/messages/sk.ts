@@ -135,6 +135,7 @@ export default {
     addChild: 'Pridať podpoložku',
     remove: 'Odstrániť položku',
   },
+  fields: { allLanguages: 'Všetky jazyky' },
   reference: {
     missing: 'Chýbajúca alebo vymazaná položka ({id})',
     selected: 'Vybrané položky',

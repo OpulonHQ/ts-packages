@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { CachePurgeNotice, useI18n } from '@opulonjs/admin'
 import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
+import LocaleSwitch from '@opulonjs/ui/components/LocaleSwitch'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
-import { computed, ref, shallowRef, useId, watch, useTemplateRef } from 'vue'
+import { computed, nextTick, ref, shallowRef, useId, watch, useTemplateRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { labelText, type Page, type PageDocument, type PageLocale } from '../api.ts'
 import { emptyLocale } from '../localize.ts'
@@ -18,6 +19,7 @@ import {
   pageTitle,
   useAction,
   useCmsContext,
+  useContentLocale,
   useDraftChanges,
   usePages,
   useFocusReturn,
@@ -50,7 +52,7 @@ const locales = computed(() => pages.contentLocales.value)
 const canEdit = computed(() => pages.can('cms.pages.edit'))
 const locked = computed(() => !canEdit.value || pending.value || revisionPending.value)
 const form = useTemplateRef<HTMLFormElement>('form')
-const shownLocales = ref<Record<string, Readonly<Record<string, string>>>>({})
+const contentLocale = useContentLocale(() => locales.value, status)
 useFocusReturn(
   () => pending.value || revisionPending.value,
   () => form.value,
@@ -81,14 +83,12 @@ const firstControl = (root: Element) =>
   [...root.querySelectorAll<HTMLElement>('input, textarea, select, [contenteditable="true"]')].find(
     usable,
   ) ?? [...root.querySelectorAll<HTMLElement>('button:not([role="tab"])')].find(usable)
-async function focusField(sectionId: string, field: string | undefined, contentLocale: string) {
+async function focusField(sectionId: string, field: string | undefined, locale: string) {
   const panel = document.getElementById(`${panels}-${sectionId}`)
   if (!panel) return
   selection.value = { kind: 'section', id: sectionId }
-  if (field !== undefined)
-    shownLocales.value[sectionId] = { ...shownLocales.value[sectionId], [field]: contentLocale }
-  // A locale tab's panel is shown a few ticks after its tab is chosen.
-  await new Promise(requestAnimationFrame)
+  contentLocale.value = locale
+  await nextTick()
   const wrapper = [...panel.querySelectorAll<HTMLElement>('[data-field]')].find(
     (el) => el.dataset.field === field,
   )
@@ -202,6 +202,7 @@ useDraftChanges({
 
       <ActionStatus :status="status" @reload="reload()" />
 
+      <LocaleSwitch v-model="contentLocale" :locales="locales" class="mb-4" />
       <form ref="form" tabindex="-1" :aria-label="title" class="@container" @submit.prevent="save">
         <fieldset :disabled="pending || revisionPending" class="min-w-0">
           <div
@@ -220,6 +221,7 @@ useDraftChanges({
             />
             <PreviewPane
               v-if="preview"
+              v-model:content-locale="contentLocale"
               :page="page"
               :url="preview.url"
               :draft="draft"
@@ -235,7 +237,12 @@ useDraftChanges({
                 }}
               </h2>
               <div v-show="selection.kind === 'page'">
-                <LocaleDetails :value="draft.locales" :locales="locales" :disabled="locked" />
+                <LocaleDetails
+                  :value="draft.locales"
+                  :locales="locales"
+                  :locale="contentLocale"
+                  :disabled="locked"
+                />
               </div>
               <div
                 v-for="(section, index) in draft.sections"
@@ -246,10 +253,10 @@ useDraftChanges({
               >
                 <FieldsForm
                   v-if="definitions.sections[section.type]"
-                  v-model:shown-locales="shownLocales[section.id]"
                   v-model:data="section.data"
                   :group="definitions.sections[section.type]!"
                   :locales="locales"
+                  :locale="contentLocale"
                   :name="`sections.${index}`"
                   :disabled="locked"
                 />
@@ -260,6 +267,7 @@ useDraftChanges({
       </form>
       <RevisionHistory
         v-if="page"
+        v-model:content-locale="contentLocale"
         :version="page.version"
         kind="page"
         :document-ref="page.id"

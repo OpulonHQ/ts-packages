@@ -1,4 +1,5 @@
 import { useAdmin, useApiClient, useI18n, useUnsavedChanges } from '@opulonjs/admin'
+import { languageName } from '@opulonjs/ui'
 import {
   computed,
   inject,
@@ -10,6 +11,7 @@ import {
   watch,
 } from 'vue'
 import { cmsContextKey } from './context.ts'
+import { refusedLocale } from './refused-locale.ts'
 import {
   CmsConflict,
   type CmsDefinitions,
@@ -37,6 +39,12 @@ export interface CmsWidgetProps {
   name: string
   /** The field's label in the admin locale. */
   label: string
+  /**
+   * "All languages" while the host has several content locales and the field is not localized:
+   * show it next to the label. Unset otherwise. Declare it (or `inheritAttrs: false`), or Vue
+   * renders it as an attribute of the widget's root element.
+   */
+  hint?: string
   /**
    * No edit permission, or a request is pending whose response replaces the draft. Write no value
    * until it is false again; a value written meanwhile is lost.
@@ -122,6 +130,34 @@ export const useContent = () => {
     can: admin.can,
     contentLocales: computed(() => admin.me.value?.contentLocales ?? []),
   }
+}
+
+export const shownLocale = (locales: ReadonlyArray<string>, locale: string | undefined) =>
+  locale !== undefined && locales.includes(locale) ? locale : (locales[0] ?? '')
+
+export const useLocaleHints = (locales: () => ReadonlyArray<string>) => {
+  const { t, locale } = useI18n()
+  return {
+    language: (code: string) =>
+      locales().length > 1 ? languageName(code, locale.value) : undefined,
+    shared: () => (locales().length > 1 ? t('cms.fields.allLanguages') : undefined),
+  }
+}
+
+export const useContentLocale = (
+  locales: () => ReadonlyArray<string>,
+  status: Ref<ActionResult | undefined>,
+) => {
+  const chosen = useCmsContext().contentLocale
+  watch(status, (result) => {
+    if (result?.kind !== 'error') return
+    const refused = refusedLocale(result.message, locales())
+    if (refused !== undefined) chosen.value = refused
+  })
+  return computed({
+    get: () => shownLocale(locales(), chosen.value),
+    set: (locale: string) => (chosen.value = locale),
+  })
 }
 
 export interface ActionResult {

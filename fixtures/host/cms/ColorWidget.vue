@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /** A host widget for `fields.custom({ widget: 'color' })`: a native colour input. */
 const model = defineModel<unknown>()
-defineProps<{ name: string; label: string; disabled?: boolean }>()
+defineProps<{ name: string; label: string; hint?: string; disabled?: boolean }>()
 </script>
 
 <template>
@@ -14,5 +14,6 @@ defineProps<{ name: string; label: string; disabled?: boolean }>()
       @input="model = ($event.target as HTMLInputElement).value"
     />
     {{ label }}
+    <span v-if="hint" class="ms-auto text-muted">{{ hint }}</span>
   </label>
 </template>

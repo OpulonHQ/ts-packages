@@ -198,3 +198,29 @@ export const saveDraft = async () => {
   await expect.poll(find).toBeDefined()
   find()!.click()
 }
+
+export const languages = (root: ParentNode = document) =>
+  [...(languageSwitch(root)?.querySelectorAll('label') ?? [])].map((l) => l.textContent?.trim())
+
+export const languageSwitch = (root: ParentNode = document) =>
+  [...root.querySelectorAll<HTMLElement>('[role="radiogroup"]')].find(
+    (group) =>
+      document.getElementById(group.getAttribute('aria-labelledby') ?? '')?.textContent?.trim() ===
+      'Jazyk obsahu',
+  )
+
+export const chosenLanguage = (root: ParentNode = document) =>
+  [...(languageSwitch(root)?.querySelectorAll('label') ?? [])]
+    .find((label) => label.querySelector('input')?.checked)
+    ?.textContent?.trim()
+
+export const chooseLanguage = (language: string, root: ParentNode = document) => {
+  const label = [...(languageSwitch(root)?.querySelectorAll('label') ?? [])].find(
+    (l) => l.textContent?.trim() === language,
+  )
+  if (!label) throw new Error(`no "${language}" in the content language switch`)
+  label.querySelector('input')!.click()
+}
+
+export const shown = (name: string) =>
+  document.querySelector<HTMLElement>(`[name="${name}"]`)?.checkVisibility() === true

@@ -20,7 +20,14 @@ const FieldRichText = defineAsyncComponent({
 })
 
 const model = defineModel<unknown>()
-const props = defineProps<{ field: Field; name: string; label: string; disabled?: boolean }>()
+const props = defineProps<{
+  field: Field
+  name: string
+  label: string
+  hint?: string
+  srHint?: string
+  disabled?: boolean
+}>()
 
 const { locale } = useI18n()
 const { widgets } = useCmsContext()
@@ -55,6 +62,8 @@ const select = computed({
     v-model="text"
     :name="name"
     :label="label"
+    :hint="hint"
+    :sr-hint="srHint"
     :help="help"
     :disabled="disabled"
   />
@@ -63,6 +72,8 @@ const select = computed({
     v-model="text"
     :name="name"
     :label="label"
+    :hint="hint"
+    :sr-hint="srHint"
     :help="help"
     :disabled="disabled"
   />
@@ -71,6 +82,8 @@ const select = computed({
     v-model="text"
     :name="name"
     :label="label"
+    :hint="hint"
+    :sr-hint="srHint"
     :help="help"
     :disabled="disabled"
   />
@@ -79,6 +92,8 @@ const select = computed({
     v-model="number"
     :name="name"
     :label="label"
+    :hint="hint"
+    :sr-hint="srHint"
     :help="help"
     :min="field.min"
     :max="field.max"
@@ -89,6 +104,8 @@ const select = computed({
     v-model="select"
     :name="name"
     :label="label"
+    :hint="hint"
+    :sr-hint="srHint"
     :help="help"
     :items="items"
     :disabled="disabled"
@@ -98,6 +115,8 @@ const select = computed({
     v-model="flag"
     :name="name"
     :label="label"
+    :hint="hint"
+    :sr-hint="srHint"
     :help="help"
     :disabled="disabled"
   />
@@ -105,6 +124,8 @@ const select = computed({
     v-else-if="field.widget === 'media'"
     v-model="text"
     :label="label"
+    :hint="hint"
+    :sr-hint="srHint"
     :accept="field.accept"
     :disabled="disabled"
   />
@@ -113,6 +134,8 @@ const select = computed({
     v-model="model"
     :name="name"
     :label="label"
+    :hint="hint"
+    :sr-hint="srHint"
     :disabled="disabled"
   />
   <ReferenceControl
@@ -121,6 +144,8 @@ const select = computed({
     :field="field"
     :name="name"
     :label="label"
+    :hint="hint"
+    :sr-hint="srHint"
     :disabled="disabled"
   />
   <component
@@ -130,6 +155,7 @@ const select = computed({
     :field="field"
     :name="name"
     :label="label"
+    :hint="hint"
     :disabled="disabled"
   />
 </template>

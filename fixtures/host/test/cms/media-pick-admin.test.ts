@@ -11,8 +11,9 @@ const host = admin.track(useCmsHost())
 const button = (label: string) =>
   [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === label)
 const cover = () =>
-  [...document.querySelectorAll('form p')].find((p) => p.textContent?.trim() === 'Obálka')
-    ?.parentElement
+  [...document.querySelectorAll('form p')]
+    .find((p) => p.textContent?.trim() === 'Obálka')
+    ?.closest('[role="group"]')
 const locked = () => cover()?.closest('fieldset[disabled]') != null
 const uploadButton = () =>
   [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(

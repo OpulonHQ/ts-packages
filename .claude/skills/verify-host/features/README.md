@@ -22,7 +22,7 @@ All journeys last passed together on 2026-10-13. Not mapped: the fixture-only `N
 ## Driving conventions
 
 - Admin UI: `$V/ui.sh <journey.mjs> k=v ...`, journeys in `../journeys/`. Journeys other than `sign-in.mjs` start with `signed-in.mjs`, which reuses `.verify/session.json` and signs in only when it expired.
-- Accessible names come from `packages/<pkg>/src/admin/messages/en.ts`. Prefer `getByRole(<role>, { name })`: list screens have `Sort by <column>` buttons and locale tabs mount fields twice, so `getByLabel` often matches two elements.
+- Accessible names come from `packages/<pkg>/src/admin/messages/en.ts`. Prefer `getByRole(<role>, { name })`: list screens have `Sort by <column>` buttons, and locale tabs (media, emails) and the cms editors' language switch keep a field mounted once per language, so `getByLabel` often matches two elements. Accessible names are the plain labels; with several content locales a cms control's description holds its language (screen readers only) or "All languages".
 - Success and failure messages are inline `role=status` / `role=alert`, not toasts.
 - API: `curl` with `Origin: $base` and the session cookie, or `page.request` inside a journey.
 

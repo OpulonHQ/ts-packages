@@ -4,13 +4,20 @@
 import { useI18n } from '@opulonjs/admin'
 import FieldSelect from '@opulonjs/ui/components/Field/Select'
 import FieldText from '@opulonjs/ui/components/Field/Text'
-import { computed, ref, shallowRef, watch } from 'vue'
+import { computed, ref, shallowRef, useId, watch } from 'vue'
 import { CmsNotFound, fields, labelText, type ItemSummary, type Link } from '../api.ts'
 import { pageTitle, useCmsContext, useContent } from './use-cms.ts'
 import ReferenceControl from './ReferenceControl.vue'
 
 const model = defineModel<unknown>()
-const props = defineProps<{ name: string; label: string; disabled?: boolean }>()
+const props = defineProps<{
+  name: string
+  label: string
+  hint?: string
+  srHint?: string
+  disabled?: boolean
+}>()
+const hintId = useId()
 
 const { t, locale } = useI18n()
 const { definitions } = useCmsContext()
@@ -131,8 +138,12 @@ function selectCollection(value: string | number | null | undefined) {
 </script>
 
 <template>
-  <fieldset class="space-y-2">
-    <legend class="text-sm font-medium text-highlighted">{{ props.label }}</legend>
+  <fieldset class="space-y-2" :aria-describedby="hint || srHint ? hintId : undefined">
+    <legend class="flex w-full items-center justify-between gap-1 text-sm">
+      <span class="font-medium text-highlighted">{{ props.label }}</span>
+      <span v-if="hint" :id="hintId" aria-hidden="true" class="text-muted">{{ hint }}</span>
+    </legend>
+    <span v-if="!hint && srHint" :id="hintId" class="sr-only">{{ srHint }}</span>
     <FieldSelect
       v-model="type"
       :name="`${name}.type`"

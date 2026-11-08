@@ -6,7 +6,7 @@
 import UFormField from '@nuxt/ui/components/FormField.vue'
 import USelectMenu from '@nuxt/ui/components/SelectMenu.vue'
 import { computed } from 'vue'
-import type { FieldProps, SelectItem } from '../../fields.ts'
+import { srOnlyHint, type FieldProps, type SelectItem } from '../../fields.ts'
 import { useKitText } from '../../text.ts'
 
 const model = defineModel<string | number | null>()
@@ -28,7 +28,8 @@ const text = useKitText()
     :label="label"
     :description="description"
     :help="help"
-    :hint="hint"
+    :hint="hint ?? srHint"
+    :ui="hint === undefined && srHint !== undefined ? srOnlyHint : undefined"
     :required="required"
     :size="size"
   >

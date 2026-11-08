@@ -8,19 +8,25 @@ import type { CmsPreviewOptions } from './context.ts'
 import { pagePreview } from '../localize.ts'
 import { cleanFields, cleanLocaleText } from '../sanitize.ts'
 import { type AdminMessage, httpUrl, parseFrameMessage } from '../site/live-preview.ts'
-import { useCmsContext, usePages } from './use-cms.ts'
+import { shownLocale, useCmsContext, usePages } from './use-cms.ts'
 
 const props = defineProps<{ page: Page; draft: PageDocument; url: CmsPreviewOptions['url'] }>()
 const emit = defineEmits<{
   select: [sectionId: string, field: string | undefined, locale: string]
 }>()
+const contentLocale = defineModel<string>('contentLocale')
 
 const { t, locale: adminLocale } = useI18n()
 const { definitions } = useCmsContext()
 const locales = usePages().contentLocales
 const heading = useId()
-const picked = ref<string | number | null>(locales.value[0] ?? null)
-const locale = computed(() => (typeof picked.value === 'string' ? picked.value : ''))
+const locale = computed(() => shownLocale(locales.value, contentLocale.value))
+const picked = computed({
+  get: () => locale.value,
+  set: (value: string | number | null) => {
+    if (typeof value === 'string') contentLocale.value = value
+  },
+})
 const width = ref<'desktop' | 'mobile'>('desktop')
 const frame = useTemplateRef<HTMLIFrameElement>('frame')
 
