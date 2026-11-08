@@ -349,8 +349,6 @@ export const createAdmin = (options: AdminOptions): App => {
     ]
       .filter((n) => allowed(routes.get(n.route)))
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-    // '' is the top group: `sort` would move an `undefined` group behind every other one
-    // without asking the comparator, and the shell renders the top group only when it is first.
     const ids = [...new Set(items.map((n) => n.group ?? ''))].sort(
       (a, b) => (a ? (groups[a] ?? 1000) : 0) - (b ? (groups[b] ?? 1000) : 0),
     )

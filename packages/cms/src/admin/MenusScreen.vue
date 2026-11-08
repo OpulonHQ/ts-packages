@@ -1,5 +1,4 @@
 <script setup lang="ts">
-/** Content > Menus > one menu (a sidebar entry each): its entries, draft and publishing. */
 import { CachePurgeNotice, useI18n, useNavTarget } from '@opulonjs/admin'
 import { UCard } from '@opulonjs/ui'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
@@ -24,7 +23,6 @@ const current = computed(() => {
   const wanted = String(route.params.key ?? '')
   return keys.includes(wanted) ? wanted : keys[0]
 })
-// `/cms/menus` without a key shows the first menu: highlight its entry.
 useNavTarget(() =>
   current.value === undefined ? undefined : { route: 'cms.menus', params: { key: current.value } },
 )

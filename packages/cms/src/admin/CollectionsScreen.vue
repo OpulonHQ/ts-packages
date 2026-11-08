@@ -1,5 +1,4 @@
 <script setup lang="ts">
-/** Content > Collections > one collection (a sidebar entry each): its items, newest first. */
 import { CachePurgeNotice, useI18n, useNavTarget } from '@opulonjs/admin'
 import { listDefaultPerPage, listMaxOffset } from '@opulonjs/core/api'
 import { formatDate, type TableQuery, UButton } from '@opulonjs/ui'
@@ -24,7 +23,6 @@ const current = computed(() => {
   const wanted = String(route.params.collection ?? '')
   return keys.includes(wanted) ? wanted : keys[0]
 })
-// `/cms/collections` without a key shows the first collection: highlight its entry.
 useNavTarget(() =>
   current.value === undefined
     ? undefined

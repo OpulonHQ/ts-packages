@@ -122,7 +122,6 @@ export const useNavTarget = (target: () => NavTarget | undefined): void => {
     own = target()
     navTarget.value = own
   })
-  // The next screen may already have named its own target; leave that one alone.
   onBeforeUnmount(() => {
     if (navTarget.value === own) navTarget.value = undefined
   })

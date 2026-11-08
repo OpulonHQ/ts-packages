@@ -64,7 +64,6 @@ export const cmsAdmin = (options: CmsAdminOptions) => {
         )
   const hasCollections = Object.keys(definitions.collections).length > 0
   const hasMenus = Object.keys(definitions.menus).length > 0
-  // A host name for the sidebar; a plain string is the same name in every admin locale.
   const navLabel = (label: Label) => (typeof label === 'string' ? { en: label } : label)
   const context = {
     definitions: options.definitions,
@@ -144,8 +143,6 @@ export const cmsAdmin = (options: CmsAdminOptions) => {
         component: () => import('./RedirectsScreen.vue'),
       },
     ],
-    // Content reads Pages, Collections, Menus, Media (order 40, media), Redirects, Site settings
-    // whatever order the host lists its modules in; each collection and menu is its own entry.
     nav: [
       {
         label: 'nav.pages',

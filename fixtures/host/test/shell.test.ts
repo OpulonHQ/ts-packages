@@ -51,7 +51,6 @@ const coreScreens = defineAdminModule({
   nav: [
     { label: 'nav.audit', route: 'core.audit', group: 'settings' },
     { label: 'nav.profile', route: 'core.profile', group: 'settings' },
-    // No group: the top group, next to Dashboard.
     { label: 'nav.inbox', route: 'core.inbox' },
   ],
   widgets: [
@@ -134,7 +133,6 @@ test('groups the nav and shows only items and widgets the user may open', async 
   expect(admin.text()).not.toContain('audit widget')
 })
 
-// Folders as sidebar entries under one parent; a file opens by id and names its folder.
 const folders = defineAdminModule({
   id: 'core',
   routes: [

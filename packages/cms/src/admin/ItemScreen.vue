@@ -50,7 +50,6 @@ const collection = computed(() =>
 )
 const collectionLabel = computed(() => labelText(collection.value?.label, locale.value))
 
-// The item opens by id; keep its collection's sidebar entry highlighted.
 useNavTarget(() =>
   item.value
     ? { route: 'cms.collections', params: { collection: item.value.collection } }

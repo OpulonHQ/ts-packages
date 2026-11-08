@@ -25,7 +25,6 @@ const load = async (query: TableQuery) => {
   }))
   return queryRows(rows, ['title', 'path'], query)
 }
-// The same columns as a collection's items, sortable the same way (pages sort in memory).
 const columns = computed(() => [
   { key: 'title', label: t('cms.columns.title'), sortable: true },
   { key: 'path', label: t('cms.columns.path'), sortable: true },
