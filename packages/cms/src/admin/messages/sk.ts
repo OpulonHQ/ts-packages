@@ -95,6 +95,7 @@ export default {
     cancel: 'Zrušiť',
     delete: 'Vymazať',
     deleteTitle: 'Vymazať toto presmerovanie?',
+    deleteWarning: 'Návštevníci starej adresy sa už nedostanú na novú. Nedá sa to vrátiť späť.',
     deleted: 'Presmerovanie vymazané.',
   },
   collections: {

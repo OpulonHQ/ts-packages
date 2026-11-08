@@ -22,7 +22,13 @@ import UnsavedChangesBar from '@opulonjs/ui/components/UnsavedChangesBar'
 import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
-import { failedScreenKey, type NavTarget, type ShellNavItem, useAdmin } from '../state.ts'
+import {
+  failedScreenKey,
+  losesChanges,
+  type NavTarget,
+  type ShellNavItem,
+  useAdmin,
+} from '../state.ts'
 import ScreenFailed from './ScreenFailed.vue'
 
 const {
@@ -170,7 +176,7 @@ const userMenu = computed<DropdownMenuItem[][]>(() => [
     : []),
 ])
 const editor = computed(() => [...editors].reverse().find((e) => e.bar))
-const unsaved = () => editors.some((e) => e.dirty() && !e.busy())
+const unsaved = () => editors.some(losesChanges)
 const discard = async () => {
   const target = editor.value
   if (target && (await confirmDiscard())) target.discard?.()
@@ -187,7 +193,9 @@ const onKeydown = (event: KeyboardEvent) => {
   const target = [...editors].reverse().find((e) => e.save)
   if (!target) return
   event.preventDefault()
-  if (document.querySelector('[role="dialog"]')) return
+  const form = target.within?.()
+  const dialogs = [...document.querySelectorAll('[role="dialog"]')]
+  if (dialogs.some((dialog) => !form || !dialog.contains(form))) return
   if (target.dirty() && !target.busy()) target.save?.()
 }
 let leaving = false
@@ -380,7 +388,10 @@ const title = computed(() => {
       </UDashboardPanel>
     </UDashboardGroup>
 
+    <!-- Mounted only while asking: a teleport keeps the place in <body> it took when it mounted,
+      so a dialog mounted with the shell would sit under any slideover opened later. -->
     <ConfirmDialog
+      v-if="discardRequest"
       v-model:open="discardOpen"
       :title="t('admin.discard.title')"
       :description="t('admin.discard.description')"

@@ -1,6 +1,5 @@
 <script setup lang="ts">
-/** Content > Media: the flat library with search, type and archived filters, upload and details. */
-import { CachePurgeNotice, useI18n } from '@opulonjs/admin'
+import { CachePurgeNotice, useCloseGuard, useI18n } from '@opulonjs/admin'
 import { formatDate, UButton, UIcon, USlideover } from '@opulonjs/ui'
 import DataTable from '@opulonjs/ui/components/DataTable'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
@@ -16,11 +15,11 @@ const fileInput = ref<HTMLInputElement>()
 const uploading = ref(false)
 const failure = ref<string>()
 const selected = shallowRef<MediaItem>()
-const open = computed({
-  get: () => selected.value !== undefined,
-  set: (value) => {
-    if (!value) selected.value = undefined
-  },
+const details = ref<{ dirty: boolean }>()
+const { open, dismissible, close, leave } = useCloseGuard({
+  isOpen: () => selected.value !== undefined,
+  close: () => (selected.value = undefined),
+  dirty: () => details.value?.dirty ?? false,
 })
 
 const load = media.load()
@@ -63,16 +62,24 @@ async function upload(event: Event) {
   const input = event.target as HTMLInputElement
   const files = [...(input.files ?? [])]
   input.value = ''
+  if (files.length === 0 || !(await leave())) return
   uploading.value = true
   failure.value = undefined
   try {
-    for (const file of files) selected.value = await media.upload(file)
+    for (const file of files) {
+      const uploaded = await media.upload(file)
+      if (!details.value?.dirty) selected.value = uploaded
+    }
   } catch (error) {
     failure.value = failureMessage(error, t('media.errors.failed'))
   } finally {
     uploading.value = false
     table.value?.refresh()
   }
+}
+
+async function select(item: MediaItem) {
+  if (item.id !== selected.value?.id && (await leave())) selected.value = item
 }
 
 function changed(item: MediaItem) {
@@ -117,7 +124,7 @@ function changed(item: MediaItem) {
       :caption="t('media.library.caption')"
       :empty-title="t('media.library.empty')"
       searchable
-      :on-row-click="(row: MediaItem) => (selected = row)"
+      :on-row-click="select"
     >
       <template #preview-cell="{ row }">
         <img
@@ -131,9 +138,14 @@ function changed(item: MediaItem) {
       </template>
     </DataTable>
 
-    <USlideover v-model:open="open" :title="t('media.details.title')">
+    <USlideover
+      v-model:open="open"
+      :dismissible="dismissible"
+      :title="t('media.details.title')"
+      @close:prevent="close"
+    >
       <template #body>
-        <MediaDetails v-if="selected" :item="selected" @changed="changed" />
+        <MediaDetails v-if="selected" ref="details" :item="selected" @changed="changed" />
       </template>
     </USlideover>
   </section>

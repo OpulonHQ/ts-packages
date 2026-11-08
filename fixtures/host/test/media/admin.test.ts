@@ -116,3 +116,80 @@ test('MediaPicker picks an active image and sets the v-model to its id', async (
   button('Odstrániť')!.click()
   await expect.poll(text).toContain('picked:none')
 })
+
+test('unsaved alt text survives Replace file and Archive; closing the details asks first', async () => {
+  const photo = (await host.upload(files.png(10, 10), 'keep-alt.png', 'image/png')).body
+  const text = mountAdmin('/admin/media')
+  await expect.poll(() => row('keep-alt.png')).toBeDefined()
+  row('keep-alt.png')!.click()
+  const alt = () => document.querySelector<HTMLInputElement>('input[name="alt.en"]')
+  await expect.poll(alt).toBeTruthy()
+  alt()!.value = 'Typed, not saved'
+  alt()!.dispatchEvent(new Event('input'))
+
+  const replacement = document.querySelector<HTMLInputElement>(
+    '[role="dialog"] input[type="file"]',
+  )!
+  Object.defineProperty(replacement, 'files', {
+    value: [new File([files.png(20, 20).slice()], 'keep-alt-2.png', { type: 'image/png' })],
+    configurable: true,
+  })
+  replacement.dispatchEvent(new Event('change'))
+  await expect.poll(text).toContain('Súbor bol nahradený.')
+  expect(alt()!.value).toBe('Typed, not saved')
+
+  button('Archivovať')!.click()
+  await expect.poll(text).toContain('stránky, ktoré ju už používajú')
+  ;[...document.querySelectorAll('button')]
+    .filter((b) => b.textContent?.trim() === 'Archivovať')
+    .at(-1)!
+    .click()
+  await expect.poll(text).toContain('Archivované.')
+  expect(alt()!.value).toBe('Typed, not saved')
+  expect((await item(photo.id)).alt).toEqual({})
+
+  const discardDialog = () =>
+    [...document.querySelectorAll<HTMLElement>('[role="dialog"]')].find((d) =>
+      d.textContent?.includes('Zahodiť neuložené zmeny?'),
+    )
+  document.querySelector<HTMLButtonElement>('button[data-slot="close"]')!.click()
+  await expect.poll(discardDialog).toBeTruthy()
+  ;[...discardDialog()!.querySelectorAll('button')]
+    .find((b) => b.textContent?.trim() === 'Zahodiť zmeny')!
+    .click()
+  await expect.poll(alt).toBeNull()
+})
+
+test('switching to another item with unsaved alt text asks first', async () => {
+  await host.upload(files.png(10, 10), 'switch-a.png', 'image/png')
+  await host.upload(files.png(10, 10), 'switch-b.png', 'image/png')
+  mountAdmin('/admin/media')
+  await expect.poll(() => row('switch-b.png')).toBeDefined()
+  row('switch-a.png')!.click()
+  const alt = () => document.querySelector<HTMLInputElement>('input[name="alt.en"]')
+  const shown = () => document.querySelector('[role="dialog"] figcaption')?.textContent ?? ''
+  await expect.poll(shown).toContain('switch-a.png')
+  alt()!.value = 'Draft for A'
+  alt()!.dispatchEvent(new Event('input'))
+
+  const discardDialog = () =>
+    [...document.querySelectorAll<HTMLElement>('[role="dialog"]')].find((d) =>
+      d.textContent?.includes('Zahodiť neuložené zmeny?'),
+    )
+  const answer = (label: string) =>
+    [...discardDialog()!.querySelectorAll('button')]
+      .find((b) => b.textContent?.trim() === label)!
+      .click()
+  row('switch-b.png')!.click()
+  await expect.poll(discardDialog).toBeTruthy()
+  answer('Pokračovať v úpravách')
+  await expect.poll(discardDialog).toBeUndefined()
+  expect(shown()).toContain('switch-a.png')
+  expect(alt()!.value).toBe('Draft for A')
+
+  row('switch-b.png')!.click()
+  await expect.poll(discardDialog).toBeTruthy()
+  answer('Zahodiť zmeny')
+  await expect.poll(shown).toContain('switch-b.png')
+  expect(alt()!.value).toBe('')
+})

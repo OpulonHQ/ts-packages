@@ -30,6 +30,7 @@ import {
   adminStateKey,
   apiContextKey,
   failedScreenKey,
+  losesChanges,
   type AdminState,
   type Me,
   type NavTarget,
@@ -415,7 +416,7 @@ export const createAdmin = (options: AdminOptions): App => {
       if (index >= 0) editors.splice(index, 1)
     }
   }
-  const unsaved = () => editors.some((editor) => editor.dirty() && !editor.busy())
+  const unsaved = () => editors.some(losesChanges)
   const discardRequest = shallowRef<(discard: boolean) => void>()
   let asking: Promise<boolean> | undefined
   const confirmDiscard = () =>

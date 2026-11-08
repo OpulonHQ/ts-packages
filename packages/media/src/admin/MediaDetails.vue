@@ -1,12 +1,11 @@
 <script setup lang="ts">
-/** One media item: preview, alt text and caption per content locale, replace, archive. */
-import { CachePurgeNotice, useI18n } from '@opulonjs/admin'
+import { CachePurgeNotice, sameContent, useI18n, useUnsavedChanges } from '@opulonjs/admin'
 import { UBadge, UButton } from '@opulonjs/ui'
 import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
 import FieldText from '@opulonjs/ui/components/Field/Text'
 import FieldTextarea from '@opulonjs/ui/components/Field/Textarea'
 import LocaleTabs from '@opulonjs/ui/components/LocaleTabs'
-import { reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, useTemplateRef, watch } from 'vue'
 import type { MediaItem } from '../api.ts'
 import { accept, failureMessage, formatSize, useMedia } from './use-media.ts'
 
@@ -22,28 +21,47 @@ const text = reactive<{
   alt: {},
   caption: {},
 })
-watch(
-  () => props.item,
-  (item) => {
-    text.alt = { ...item.alt }
-    text.caption = { ...item.caption }
-  },
-  { immediate: true },
-)
-
 const pending = ref(false)
 const status = ref<{ kind: 'ok' | 'error'; message: string }>()
 const confirming = ref(false)
 const fileInput = ref<HTMLInputElement>()
+const root = useTemplateRef<HTMLElement>('root')
+const locked = computed(() => !media.can('media.upload') || pending.value)
+
+const savedText = (item: MediaItem) => ({ alt: item.alt, caption: item.caption })
+const show = (item: MediaItem) => {
+  text.alt = { ...item.alt }
+  text.caption = { ...item.caption }
+}
+const changes = useUnsavedChanges({
+  current: () => text,
+  saved: () => savedText(props.item),
+  save: () => save(),
+  discard: () => show(props.item),
+  busy: () => pending.value,
+  bar: false,
+  within: () => root.value,
+})
+watch(
+  () => props.item,
+  (item, previous) => {
+    if (!previous || item.id !== previous.id || sameContent(text, savedText(previous))) show(item)
+  },
+  { immediate: true },
+)
+defineExpose({ dirty: changes.dirty })
 
 async function run(action: () => Promise<MediaItem>, done: string) {
   pending.value = true
   status.value = undefined
   try {
-    emit('changed', await action())
+    const item = await action()
+    emit('changed', item)
     status.value = { kind: 'ok', message: done }
+    return item
   } catch (error) {
     status.value = { kind: 'error', message: failureMessage(error, t('media.errors.failed')) }
+    return undefined
   } finally {
     pending.value = false
     confirming.value = false
@@ -55,11 +73,13 @@ const filled = (values: Record<string, string | null>) =>
   Object.fromEntries(
     Object.entries(values).filter((entry): entry is [string, string] => entry[1] !== null),
   )
-const save = () =>
-  run(
+async function save() {
+  const saved = await run(
     () => media.update(props.item.id, { alt: filled(text.alt), caption: filled(text.caption) }),
     t('media.details.saved'),
   )
+  if (saved) show(saved)
+}
 function replace(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
@@ -71,7 +91,7 @@ const restore = () => run(() => media.restore(props.item.id), t('media.details.r
 </script>
 
 <template>
-  <div class="space-y-6">
+  <div ref="root" class="space-y-6">
     <CachePurgeNotice
       v-if="media.can('media.upload') || media.can('media.archive')"
       :pending="pending"
@@ -104,14 +124,14 @@ const restore = () => run(() => media.restore(props.item.id), t('media.details.r
             :name="`alt.${code}`"
             :label="t('media.details.alt')"
             :help="t('media.details.altHelp')"
-            :disabled="!media.can('media.upload')"
+            :disabled="locked"
             :maxlength="2000"
           />
           <FieldTextarea
             v-model="text.caption[code]"
             :name="`caption.${code}`"
             :label="t('media.details.caption')"
-            :disabled="!media.can('media.upload')"
+            :disabled="locked"
             :rows="2"
           />
         </template>

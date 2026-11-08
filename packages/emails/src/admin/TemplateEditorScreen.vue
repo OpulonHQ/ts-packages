@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useApiClient, useI18n, useRoute } from '@opulonjs/admin'
+import { sameContent, useApiClient, useI18n, useRoute, useUnsavedChanges } from '@opulonjs/admin'
 import { UButton, UInput, USelectMenu, USwitch } from '@opulonjs/ui'
 import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
 import LocaleTabs from '@opulonjs/ui/components/LocaleTabs'
@@ -16,6 +16,15 @@ import {
   TemplateInvalid,
 } from '../api.ts'
 
+interface Draft {
+  subject: string
+  body: string | null
+}
+interface Notice {
+  error: boolean
+  text: string
+}
+
 const { t, te } = useI18n()
 const route = useRoute()
 const key = String(route.params.key)
@@ -25,11 +34,14 @@ const template = ref<EmailTemplateInfo>()
 const components = ref<ReadonlyArray<EmailComponentInfo>>([])
 const status = ref<'loading' | 'ready' | 'notFound' | 'failed'>('loading')
 /** The wording being edited, per locale. */
-const drafts = reactive<Record<string, { subject: string; body: string | null }>>({})
+const drafts = reactive<Record<string, Draft>>({})
 /** Per locale: the last outcome shown under the editor. */
-const notices = reactive<Record<string, { error: boolean; text: string }>>({})
+const notices = reactive<Record<string, Notice>>({})
+const enabledNotice = ref<Notice>()
 const previews = reactive<Record<string, string>>({})
-const busy = ref(false)
+const shown = ref<string>()
+const requests = ref(0)
+const busy = computed(() => requests.value > 0)
 const resetting = ref<string>()
 const editors: Record<string, { insert: (content: string) => void } | null> = {}
 
@@ -38,25 +50,37 @@ emails((client) => client.templates()).then(
     template.value = list.templates.find((x) => x.key === key)
     components.value = list.components
     status.value = template.value ? 'ready' : 'notFound'
-    for (const l of template.value?.locales ?? []) setDraft(l.locale, l.override ?? l.default)
+    for (const l of template.value?.locales ?? []) drafts[l.locale] = savedDraft(l.locale)
   },
   () => (status.value = 'failed'),
 )
 
-function setDraft(locale: string, content: EmailContent | null) {
-  drafts[locale] = { subject: content?.subject ?? '', body: content?.body ?? null }
-}
-
+const toDraft = (content: EmailContent | null | undefined): Draft => ({
+  subject: content?.subject ?? '',
+  body: content?.body ?? null,
+})
 const entry = (locale: string) => template.value?.locales.find((l) => l.locale === locale)
+const savedDraft = (locale: string) => toDraft(entry(locale)?.override ?? entry(locale)?.default)
 const locales = computed(() => template.value?.locales.map((l) => l.locale) ?? [])
 const content = (locale: string): EmailContent => ({
   subject: drafts[locale]?.subject ?? '',
   body: drafts[locale]?.body ?? '',
 })
+const changed = (locale: string) => !sameContent(drafts[locale], savedDraft(locale))
+
+useUnsavedChanges({
+  current: () => locales.value.map((l) => drafts[l]),
+  saved: () => locales.value.map(savedDraft),
+  save: () => saveChanged(),
+  discard: () => locales.value.forEach((l) => (drafts[l] = savedDraft(l))),
+  busy: () => busy.value,
+  saveLabel: () => t('emails.editor.save'),
+  guardWhileBusy: true,
+})
 
 /** Runs one request, showing its outcome (or the server's validation message) for `locale`. */
 async function run<A>(locale: string, request: () => Promise<A>, done?: string) {
-  busy.value = true
+  requests.value++
   try {
     const result = await request()
     if (done) notices[locale] = { error: false, text: done }
@@ -68,9 +92,15 @@ async function run<A>(locale: string, request: () => Promise<A>, done?: string) 
     }
     return undefined
   } finally {
-    busy.value = false
+    requests.value--
   }
 }
+
+const withLocale = (locale: string, patch: Partial<EmailTemplateInfo['locales'][number]>) =>
+  template.value && {
+    ...template.value,
+    locales: template.value.locales.map((l) => (l.locale === locale ? { ...l, ...patch } : l)),
+  }
 
 async function save(locale: string) {
   const saved = await run(
@@ -78,30 +108,34 @@ async function save(locale: string) {
     () => emails((c) => c.saveOverride({ params: { key, locale }, payload: content(locale) })),
     t('emails.editor.saved'),
   )
-  if (!saved) return
-  setDraft(locale, saved)
-  const l = entry(locale)
-  if (l && template.value)
-    template.value = {
-      ...template.value,
-      locales: template.value.locales.map((x) => (x === l ? { ...x, override: saved } : x)),
-    }
+  if (!saved) return false
+  template.value = withLocale(locale, { override: saved })
+  drafts[locale] = toDraft(saved)
+  return true
+}
+
+async function saveChanged() {
+  requests.value++
+  try {
+    const failed: string[] = []
+    for (const locale of locales.value.filter(changed))
+      if (!(await save(locale))) failed.push(locale)
+    if (failed[0]) shown.value = failed[0]
+  } finally {
+    requests.value--
+  }
 }
 
 async function reset(locale: string) {
-  resetting.value = undefined
-  const l = entry(locale)
   const done = await run(
     locale,
     () => emails((c) => c.resetOverride({ params: { key, locale } })).then(() => true),
     t('emails.editor.resetDone'),
   )
-  if (!done || !l || !template.value) return
-  setDraft(locale, l.default)
-  template.value = {
-    ...template.value,
-    locales: template.value.locales.map((x) => (x === l ? { ...x, override: null } : x)),
-  }
+  resetting.value = undefined
+  if (!done) return
+  template.value = withLocale(locale, { override: null })
+  drafts[locale] = savedDraft(locale)
 }
 
 async function preview(locale: string) {
@@ -122,10 +156,19 @@ async function setEnabled(enabled: boolean) {
   const current = template.value
   if (!current) return
   template.value = { ...current, enabled }
+  enabledNotice.value = undefined
+  requests.value++
   try {
     await emails((c) => c.setEnabled({ params: { key }, payload: { enabled } }))
+    enabledNotice.value = {
+      error: false,
+      text: t(enabled ? 'emails.editor.enabledOn' : 'emails.editor.enabledOff'),
+    }
   } catch {
-    template.value = current
+    template.value = { ...(template.value ?? current), enabled: current.enabled }
+    enabledNotice.value = { error: true, text: t('emails.editor.enabledFailed') }
+  } finally {
+    requests.value--
   }
 }
 
@@ -168,13 +211,23 @@ function insertComponent(locale: string) {
     </p>
     <p v-else-if="status === 'notFound'" role="alert">{{ t('emails.editor.notFound') }}</p>
     <div v-else-if="template" class="space-y-4">
-      <USwitch
-        :model-value="template.enabled"
-        :label="t('emails.editor.enabled')"
-        :disabled="busy"
-        @update:model-value="setEnabled"
-      />
-      <LocaleTabs :locales="locales">
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <USwitch
+          :model-value="template.enabled"
+          :label="t('emails.editor.enabled')"
+          :disabled="busy"
+          @update:model-value="setEnabled"
+        />
+        <p
+          v-if="enabledNotice"
+          :role="enabledNotice.error ? 'alert' : 'status'"
+          :class="enabledNotice.error ? 'text-error' : 'text-success'"
+          class="text-sm"
+        >
+          {{ enabledNotice.text }}
+        </p>
+      </div>
+      <LocaleTabs v-model="shown" :locales="locales">
         <template v-for="l in template.locales" :key="l.locale" #[l.locale]>
           <div v-if="drafts[l.locale]" class="space-y-4">
             <StatusBadge
@@ -187,6 +240,7 @@ function insertComponent(locale: string) {
               :name="`subject-${l.locale}`"
               :label="t('emails.editor.subject')"
               :maxlength="255"
+              :disabled="busy"
               required
             />
             <div class="space-y-2">
@@ -204,12 +258,14 @@ function insertComponent(locale: string) {
                   variant="soft"
                   :label="`{{${p.name}}}`"
                   :title="p.sample"
+                  :disabled="busy"
                   @click="editors[l.locale]?.insert(`{{${p.name}}}`)"
                 />
               </div>
               <RichTextControl
                 :ref="(el) => (editors[l.locale] = el as { insert: (c: string) => void } | null)"
                 v-model="drafts[l.locale]!.body"
+                :disabled="busy"
               />
               <div
                 class="flex flex-wrap items-end gap-2"
@@ -236,13 +292,12 @@ function insertComponent(locale: string) {
                   :label="t('emails.editor.insert')"
                   color="neutral"
                   variant="outline"
-                  :disabled="!chosen"
+                  :disabled="!chosen || busy"
                   @click="insertComponent(l.locale)"
                 />
               </div>
             </div>
-            <div class="flex flex-wrap gap-2">
-              <UButton :label="t('emails.editor.save')" :loading="busy" @click="save(l.locale)" />
+            <div class="flex flex-wrap items-center gap-2">
               <UButton
                 :label="t('emails.editor.preview')"
                 color="neutral"
@@ -266,10 +321,14 @@ function insertComponent(locale: string) {
                 @click="resetting = l.locale"
               />
             </div>
+            <p v-if="changed(l.locale)" class="text-sm text-muted">
+              {{ t('emails.editor.testUsesSaved') }}
+            </p>
             <p
               v-if="notices[l.locale]"
               :role="notices[l.locale]!.error ? 'alert' : 'status'"
               :class="notices[l.locale]!.error ? 'text-error' : 'text-success'"
+              class="text-sm"
             >
               {{ notices[l.locale]!.text }}
             </p>
@@ -288,6 +347,7 @@ function insertComponent(locale: string) {
         :title="t('emails.editor.reset')"
         :description="t('emails.editor.resetConfirm')"
         :confirm-label="t('emails.editor.reset')"
+        :loading="busy"
         danger
         @update:open="(open: boolean) => !open && (resetting = undefined)"
         @confirm="resetting && reset(resetting)"

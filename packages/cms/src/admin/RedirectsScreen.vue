@@ -1,15 +1,19 @@
 <script setup lang="ts">
-/** Content > Redirects: list, create, edit, delete and CSV import of exact-path redirects. */
-import { CachePurgeNotice, useI18n } from '@opulonjs/admin'
-import { queryRows, type TableQuery, UButton, UCard } from '@opulonjs/ui'
+import { CachePurgeNotice, useCloseGuard, useI18n, useUnsavedChanges } from '@opulonjs/admin'
+import { queryRows, type TableQuery, UButton, USlideover } from '@opulonjs/ui'
 import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
 import DataTable from '@opulonjs/ui/components/DataTable'
 import FieldSelect from '@opulonjs/ui/components/Field/Select'
 import FieldText from '@opulonjs/ui/components/Field/Text'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
-import { computed, ref } from 'vue'
+import { computed, ref, shallowRef, useId } from 'vue'
 import type { Redirect, RedirectImportResult, RedirectInput } from '../api.ts'
 import { failureMessage, useRedirects } from './use-cms.ts'
+
+interface RedirectForm {
+  id?: string
+  input: RedirectInput
+}
 
 const { t } = useI18n()
 const redirects = useRedirects()
@@ -20,8 +24,24 @@ const pending = ref(false)
 const status = ref<{ kind: 'ok' | 'error'; message: string }>()
 const imported = ref<RedirectImportResult>()
 const confirming = ref(false)
-/** The form: a new redirect (no id) or the one being edited. */
-const editing = ref<{ id?: string; input: RedirectInput }>()
+const editing = ref<RedirectForm>()
+const opened = shallowRef<RedirectForm>()
+const formId = useId()
+
+const changes = useUnsavedChanges({
+  current: () => editing.value,
+  saved: () => opened.value,
+  save: () => save(),
+  discard: () => (editing.value = opened.value && structuredClone(opened.value)),
+  busy: () => pending.value,
+  bar: false,
+  within: () => document.getElementById(formId),
+})
+const { open, dismissible, close, leave } = useCloseGuard({
+  isOpen: () => editing.value !== undefined,
+  close: () => show(undefined),
+  dirty: () => changes.dirty.value,
+})
 
 const load = async (query: TableQuery) =>
   queryRows([...(await redirects.list()).rows], ['from', 'to'], query)
@@ -38,16 +58,20 @@ const statuses = computed(() => [
   { label: t('cms.redirects.temporary'), value: 302 },
 ])
 
-function startCreate() {
+function show(form: RedirectForm | undefined) {
   status.value = undefined
-  const locale = redirects.contentLocales.value[0] ?? ''
-  editing.value = { input: { locale, from: '', to: '', status: 301 } }
+  editing.value = form
+  opened.value = form && structuredClone(form)
 }
-function startEdit(redirect: Redirect) {
-  if (!canEdit.value) return
-  status.value = undefined
+async function startCreate() {
+  if (!(await leave())) return
+  const locale = redirects.contentLocales.value[0] ?? ''
+  show({ input: { locale, from: '', to: '', status: 301 } })
+}
+async function startEdit(redirect: Redirect) {
+  if (!canEdit.value || !(await leave())) return
   const { id, locale, from, to, status: code } = redirect
-  editing.value = { id, input: { locale, from, to, status: code } }
+  show({ id, input: { locale, from, to, status: code } })
 }
 
 async function run(action: () => Promise<unknown>, done: string) {
@@ -55,8 +79,8 @@ async function run(action: () => Promise<unknown>, done: string) {
   status.value = undefined
   try {
     await action()
+    show(undefined)
     status.value = { kind: 'ok', message: done }
-    editing.value = undefined
     table.value?.refresh()
   } catch (error) {
     status.value = { kind: 'error', message: failureMessage(error, t('cms.errors.failed')) }
@@ -65,16 +89,19 @@ async function run(action: () => Promise<unknown>, done: string) {
   }
 }
 
-const save = () => {
-  const form = editing.value!
+function save() {
+  const form = editing.value
+  if (!form) return
+  const input = { ...form.input }
   return run(
-    () => (form.id ? redirects.update(form.id, form.input) : redirects.create(form.input)),
+    () => (form.id ? redirects.update(form.id, input) : redirects.create(input)),
     t('cms.redirects.saved'),
   )
 }
 async function remove() {
+  const id = editing.value?.id
+  if (id) await run(() => redirects.remove(id), t('cms.redirects.deleted'))
   confirming.value = false
-  await run(() => redirects.remove(editing.value!.id!), t('cms.redirects.deleted'))
 }
 
 async function importFile(event: Event) {
@@ -115,7 +142,7 @@ async function importFile(event: Event) {
 
     <p v-if="canEdit" class="mb-4 text-sm text-muted">{{ t('cms.redirects.importHelp') }}</p>
     <p
-      v-if="status && status.message"
+      v-if="status && status.message && !editing"
       :role="status.kind === 'error' ? 'alert' : 'status'"
       :class="status.kind === 'error' ? 'text-error' : 'text-success'"
       class="mb-4 text-sm"
@@ -139,62 +166,6 @@ async function importFile(event: Event) {
       </ul>
     </div>
 
-    <UCard v-if="editing" class="mb-6">
-      <form class="grid gap-4 sm:grid-cols-2" @submit.prevent="save">
-        <h2 class="font-semibold sm:col-span-2">
-          {{ editing.id ? t('cms.redirects.edit') : t('cms.redirects.create') }}
-        </h2>
-        <FieldText
-          v-model="editing.input.from"
-          name="from"
-          :label="t('cms.redirects.from')"
-          :help="t('cms.redirects.pathHelp')"
-          required
-          :maxlength="1024"
-        />
-        <FieldText
-          v-model="editing.input.to"
-          name="to"
-          :label="t('cms.redirects.to')"
-          required
-          :maxlength="1024"
-        />
-        <FieldSelect
-          v-model="editing.input.status"
-          name="status"
-          :label="t('cms.redirects.status')"
-          :items="statuses"
-        />
-        <FieldSelect
-          v-if="redirects.contentLocales.value.length > 1"
-          v-model="editing.input.locale"
-          name="locale"
-          :label="t('cms.redirects.locale')"
-          :items="redirects.contentLocales.value"
-        />
-        <div class="flex gap-2 sm:col-span-2">
-          <UButton type="submit" :label="t('cms.redirects.save')" :loading="pending" />
-          <UButton
-            color="neutral"
-            variant="ghost"
-            :label="t('cms.redirects.cancel')"
-            :disabled="pending"
-            @click="editing = undefined"
-          />
-          <UButton
-            v-if="editing.id"
-            class="ms-auto"
-            color="error"
-            variant="ghost"
-            icon="i-lucide-trash-2"
-            :label="t('cms.redirects.delete')"
-            :disabled="pending"
-            @click="confirming = true"
-          />
-        </div>
-      </form>
-    </UCard>
-
     <DataTable
       ref="table"
       :columns="columns"
@@ -212,9 +183,89 @@ async function importFile(event: Event) {
       </template>
     </DataTable>
 
+    <USlideover
+      v-model:open="open"
+      :dismissible="dismissible"
+      :title="editing?.id ? t('cms.redirects.edit') : t('cms.redirects.create')"
+      @close:prevent="close"
+    >
+      <template #body>
+        <p
+          v-if="status && status.message"
+          :role="status.kind === 'error' ? 'alert' : 'status'"
+          :class="status.kind === 'error' ? 'text-error' : 'text-success'"
+          class="mb-4 text-sm"
+        >
+          {{ status.message }}
+        </p>
+        <form v-if="editing" :id="formId" class="space-y-4" @submit.prevent="save">
+          <FieldText
+            v-model="editing.input.from"
+            name="from"
+            :label="t('cms.redirects.from')"
+            :help="t('cms.redirects.pathHelp')"
+            :disabled="pending"
+            required
+            :maxlength="1024"
+          />
+          <FieldText
+            v-model="editing.input.to"
+            name="to"
+            :label="t('cms.redirects.to')"
+            :disabled="pending"
+            required
+            :maxlength="1024"
+          />
+          <FieldSelect
+            v-model="editing.input.status"
+            name="status"
+            :label="t('cms.redirects.status')"
+            :items="statuses"
+            :disabled="pending"
+          />
+          <FieldSelect
+            v-if="redirects.contentLocales.value.length > 1"
+            v-model="editing.input.locale"
+            name="locale"
+            :label="t('cms.redirects.locale')"
+            :items="redirects.contentLocales.value"
+            :disabled="pending"
+          />
+        </form>
+      </template>
+      <template #footer>
+        <div class="flex w-full items-center justify-end gap-2">
+          <UButton
+            v-if="editing?.id"
+            class="me-auto"
+            color="error"
+            variant="ghost"
+            icon="i-lucide-trash-2"
+            :label="t('cms.redirects.delete')"
+            :disabled="pending"
+            @click="confirming = true"
+          />
+          <UButton
+            color="neutral"
+            variant="ghost"
+            :label="t('cms.redirects.cancel')"
+            :disabled="pending"
+            @click="close"
+          />
+          <UButton
+            type="submit"
+            :form="formId"
+            :label="t('cms.redirects.save')"
+            :loading="pending"
+          />
+        </div>
+      </template>
+    </USlideover>
+
     <ConfirmDialog
       v-model:open="confirming"
       :title="t('cms.redirects.deleteTitle')"
+      :description="t('cms.redirects.deleteWarning')"
       :confirm-label="t('cms.redirects.delete')"
       :loading="pending"
       danger

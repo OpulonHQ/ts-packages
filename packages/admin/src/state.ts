@@ -42,7 +42,14 @@ export interface ShellEditor {
   readonly saveLabel?: () => string
   /** Whether the shell shows the bar for it (false: its own buttons, or a widget's guard). */
   readonly bar: boolean
+  /** Leaving asks even while busy: a save of several requests that leaving would cut short. */
+  readonly guardWhileBusy?: boolean
+  /** The element holding the editor's form: Cmd/Ctrl+S still saves inside the dialog around it. */
+  readonly within?: () => Element | null | undefined
 }
+
+export const losesChanges = (editor: ShellEditor): boolean =>
+  editor.dirty() && (editor.guardWhileBusy === true || !editor.busy())
 
 /** What a screen shows, in nav terms: the route of its nav entry and, under it, its params. */
 export interface NavTarget {

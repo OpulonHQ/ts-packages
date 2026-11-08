@@ -98,8 +98,13 @@ test('a forgotten password is reset through the emailed link', async () => {
   await host.signIn(user.email, 'fresh password 1')
 })
 
-const button = (label: string) =>
-  [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === label)
+const button = (label: string, root: ParentNode = document) =>
+  [...root.querySelectorAll('button')].find((b) => b.textContent?.trim() === label)
+const bar = () => document.querySelector('[role="region"][aria-label="Unsaved changes"]')
+const saveFromBar = async () => {
+  await expect.poll(() => bar() && button('Save', bar()!)?.disabled).toBe(false)
+  button('Save', bar()!)!.click()
+}
 /** Clicks the checkbox whose label reads `label`. */
 function check(label: string) {
   const target = [...document.querySelectorAll('label')].find(
@@ -150,8 +155,9 @@ test('creates a role from labelled permissions and assigns it on the user screen
   await expect.poll(() => location.pathname).toBe(`/admin/users/${member.id}`)
   await expect.poll(users.text).toContain('Mail watchers')
   check('Mail watchers')
-  button('Save roles')!.click()
+  await saveFromBar()
   await expect.poll(users.text).toContain('The roles are saved.')
+  await expect.poll(bar).toBeNull()
   const cookie = await host.signIn(member.email, member.password)
   expect((await host.me(cookie)).permissions).toEqual(['emails.log.view'])
 
@@ -230,3 +236,143 @@ test.each([
     expect((await host.me(jar.cookie)).locale).toBe('sk')
   },
 )
+
+const checked = (label: string) => {
+  const target = [...document.querySelectorAll('label')].find(
+    (l) => l.textContent?.trim() === label,
+  )?.htmlFor
+  return target ? document.getElementById(target)?.getAttribute('aria-checked') : undefined
+}
+const discardDialog = () =>
+  [...document.querySelectorAll<HTMLElement>('[role="dialog"]')].find((d) =>
+    d.textContent?.includes('Discard unsaved changes?'),
+  )
+const pressEscape = () =>
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+const field = (name: string) => document.querySelector<HTMLInputElement>(`input[name="${name}"]`)
+
+test('unsaved role toggles survive a language change and a refused save', async () => {
+  const owner = await seedUser(db.url, { superAdmin: true })
+  await host.request('POST', '/users/roles', {
+    cookie: await host.signIn(owner.email, owner.password),
+    body: { name: 'Log readers', permissions: ['emails.log.view'] },
+  })
+  const manager = await seedUser(db.url, { permissions: ['users.manage'] })
+  const member = await seedUser(db.url, { name: 'Mara Member', permissions: [] })
+  const jar = { cookie: await host.signIn(manager.email, manager.password) }
+  const admin = mountAdmin(`/admin/users/${member.id}`, jar)
+  await expect.poll(() => checked('Log readers')).toBe('false')
+  check('Log readers')
+  await expect.poll(() => checked('Log readers')).toBe('true')
+
+  button('Slovenčina')!.click()
+  await expect.poll(admin.text).toContain('The admin language is saved.')
+  expect(checked('Log readers')).toBe('true')
+  await expect.poll(bar).toBeTruthy()
+
+  await saveFromBar()
+  await expect.poll(admin.text).toContain('You cannot grant a permission you do not hold')
+  expect(checked('Log readers')).toBe('true')
+  expect(bar()).toBeTruthy()
+  const cookie = await host.signIn(member.email, member.password)
+  expect((await host.me(cookie)).permissions).toEqual([])
+})
+
+test.each([
+  { screen: '/admin/roles', open: 'New role', name: 'name', value: 'Half a role' },
+  { screen: '/admin/users', open: 'Invite', name: 'email', value: 'half@example.test' },
+])(
+  'the $open slideover asks before closing with unsaved changes and closes at once without',
+  async ({ screen, open, name, value }) => {
+    const owner = await seedUser(db.url, { superAdmin: true })
+    const admin = mountAdmin(screen, { cookie: await host.signIn(owner.email, owner.password) })
+    await expect.poll(() => button(open)?.disabled).toBe(false)
+
+    button(open)!.click()
+    await expect.poll(() => field(name)).toBeTruthy()
+    button('Cancel')!.click()
+    await expect.poll(() => field(name)).toBeNull()
+    button(open)!.click()
+    await expect.poll(() => field(name)).toBeTruthy()
+    pressEscape()
+    await expect.poll(() => field(name)).toBeNull()
+    expect(discardDialog()).toBeUndefined()
+
+    button(open)!.click()
+    await expect.poll(() => field(name)).toBeTruthy()
+    type(name, value)
+    pressEscape()
+    await expect.poll(discardDialog).toBeTruthy()
+    button('Keep editing', discardDialog())!.click()
+    await expect.poll(discardDialog).toBeUndefined()
+    expect(field(name)!.value).toBe(value)
+
+    button('Cancel')!.click()
+    await expect.poll(discardDialog).toBeTruthy()
+    button('Keep editing', discardDialog())!.click()
+    await expect.poll(discardDialog).toBeUndefined()
+    const closeButton = () => document.querySelector<HTMLButtonElement>('button[data-slot="close"]')
+    closeButton()!.click()
+    await expect.poll(discardDialog).toBeTruthy()
+    button('Keep editing', discardDialog())!.click()
+    await expect.poll(discardDialog).toBeUndefined()
+    expect(field(name)!.value).toBe(value)
+    expect(closeButton()).toBeTruthy()
+    closeButton()!.click()
+    await expect.poll(discardDialog).toBeTruthy()
+    button('Discard changes', discardDialog())!.click()
+    await expect.poll(() => field(name)).toBeNull()
+    expect(admin.text()).not.toContain(value)
+  },
+)
+
+test('a permission unchecked and checked again leaves the role without unsaved changes', async () => {
+  const owner = await seedUser(db.url, { superAdmin: true })
+  const cookie = await host.signIn(owner.email, owner.password)
+  const permissions = ['emails.log.view', 'users.manage']
+  await host.request('POST', '/users/roles', { cookie, body: { name: 'Two duties', permissions } })
+  const roles = (await host.request('GET', '/users/roles', { cookie })).body as {
+    roles: ReadonlyArray<{ name: string; permissions: ReadonlyArray<string> }>
+  }
+  const stored = roles.roles.find((r) => r.name === 'Two duties')!.permissions
+  const labels: Record<string, string> = {
+    'emails.log.view': 'View the email log',
+    'users.manage': 'Invite and manage users',
+  }
+  mountAdmin('/admin/roles', { cookie })
+  await expect.poll(() => row('Two duties')).toBeDefined()
+  row('Two duties')!.click()
+  await expect.poll(() => field('name')?.value).toBe('Two duties')
+
+  const first = labels[stored[0]!]!
+  check(first)
+  await expect.poll(() => checked(first)).toBe('false')
+  check(first)
+  await expect.poll(() => checked(first)).toBe('true')
+  button('Cancel')!.click()
+  await expect.poll(() => field('name')).toBeNull()
+  expect(discardDialog()).toBeUndefined()
+})
+
+test('Cmd/Ctrl+S sends the invitation from inside its slideover', async () => {
+  const owner = await seedUser(db.url, { superAdmin: true })
+  const admin = mountAdmin('/admin/users', {
+    cookie: await host.signIn(owner.email, owner.password),
+  })
+  await expect.poll(() => button('Invite')?.disabled).toBe(false)
+  button('Invite')!.click()
+  await expect.poll(() => field('email')).toBeTruthy()
+  type('email', 'shortcut@example.test')
+  const sent = host.mailer.sent.length
+  const shortcut = new KeyboardEvent('keydown', {
+    key: 's',
+    ctrlKey: true,
+    bubbles: true,
+    cancelable: true,
+  })
+  field('email')!.dispatchEvent(shortcut)
+  expect(shortcut.defaultPrevented).toBe(true)
+  await expect.poll(admin.text).toContain('The invitation to shortcut@example.test is on its way.')
+  expect(field('email')).toBeNull()
+  await expect.poll(() => host.mailer.sent.length).toBe(sent + 1)
+})
