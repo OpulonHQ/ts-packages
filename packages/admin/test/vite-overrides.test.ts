@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { build, createLogger, createServer, type InlineConfig } from 'vite'
@@ -234,11 +234,14 @@ test('checks indirectly installed UI versions through the preset package', async
     warnings.push(message)
   }
   await fixture.bundle({ overrides: {} }, { customLogger: logger })
+  const { version } = JSON.parse(
+    readFileSync(new URL('../../ui/package.json', import.meta.url), 'utf8'),
+  ) as { version: string }
   expect(
     warnings.some(
       (message) =>
         message.includes('@opulonjs/ui@0.0.0-copy') &&
-        message.includes('installed version 0.0.0 is newer'),
+        message.includes(`installed version ${version} is newer`),
     ),
   ).toBe(true)
 })
