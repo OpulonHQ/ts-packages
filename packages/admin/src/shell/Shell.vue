@@ -160,7 +160,6 @@ const userMenu = computed<DropdownMenuItem[][]>(() => [
             label: t('admin.signOut'),
             icon: 'i-lucide-log-out',
             color: 'error' as const,
-            // Signing out ends the session, so the leave guard cannot ask afterwards: ask here.
             onSelect: async () => {
               if (unsaved() && !(await confirmDiscard())) return
               await signOut()
@@ -170,7 +169,6 @@ const userMenu = computed<DropdownMenuItem[][]>(() => [
       ]
     : []),
 ])
-// The newest editor with a bar owns it while it has unsaved changes; Discard asks first.
 const editor = computed(() => [...editors].reverse().find((e) => e.bar))
 const unsaved = () => editors.some((e) => e.dirty() && !e.busy())
 const discard = async () => {
@@ -183,14 +181,12 @@ const discardOpen = computed({
     if (!open) discardRequest.value?.(false)
   },
 })
-// Cmd/Ctrl+S saves the newest editor that saves, and never opens the browser's own dialog over it.
 const onKeydown = (event: KeyboardEvent) => {
   if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return
   if (event.key.toLowerCase() !== 's' || event.defaultPrevented) return
   const target = [...editors].reverse().find((e) => e.save)
   if (!target) return
   event.preventDefault()
-  // Not behind an open dialog (a delete confirmation, a picker): it is not what the user sees.
   if (document.querySelector('[role="dialog"]')) return
   if (target.dirty() && !target.busy()) target.save?.()
 }

@@ -99,7 +99,6 @@ test('a new page starts from a template: its sections open prefilled and already
   const id = await openedPage()
   await expect.poll(() => input('sections.0.title.en')?.value).toBe('Welcome')
   expect(input('sections.0.title.it')?.value).toBe('Benvenuti')
-  // Created with its sections: nothing is unsaved, so no bar asks to save.
   expect(text()).not.toContain('Neuložené zmeny')
   const { sections } = (await stored(id)).draft
   expect(sections.map(({ type, data }) => ({ type, data }))).toEqual([

@@ -407,8 +407,6 @@ export const createAdmin = (options: AdminOptions): App => {
       if (me.value && shows()) me.value = { ...me.value, locale }
     })
   }
-  // Open editors register their unsaved state (useUnsavedChanges): the shell shows the bar for
-  // the newest, and asks before navigating away or reloading while any is dirty.
   const editors = shallowReactive<ShellEditor[]>([])
   const registerEditor = (editor: ShellEditor) => {
     editors.push(editor)
@@ -417,7 +415,6 @@ export const createAdmin = (options: AdminOptions): App => {
       if (index >= 0) editors.splice(index, 1)
     }
   }
-  // A save in flight already carries its changes: leaving does not lose them.
   const unsaved = () => editors.some((editor) => editor.dirty() && !editor.busy())
   const discardRequest = shallowRef<(discard: boolean) => void>()
   let asking: Promise<boolean> | undefined
@@ -502,9 +499,6 @@ export const createAdmin = (options: AdminOptions): App => {
   })
   // Leave guards run before beforeEach, so a host leave guard's error stays in the console.
   let latest: RouteLocationNormalized | undefined
-  // Before the access guard: asks once for a new path chosen while signed in, never for the
-  // redirect a guard starts (it would ask twice), nor once the session has ended (sign-out and
-  // expiry navigate to sign-in themselves). Query and hash changes keep the editor.
   router.beforeEach((to, from) =>
     unmounted ||
     status.value !== 'ready' ||

@@ -1,9 +1,4 @@
 <script setup lang="ts">
-/**
- * Status and the publishing actions of a page, an item, the site settings or a menu: Publish
- * (saves what is on screen first), Unpublish (asks first: it takes content off the website) and
- * Delete. Saving a draft is the unsaved-changes bar's job.
- */
 import { useI18n } from '@opulonjs/admin'
 import { UButton } from '@opulonjs/ui'
 import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
@@ -17,7 +12,6 @@ defineProps<{
   pending: boolean
   canEdit: boolean
   canPublish: boolean
-  /** Offers delete (items, pages other than system pages). */
   deletable?: boolean
 }>()
 const emit = defineEmits<{ publish: []; unpublish: []; delete: [] }>()

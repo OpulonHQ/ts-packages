@@ -38,7 +38,6 @@ const { pending, status, run, invalidate } = useAction(() => t('cms.errors.faile
 
 const page = shallowRef<Page>()
 const draft = ref<Draft>()
-// The draft as last saved, the unsaved-changes bar's comparison and Discard's copy.
 const baseline = shallowRef<Draft>()
 const missing = ref(false)
 const confirming = ref(false)
@@ -154,7 +153,6 @@ const publish = () =>
     t('cms.page.published'),
     show,
   )
-// Unpublishing leaves the draft as it was, so edits on screen stay on screen.
 const unpublish = () =>
   run(
     () => pages.unpublish(page.value!.id),
@@ -165,7 +163,6 @@ async function remove() {
   confirming.value = false
   await run(() => pages.remove(page.value!.id), '')
   if (status.value?.kind !== 'ok') return
-  // Deleted: nothing is left to save, so leaving does not ask.
   draft.value = baseline.value
   await router.push({ name: 'cms.pages' })
 }

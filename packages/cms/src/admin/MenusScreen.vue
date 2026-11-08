@@ -28,7 +28,6 @@ useNavTarget(() =>
 )
 const menu = shallowRef<Menu>()
 const items = ref<EditedMenuItem[]>([])
-// The entries as last saved, the unsaved-changes bar's comparison and Discard's copy.
 const baseline = shallowRef<EditedMenuItem[]>()
 const revisionPending = ref(false)
 const canEdit = computed(() => content.can('cms.site.edit'))
@@ -77,7 +76,6 @@ const publish = () =>
     t('cms.page.published'),
     show,
   )
-// Unpublishing leaves the draft as it was, so edits on screen stay on screen.
 const unpublish = () =>
   run(
     () => content.unpublishMenu(current.value!),
