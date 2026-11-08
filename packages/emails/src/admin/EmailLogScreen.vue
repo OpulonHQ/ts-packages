@@ -12,7 +12,6 @@ const emails = useApiClient(EmailsGroup)
 
 const isStatus = (v: unknown): v is EmailLogEntry['status'] => emailStatuses.some((s) => s === v)
 
-// A failure reaches the table, which shows it with "Try again" instead of an empty log.
 const load = (query: TableQuery): Promise<TablePage<EmailLogEntry>> => {
   const status = query.filters.status
   return emails((client) =>
@@ -26,7 +25,6 @@ const load = (query: TableQuery): Promise<TablePage<EmailLogEntry>> => {
   )
 }
 
-// Computed, so a language switch from the user menu relabels the table too.
 const columns = computed(() => [
   {
     key: 'createdAt',

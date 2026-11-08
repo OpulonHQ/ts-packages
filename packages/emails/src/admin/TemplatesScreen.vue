@@ -11,15 +11,12 @@ const { t, locale } = useI18n()
 const router = useRouter()
 const emails = useApiClient(EmailsGroup)
 
-// Loaded through the table like every other list, so loading, failure and "Try again" look the
-// same; search covers the key (the other columns are lists, not text).
 const load = async (query: TableQuery): Promise<TablePage<EmailTemplateInfo>> =>
   queryRows([...(await emails((client) => client.templates())).templates], ['key'], query)
 
 const open = (row: EmailTemplateInfo) =>
   router.push({ name: 'emails.template', params: { key: row.key } })
 
-// Computed, so a language switch from the user menu relabels the table too.
 const columns = computed(() => [
   { key: 'key', label: t('emails.templates.columns.key'), sortable: true },
   {
