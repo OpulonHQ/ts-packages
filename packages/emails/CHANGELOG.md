@@ -1,5 +1,13 @@
 # @opulonjs/emails
 
+## 0.3.0
+
+### Patch Changes
+
+- @opulonjs/admin@0.3.0
+  - @opulonjs/core@0.3.0
+  - @opulonjs/ui@0.3.0
+
 ## 0.2.0
 
 ### Patch Changes
