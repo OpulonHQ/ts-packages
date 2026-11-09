@@ -166,6 +166,8 @@ export interface Collection extends FieldGroup {
   readonly routed?: boolean
   /** The field naming an item in lists and pickers; default: the first text field. */
   readonly titleField?: string
+  /** Reference or select fields the admin list offers a filter for, in this order. */
+  readonly filters?: ReadonlyArray<string>
 }
 
 export interface Menu {
@@ -284,6 +286,14 @@ export const defineCms = <
   for (const [key, collection] of Object.entries(collections))
     if (collection.titleField !== undefined && !(collection.titleField in collection.fields))
       fail(`the title field "${collection.titleField}" of collection "${key}" is not a field.`)
+  for (const [key, collection] of Object.entries(collections))
+    for (const name of collection.filters ?? []) {
+      const kind = Object.hasOwn(collection.fields, name)
+        ? collection.fields[name]?.kind
+        : undefined
+      if (kind !== 'reference' && kind !== 'select')
+        fail(`the filter "${name}" of collection "${key}" is not a reference or select field.`)
+    }
   for (const [key, template] of Object.entries(templates)) {
     if (template.sections.length > maxSections)
       fail(

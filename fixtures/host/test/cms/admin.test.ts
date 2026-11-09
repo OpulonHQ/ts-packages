@@ -1,4 +1,4 @@
-import { defineCms, fields, type Page } from '@opulonjs/cms/api'
+import { defineCms, fields, type Item, type Page } from '@opulonjs/cms/api'
 import { cmsAdmin } from '@opulonjs/cms/admin'
 import { expect, test } from 'vitest'
 import { adminModules } from '../../admin/modules.ts'
@@ -141,3 +141,47 @@ test('a system page offers no delete', async () => {
   expect(button('Vymazať')).toBeUndefined()
   await expect.poll(text).toContain('Zatiaľ žiadne publikované revízie.')
 })
+
+test('a collection list filters by the fields its definition names; others show no filters', async () => {
+  const category = async (name: string) =>
+    (
+      await host.call<Item>('POST', '/collections/categories/items', {
+        body: { locales: {}, data: { name: { en: name } } },
+      })
+    ).body.id
+  const [news, law] = [await category('News'), await category('Law')]
+  for (const data of [
+    { title: { en: 'Listed A' }, categories: [news] },
+    { title: { en: 'Listed B' }, categories: [law, news], kind: 'guide' },
+    { title: { en: 'Listed C' } },
+  ])
+    await host.call('POST', '/collections/posts/items', { body: { locales: {}, data } })
+
+  const text = mountAdmin('/admin/cms/collections/posts')
+  await expect.poll(text).toContain('Listed C')
+  const titles = () => ['Listed A', 'Listed B', 'Listed C'].filter((t) => text().includes(t))
+  const filterControls = () => document.querySelectorAll('section [aria-haspopup="listbox"]')
+  expect(filterControls()).toHaveLength(2)
+
+  await pick('Kategórie', 'News')
+  await expect.poll(titles).toEqual(['Listed A', 'Listed B'])
+  await pick('Druh', 'Návod')
+  await expect.poll(titles).toEqual(['Listed B'])
+  button('Zrušiť filtre')!.click()
+  await expect.poll(titles).toEqual(['Listed A', 'Listed B', 'Listed C'])
+
+  history.replaceState(null, '', '/admin/cms/collections/categories')
+  window.dispatchEvent(new PopStateEvent('popstate'))
+  await expect.poll(text).toContain('Law')
+  expect(filterControls()).toHaveLength(0)
+})
+
+async function pick(filter: string, option: string) {
+  document.querySelector<HTMLElement>(`[aria-haspopup="listbox"][aria-label="${filter}"]`)!.click()
+  const item = () =>
+    [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(
+      (el) => el.textContent?.trim() === option,
+    )
+  await expect.poll(item).toBeDefined()
+  item()!.click()
+}

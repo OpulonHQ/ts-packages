@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { CachePurgeNotice, useI18n, useNavTarget } from '@opulonjs/admin'
-import { listDefaultPerPage, listMaxOffset } from '@opulonjs/core/api'
-import { formatDate, type TableQuery, UButton } from '@opulonjs/ui'
+import { listDefaultPerPage, listMaxOffset, listMaxPerPage } from '@opulonjs/core/api'
+import { formatDate, type SelectItem, type TableQuery, UButton } from '@opulonjs/ui'
 import DataTable from '@opulonjs/ui/components/DataTable'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
 import StatusBadge from '@opulonjs/ui/components/StatusBadge'
-import { computed, ref } from 'vue'
+import { computed, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { type ItemSummary, labelText } from '../api.ts'
 import { failureMessage, useCmsContext, useContent } from './use-cms.ts'
@@ -32,6 +32,55 @@ const collection = computed(() =>
   current.value === undefined ? undefined : definitions.collections[current.value],
 )
 
+const referenceItems = shallowRef<Readonly<Record<string, ReadonlyArray<SelectItem>>>>({})
+let latest = 0
+watch(
+  collection,
+  async (definition) => {
+    const ticket = ++latest
+    referenceItems.value = {}
+    for (const name of definition?.filters ?? []) {
+      const target = definition?.fields[name]?.collection
+      if (target === undefined) continue
+      try {
+        const { rows } = await content.listItems(target, {
+          perPage: listMaxPerPage,
+          sort: 'title',
+          direction: 'asc',
+        })
+        if (ticket !== latest) return
+        referenceItems.value = {
+          ...referenceItems.value,
+          [name]: rows.map((row) => ({ label: row.title, value: row.id })),
+        }
+      } catch (error) {
+        if (ticket === latest) failure.value = failureMessage(error, t('cms.errors.failed'))
+        return
+      }
+    }
+  },
+  { immediate: true },
+)
+const filters = computed(() =>
+  (collection.value?.filters ?? []).flatMap((name) => {
+    const field = collection.value?.fields[name]
+    if (!field) return []
+    return [
+      {
+        key: name,
+        label: labelText(field.label, locale.value),
+        options:
+          field.kind === 'select'
+            ? (field.options ?? []).map((option) => ({
+                label: labelText(option.label, locale.value),
+                value: option.value,
+              }))
+            : (referenceItems.value[name] ?? []),
+      },
+    ]
+  }),
+)
+
 const load = async (query: TableQuery) => {
   if (!current.value) return { rows: [], total: 0 }
   const sort = query.sort?.column
@@ -39,6 +88,7 @@ const load = async (query: TableQuery) => {
     page: query.page,
     perPage: query.perPage,
     search: query.search,
+    filter: Object.entries(query.filters).map(([name, value]) => `${name}:${value}`),
     ...(sort === 'title' || sort === 'path' || sort === 'status' || sort === 'updatedAt'
       ? { sort }
       : {}),
@@ -99,6 +149,7 @@ async function create() {
       :key="current"
       :columns="columns"
       :load="load"
+      :filters="filters"
       :per-page="listDefaultPerPage"
       :max-page="Math.floor(listMaxOffset / listDefaultPerPage) + 1"
       :caption="labelText(collection.label, locale)"

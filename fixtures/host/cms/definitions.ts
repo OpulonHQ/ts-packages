@@ -44,6 +44,7 @@ export const definitions = defineCms({
     posts: {
       label: { en: 'Posts', sk: 'Články' },
       routed: true,
+      filters: ['categories', 'kind'],
       fields: {
         title: fields.text({ label: { en: 'Title', sk: 'Nadpis' }, required: true }),
         body: fields.richText({ label: { en: 'Body', sk: 'Text' } }),
@@ -52,6 +53,13 @@ export const definitions = defineCms({
           label: { en: 'Categories', sk: 'Kategórie' },
           collection: 'categories',
           many: true,
+        }),
+        kind: fields.select({
+          label: { en: 'Kind', sk: 'Druh' },
+          options: [
+            { value: 'news', label: { en: 'News', sk: 'Novinky' } },
+            { value: 'guide', label: { en: 'Guide', sk: 'Návod' } },
+          ],
         }),
       },
     },

@@ -9,6 +9,7 @@ Editors create a page, set a path and availability per language, add sections, s
 - `publish` Publish saves the draft, then publishes -> `Published.`; Unpublish -> `Unpublished. The page is no longer on the website.`
 - `read-api` `GET /api/cms/resolve?path=<path>` 200, Cache-Tag containing `cms` and `cms:page:<id>`, `public, max-age=0, s-maxage=3600`.
 - `redirects` changing a published path adds a redirect.
+- `collection-filters` a collection's list offers one filter per field its definition's `filters` names (posts: Categories, Kind); collections without `filters` show only search.
 - `live-preview` the page editor's three panes (Page outline, Preview, the selection's inputs): the frame (`/site/?preview=<id>&locale=<locale>`, served by the fixture Worker) shows unsaved edits, a click in the frame focuses that field's input, the panes stack at phone width.
 
 ## How to get to it (user POV)
@@ -26,6 +27,7 @@ Preconditions: a session with cms rights (smoke owner).
 - **Live preview.** `VERIFY_VIDEO=1 $V/ui.sh .claude/skills/verify-host/journeys/cms-live-preview.mjs`. Proves: three panes side by side at 1440 px; typing the hero title updates the frame while the stored draft keeps the old title; clicking the stats note in the frame focuses `sections.1.note`; Enter on an outline entry selects it; an added Rich text section shows in the frame as typed; Mobile narrows the frame to 390 px; Save stores and Publish serves the edits; at 390 px the panes stack with no horizontal scroll.
 - **Purge.** Resolve, edit the SEO title, Publish, resolve again: the new title is served.
 - **Concurrent draft edits.** `$V/ui.sh .claude/skills/verify-host/journeys/cms-draft-conflict.mjs`. For a page, an item, the site settings and a menu: the editor opens the document and types, another editor restores revision 1 through the API, the editor's Publish answers `PUT .../draft?version=` 409 with no publish request, the draft and published snapshot stay as the restore left them, the typed input stays on screen under `Someone else changed this draft after you opened it.`, and `Reload draft` loads the restored draft, which then publishes 200. Results in `conflict-results.json`.
+- **Collection list filters.** `$V/ui.sh .claude/skills/verify-host/journeys/cms-collection-filters.mjs`. Seeds two categories and three posts through the API; on Posts, Categories = News sends `filter=categories:<id>` 200 and lists the two posts in News, Kind = Guide adds `filter=kind:guide` and lists one, Reset lists all three; `filter=title:x` answers 400 `CmsInvalid`; Categories shows no filter.
 - **Picker upload during a save.** `$V/ui.sh .claude/skills/verify-host/journeys/cms-media-pick-during-save.mjs [only=<case>]`. On a post's `Cover`, the picker's `POST /api/media/items` is held, the dialog closed, then `Save draft`, `Publish` (held on its `PUT .../draft`, then on its `POST .../publish`) or `Restore to draft` is held; the upload returns while the action waits. After the action's message the Cover shows the uploaded file, the stored draft has no cover yet, and the next `Save draft` stores it.
 
 ## Gotchas

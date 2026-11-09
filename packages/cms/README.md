@@ -30,6 +30,29 @@ export const definitions = defineCms({ sections: { hero }, systemPages: {} })
 
 `Hero.vue` sits next to `hero.ts` and receives the localized data as its `data` prop.
 
+## Filter a collection's admin list
+
+Name the reference and select fields editors filter a collection's list by:
+
+```ts
+collections: {
+  posts: {
+    label: 'Posts',
+    filters: ['categories'],
+    fields: {
+      title: fields.text({ label: 'Title' }),
+      categories: fields.reference({ label: 'Categories', collection: 'categories', many: true }),
+    },
+  },
+}
+```
+
+The Collections screen shows one filter per named field above the table: a select offers its
+options, a reference the first 100 items of its collection by title. A list matches the items
+whose draft holds the chosen value (a many reference: among its items). The Admin API takes the
+same filter as `GET /collections/posts/items?filter=categories:<item id>`, repeatable, and
+answers 400 for a field `filters` does not name.
+
 ## Live preview
 
 The page editor can show the host site's page in a frame and update it as the editor types,

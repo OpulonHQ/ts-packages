@@ -2,7 +2,7 @@ import { requirePermission } from '@opulonjs/core'
 import { listDefaultPerPage } from '@opulonjs/core/api'
 import { Effect, Schema } from 'effect'
 import { SqlClient } from 'effect/sql/SqlClient'
-import { type Collection, ItemPage, type ItemQuery, titleFieldOf } from '../api.ts'
+import { CmsInvalid, type Collection, ItemPage, type ItemQuery, titleFieldOf } from '../api.ts'
 
 export const listItems = Effect.fn('Items.list')(
   function* ({
@@ -33,6 +33,17 @@ export const listItems = Effect.fn('Items.list')(
     const search = query.search?.trim()
     const ids =
       query.ids === undefined ? undefined : [...new Set(query.ids.toLowerCase().split(','))]
+    const filters = []
+    for (const filter of query.filter ?? []) {
+      const at = filter.indexOf(':')
+      const name = filter.slice(0, at)
+      if (!definition.filters?.includes(name))
+        return yield* new CmsInvalid({ message: `The list cannot be filtered by "${name}".` })
+      const stored = definition.fields[name]?.localized
+        ? sql`draft -> 'data' -> ${name} -> ${locale}`
+        : sql`draft -> 'data' -> ${name}`
+      filters.push(sql`${stored} @> to_jsonb(${filter.slice(at + 1)}::text)`)
+    }
     const direction = query.direction === 'asc' ? sql`asc` : sql`desc`
     const column = {
       title: sql`lower(title)`,
@@ -48,6 +59,7 @@ export const listItems = Effect.fn('Items.list')(
         updated_at, published_at, version
       from cms.document where kind = 'item' and key = ${collection}
         ${ids ? sql`and id = any(string_to_array(${ids.join(',')}, ',')::uuid[])` : sql``}
+        and ${sql.and(filters)}
     ), filtered as not materialized (
       select * from summaries ${search ? sql`where strpos(lower(title), lower(${search})) > 0 or strpos(lower(path), lower(${search})) > 0` : sql``}
     ), paged as (
