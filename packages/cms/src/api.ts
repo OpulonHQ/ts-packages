@@ -166,6 +166,13 @@ export const ItemQuery = Schema.Struct({
   sort: Schema.optionalKey(Schema.Literals(['title', 'path', 'status', 'updatedAt'])),
   /** Comma-separated UUIDs, at most listMaxPerPage, within the path's collection. */
   ids: Schema.optionalKey(ItemIds),
+  /** `field:value`, repeatable: items whose draft field holds the value (a reference's item id
+   *  or a select's option). Only fields the collection's `filters` name. */
+  filter: Schema.optionalKey(
+    Schema.Array(
+      Schema.String.check(Schema.isMaxLength(300), Schema.isPattern(/^[^:]+:.+$/)),
+    ).check(Schema.isMaxLength(20)),
+  ),
 }).check(Schema.makeFilter(listOffsetWithinLimit))
 export type ItemQuery = typeof ItemQuery.Type
 
@@ -517,7 +524,7 @@ export const CmsGroup = HttpApiGroup.make('cms')
       params: collection,
       query: ItemQuery,
       success: ItemPage,
-      error: CmsNotFound,
+      error: [CmsInvalid, CmsNotFound],
     }).annotate(Policy, 'cms.collections.view'),
   )
   .add(

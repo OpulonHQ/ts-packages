@@ -111,6 +111,35 @@ test('references must name a defined collection; title fields must be fields', (
   ).toThrow('the title field "name" of collection "team" is not a field')
 })
 
+test('list filters must name reference or select fields of their collection', () => {
+  const team = (filters: ReadonlyArray<string>) =>
+    defineCms({
+      sections: {},
+      systemPages: {},
+      collections: {
+        team: {
+          label: 'Team',
+          filters,
+          fields: {
+            name: fields.text({ label: 'Name' }),
+            role: fields.select({
+              label: 'Role',
+              options: [{ value: 'partner', label: 'Partner' }],
+            }),
+            mentor: fields.reference({ label: 'Mentor', collection: 'team' }),
+          },
+        },
+      },
+    })
+  expect(team(['role', 'mentor']).collections.team.filters).toEqual(['role', 'mentor'])
+  expect(() => team(['name'])).toThrow(
+    'the filter "name" of collection "team" is not a reference or select field',
+  )
+  expect(() => team(['office'])).toThrow(
+    'the filter "office" of collection "team" is not a reference or select field',
+  )
+})
+
 const hostSections: Record<string, SectionType> = {
   hero: { label: 'Hero', fields: { title: fields.text({ label: 'Title', maxLength: 20 }) } },
   cta: {

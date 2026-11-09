@@ -36,7 +36,10 @@ type Failure = Forbidden | CmsNotFound
 export class Items extends Context.Service<
   Items,
   {
-    readonly list: (collection: string, query: ItemQuery) => Effect.Effect<ItemPage, Failure>
+    readonly list: (
+      collection: string,
+      query: ItemQuery,
+    ) => Effect.Effect<ItemPage, Failure | CmsInvalid>
     readonly listRevisions: (id: string, page?: number) => Effect.Effect<RevisionList, Failure>
     readonly getRevision: (id: string, revisionId: string) => Effect.Effect<ItemRevision, Failure>
     readonly restoreRevision: (
