@@ -107,9 +107,13 @@ export const PageSummary = Schema.Struct({
   id: Schema.String,
   /** The system page key, or null for an editor's page. */
   systemKey: Schema.NullOr(Schema.String),
-  /** SEO title (else path) in the default content locale, from the draft. */
+  /** SEO title (else path) from the draft, in its list locale: the default content locale when
+   *  the draft is available there, else its first available locale. */
   title: Schema.String,
+  /** The public path in the list locale (`/it/contatti`), or empty. */
   path: Schema.String,
+  /** The content locales the draft is available in, in content-locale order. */
+  locales: Schema.Array(Schema.String),
   ...documentState,
 })
 export type PageSummary = typeof PageSummary.Type
@@ -144,9 +148,14 @@ export type ItemDocument = typeof ItemDocument.Type
 export const ItemSummary = Schema.Struct({
   id: Schema.String,
   collection: Schema.String,
-  /** The title field (else SEO title, else path) in the default content locale, from the draft. */
+  /** The title field (else SEO title, else path) from the draft, in its list locale as a
+   *  page's. */
   title: Schema.String,
+  /** The public path in the list locale, or empty (always for unrouted collections). */
   path: Schema.String,
+  /** The content locales the draft is available in, in content-locale order. An unrouted item
+   *  is available in a locale its document does not name. */
+  locales: Schema.Array(Schema.String),
   ...documentState,
 })
 export type ItemSummary = typeof ItemSummary.Type
@@ -173,6 +182,8 @@ export const ItemQuery = Schema.Struct({
       Schema.String.check(Schema.isMaxLength(300), Schema.isPattern(/^[^:]+:.+$/)),
     ).check(Schema.isMaxLength(20)),
   ),
+  /** A content locale: only items whose draft is available in it. */
+  availableIn: Schema.optionalKey(Schema.String),
 }).check(Schema.makeFilter(listOffsetWithinLimit))
 export type ItemQuery = typeof ItemQuery.Type
 

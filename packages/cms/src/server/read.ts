@@ -308,8 +308,13 @@ export const makeReader = (definitions: CmsDefinitions) =>
           sql`d.key = ${key}`,
           sql`d.published is not null`,
         ]
-        // Routed items are listed in the locales they are published in.
-        if (definition.routed) filters.push(sql`p.path is not null`)
+        // Routed items are listed in the locales they are published in, others in the locales
+        // their published document is available in (a locale it does not name included).
+        filters.push(
+          definition.routed
+            ? sql`p.path is not null`
+            : sql`coalesce((d.published -> 'locales' -> ${locale} ->> 'available')::boolean, true)`,
+        )
         if (query.ref !== undefined) {
           if (!uuid.test(query.ref))
             return yield* new CmsInvalid({ message: '"ref" must be an item id.' })

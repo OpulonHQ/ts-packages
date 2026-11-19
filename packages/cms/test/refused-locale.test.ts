@@ -73,16 +73,32 @@ test.each([
   ],
   [
     'a required value missing in the default locale',
-    () => refusal(checkFields(hero, 'en', { title: { it: 'Ciao' }, phone: '1' })),
+    () => refusal(checkFields(hero, 'en', ['en'], { title: { it: 'Ciao' }, phone: '1' })),
     'en',
   ],
   [
     'a section missing a required value in the default locale, on publish',
     () =>
       refusal(
-        checkRequired(definitions, 'en', page({}, [section({ title: { it: 'Ciao' } })]) as never),
+        checkRequired(
+          definitions,
+          locales,
+          page({}, [section({ title: { it: 'Ciao' } })]) as never,
+        ),
       ),
     'en',
+  ],
+  [
+    'a section missing a required value in the only available locale, on publish',
+    () =>
+      refusal(
+        checkRequired(
+          definitions,
+          locales,
+          page({ it: { path: '/ciao', available: true } }, [section({ phone: '1' })]) as never,
+        ),
+      ),
+    'it',
   ],
   [
     'a menu entry without a label in the default locale (server/site.ts)',
@@ -91,7 +107,7 @@ test.each([
   ],
   [
     'a required value every locale shares',
-    () => refusal(checkFields(hero, 'en', { title: { en: 'Hi' } })),
+    () => refusal(checkFields(hero, 'en', ['en'], { title: { en: 'Hi' } })),
     undefined,
   ],
   [
@@ -125,7 +141,7 @@ test('the messages are the ones the editor parses', () => {
   expect(refusal(normalize(page({ en: { path: '/it' } })))).toBe(
     'The en path "/it" starts with "/it", the prefix of it pages.',
   )
-  expect(refusal(checkFields(hero, 'en', { title: { it: 'Ciao' }, phone: '1' }))).toBe(
+  expect(refusal(checkFields(hero, 'en', ['en'], { title: { it: 'Ciao' }, phone: '1' }))).toBe(
     '"Title" is required in en.',
   )
   expect(refusal(normalize(page({}, [section({ title: { it: 'Troppo lungo' } })])))).toMatch(

@@ -165,7 +165,7 @@ export class Settings extends Context.Service<
               Effect.map((data) => ({ data })),
             ),
           checkRequired: (_key, document) =>
-            checkFields(definitions.settings, defaultLocale, document.data),
+            checkFields(definitions.settings, defaultLocale, [defaultLocale], document.data),
         })
 
         // The singleton always exists, so "not found" cannot happen.
