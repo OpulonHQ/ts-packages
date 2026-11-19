@@ -9,6 +9,7 @@ import { labelText, type Page, type PageDocument, type PageLocale } from '../api
 import { emptyLocale } from '../localize.ts'
 import RevisionHistory from './RevisionHistory.vue'
 import FieldsForm from './FieldsForm.vue'
+import LocaleAvailability from './LocaleAvailability.vue'
 import LocaleDetails from './LocaleDetails.vue'
 import PageOutline from './PageOutline.vue'
 import PreviewPane from './PreviewPane.vue'
@@ -236,7 +237,8 @@ useDraftChanges({
                     : `${selectedIndex + 1}. ${typeLabel(draft.sections[selectedIndex]!.type)}`
                 }}
               </h2>
-              <div v-show="selection.kind === 'page'">
+              <div v-show="selection.kind === 'page'" class="space-y-6">
+                <LocaleAvailability :value="draft.locales" :locales="locales" :disabled="locked" />
                 <LocaleDetails
                   :value="draft.locales"
                   :locales="locales"

@@ -142,7 +142,7 @@ test('a system page offers no delete', async () => {
   await expect.poll(text).toContain('Zatiaľ žiadne publikované revízie.')
 })
 
-test('a collection list filters by the fields its definition names; others show no filters', async () => {
+test('a collection list filters by the fields its definition names and by language', async () => {
   const category = async (name: string) =>
     (
       await host.call<Item>('POST', '/collections/categories/items', {
@@ -161,7 +161,7 @@ test('a collection list filters by the fields its definition names; others show 
   await expect.poll(text).toContain('Listed C')
   const titles = () => ['Listed A', 'Listed B', 'Listed C'].filter((t) => text().includes(t))
   const filterControls = () => document.querySelectorAll('section [aria-haspopup="listbox"]')
-  expect(filterControls()).toHaveLength(2)
+  expect(filterControls()).toHaveLength(3)
 
   await pick('Kategórie', 'News')
   await expect.poll(titles).toEqual(['Listed A', 'Listed B'])
@@ -173,7 +173,29 @@ test('a collection list filters by the fields its definition names; others show 
   history.replaceState(null, '', '/admin/cms/collections/categories')
   window.dispatchEvent(new PopStateEvent('popstate'))
   await expect.poll(text).toContain('Law')
-  expect(filterControls()).toHaveLength(0)
+  expect(filterControls()).toHaveLength(1)
+})
+
+test('a collection field named language filters apart from the Language filter', async () => {
+  for (const [author, language, it] of [
+    ['Ann', 'en', true],
+    ['Bea', 'it', true],
+    ['Cid', 'en', false],
+  ] as const)
+    await host.call('POST', '/collections/testimonials/items', {
+      body: {
+        locales: it ? {} : { it: unavailable },
+        data: { quote: { en: 'Great' }, author, language },
+      },
+    })
+
+  const text = mountAdmin('/admin/cms/collections/testimonials')
+  await expect.poll(text).toContain('Cid')
+  const authors = () => ['Ann', 'Bea', 'Cid'].filter((a) => text().includes(a))
+  await pick('Written in', 'English')
+  await expect.poll(authors).toEqual(['Ann', 'Cid'])
+  await pick('Jazyk', 'Taliančina')
+  await expect.poll(authors).toEqual(['Ann'])
 })
 
 async function pick(filter: string, option: string) {
@@ -185,3 +207,85 @@ async function pick(filter: string, option: string) {
   await expect.poll(item).toBeDefined()
   item()!.click()
 }
+
+const unavailable = {
+  path: '',
+  available: false,
+  seo: { title: '', description: '', image: null, noindex: false },
+}
+const rowOf = (title: string) =>
+  [...document.querySelectorAll('tbody tr')].find((row) => row.textContent?.includes(title))
+const chips = (title: string) =>
+  [...(rowOf(title)?.querySelectorAll('[data-locale]') ?? [])].map((chip) =>
+    chip.textContent?.trim(),
+  )
+const languageBox = (language: string) =>
+  [...document.querySelectorAll<HTMLElement>('[role="checkbox"]')].find(
+    (box) => document.querySelector(`label[for="${box.id}"]`)?.textContent?.trim() === language,
+  )
+
+test('the pages list shows each page in its languages and filters by language', async () => {
+  const seo = (title: string) => ({ title, description: '', image: null, noindex: false })
+  await host.create({
+    locales: { it: { path: '/solo-pagina', available: true, seo: seo('Solo pagina') } },
+    sections: [],
+  })
+  await host.create({
+    locales: { en: { path: '/english-page', available: true, seo: seo('English page') } },
+    sections: [],
+  })
+
+  const text = mountAdmin('/admin/cms/pages')
+  await expect.poll(text).toContain('Solo pagina')
+  expect(rowOf('Solo pagina')?.textContent).toContain('/it/solo-pagina')
+  expect(chips('Solo pagina')).toEqual(['IT'])
+  expect(chips('English page')).toEqual(['EN'])
+
+  await pick('Jazyk', 'Taliančina')
+  await expect.poll(() => rowOf('English page')).toBeUndefined()
+  expect(rowOf('Solo pagina')).toBeDefined()
+})
+
+test('a collection list filters by language; an unrouted item edits its languages', async () => {
+  const created = await host.call<Item>('POST', '/collections/categories/items', {
+    body: { locales: { en: unavailable }, data: { name: { en: 'Solo cat', it: 'Solo gatto' } } },
+  })
+  await host.call('POST', '/collections/categories/items', {
+    body: { locales: {}, data: { name: { en: 'Every cat' } } },
+  })
+
+  const text = mountAdmin('/admin/cms/collections/categories')
+  await expect.poll(text).toContain('Solo gatto')
+  expect(chips('Solo gatto')).toEqual(['IT'])
+  expect(chips('Every cat')).toEqual(['EN', 'IT'])
+  await pick('Jazyk', 'Angličtina')
+  await expect.poll(() => rowOf('Solo gatto')).toBeUndefined()
+  expect(rowOf('Every cat')).toBeDefined()
+
+  history.replaceState(null, '', `/admin/cms/items/${created.body.id}`)
+  window.dispatchEvent(new PopStateEvent('popstate'))
+  await expect.poll(() => languageBox('Angličtina')).toBeDefined()
+  expect(languageBox('Angličtina')!.getAttribute('aria-checked')).toBe('false')
+  expect(languageBox('Taliančina')!.getAttribute('aria-checked')).toBe('true')
+  languageBox('Angličtina')!.click()
+  await saveDraft()
+  await expect.poll(text).toContain('Koncept uložený.')
+  const { body } = await host.call<Item>('GET', `/items/${created.body.id}`)
+  expect(body.locales).toEqual(['en', 'it'])
+})
+
+test('the page editor turns a language on in its Languages control', async () => {
+  const created = (await host.create(page({ en: '/lingue', it: '/lingue' }))).body
+  await host.save(created.id, {
+    ...created.draft,
+    locales: { ...created.draft.locales, it: { ...created.draft.locales.it!, available: false } },
+  })
+  const text = mountAdmin(`/admin/cms/pages/${created.id}`)
+  await expect.poll(() => languageBox('Taliančina')).toBeDefined()
+  expect(languageBox('Taliančina')!.getAttribute('aria-checked')).toBe('false')
+  expect(text()).not.toContain('Dostupná v tomto jazyku')
+  languageBox('Taliančina')!.click()
+  await saveDraft()
+  await expect.poll(text).toContain('Koncept uložený.')
+  expect((await stored(created.id)).locales).toEqual(['en', 'it'])
+})

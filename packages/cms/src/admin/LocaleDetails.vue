@@ -32,13 +32,6 @@ const hints = useLocaleHints(() => props.locales)
         :help="t('cms.page.pathHelp')"
         :disabled="disabled"
       />
-      <FieldToggle
-        v-model="value[code]!.available"
-        :name="`${namePrefix ?? 'locales'}.${code}.available`"
-        :label="t('cms.page.available')"
-        :sr-hint="hints.language(code)"
-        :disabled="disabled"
-      />
       <FieldText
         v-model="value[code]!.seo.title"
         :name="`${namePrefix ?? 'locales'}.${code}.seo.title`"

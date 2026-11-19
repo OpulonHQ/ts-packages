@@ -19,8 +19,9 @@ import {
   labelText,
   titleFieldOf,
 } from '../api.ts'
-import { emptyLocale, localizeData } from '../localize.ts'
-import { checkFields, cleanData, cleanLocales } from './document.ts'
+import { availableLocales, emptyLocale, listLocale, localizeData } from '../localize.ts'
+import { publicPath } from '../public.ts'
+import { checkFields, cleanData, cleanLocales, requiredLocales } from './document.ts'
 import { type DocumentRow, documentState, makeDocuments } from './documents.ts'
 import { listItems } from './item-query.ts'
 
@@ -82,24 +83,30 @@ export class Items extends Context.Service<
             Effect.mapError(() => new CmsNotFound({ id: key ?? '' })),
           )
 
-        const title = (row: DocumentRow<ItemDocument>) => {
+        const toSummary = (row: DocumentRow<ItemDocument>): ItemSummary => {
           const collection = collectionOf(row.key)
+          const available = availableLocales(
+            locales,
+            row.draft.locales,
+            collection?.routed ?? false,
+          )
+          const shown = listLocale(locales, available)
           const field = collection && titleFieldOf(collection)
           const value =
             collection && field !== undefined
-              ? localizeData(collection, row.draft.data, defaultLocale, defaultLocale)[field]
+              ? localizeData(collection, row.draft.data, shown, shown)[field]
               : undefined
-          const own = row.draft.locales[defaultLocale]
-          const text = typeof value === 'string' ? value : ''
-          return text || own?.seo.title || own?.path || 'Untitled'
+          const own = row.draft.locales[shown]
+          return {
+            id: row.id,
+            collection: row.key ?? '',
+            title:
+              (typeof value === 'string' && value) || own?.seo.title || own?.path || 'Untitled',
+            path: own?.path ? publicPath(locales, shown, own.path) : '',
+            locales: available,
+            ...documentState(row),
+          }
         }
-        const toSummary = (row: DocumentRow<ItemDocument>): ItemSummary => ({
-          id: row.id,
-          collection: row.key ?? '',
-          title: title(row),
-          path: row.draft.locales[defaultLocale]?.path ?? '',
-          ...documentState(row),
-        })
         const toItem = (row: DocumentRow<ItemDocument>): Item => ({
           ...toSummary(row),
           draft: row.draft,
@@ -141,7 +148,7 @@ export class Items extends Context.Service<
             unpublished: 'cms.item.unpublished',
             deleted: 'cms.item.deleted',
           },
-          subject: (row) => ({ type: 'item', id: row.id, label: title(row) }),
+          subject: (row) => ({ type: 'item', id: row.id, label: toSummary(row).title }),
           tags: (row) => itemTags(row.id, row.key ?? ''),
           normalize: (key, document) =>
             inCollection(key, (collection) =>
@@ -160,7 +167,12 @@ export class Items extends Context.Service<
             ),
           checkRequired: (key, document) =>
             inCollection(key, (collection) =>
-              checkFields(collection, defaultLocale, document.data),
+              checkFields(
+                collection,
+                defaultLocale,
+                requiredLocales(locales, document.locales, collection.routed ?? false),
+                document.data,
+              ),
             ),
           routes: (document) => document.locales,
         })
@@ -172,9 +184,7 @@ export class Items extends Context.Service<
             documents.restoreRevision(id, revisionId, version).pipe(Effect.map(toItem)),
           list: (collection, query) =>
             known(collection).pipe(
-              Effect.flatMap((definition) =>
-                listItems({ collection, definition, locale: defaultLocale, query }),
-              ),
+              Effect.flatMap((definition) => listItems({ collection, definition, locales, query })),
               Effect.provideService(SqlClient, sql),
             ),
           get: (id) => documents.get(id).pipe(Effect.map(toItem)),

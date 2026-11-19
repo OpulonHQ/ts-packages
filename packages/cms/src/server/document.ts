@@ -11,7 +11,7 @@ import {
   sectionDataSchema,
 } from '../api.ts'
 import { linkProblem, maxSections, uuid } from '../document-rules.ts'
-import { emptyLocale, isRecord } from '../localize.ts'
+import { availableLocales, emptyLocale, isRecord } from '../localize.ts'
 import { cleanFields, cleanLocaleText, isLink, present } from '../sanitize.ts'
 
 /** Locale-relative path: `/` or lowercase segments of letters, digits and dashes. */
@@ -34,7 +34,10 @@ export const cleanLocales = (
       const own = given[locale]
       if (!withPaths && own && own.path.trim() !== '')
         return yield* invalid(`These items have no own path, so the ${locale} path must be empty.`)
-      out[locale] = yield* cleanLocale(locale, own, withPaths)
+      out[locale] =
+        !withPaths && !own
+          ? { ...emptyLocale(), available: true }
+          : yield* cleanLocale(locale, own, withPaths)
       // Other locales' public paths start with their prefix, which would shadow this path.
       const first = out[locale]!.path.split('/')[1]
       if (locale === locales[0] && first !== undefined && locales.includes(first))
@@ -123,39 +126,58 @@ export const normalizeDocument = (
     return { locales: pageLocales, sections }
   })
 
-/** Every required field of a group filled (in the default locale, if localized). */
+/**
+ * The locales a document's required localized fields must be filled in on publish: those it is
+ * available in, or the default one when none. A value in the default locale fills any of them,
+ * as the Read API falls back to it.
+ */
+export const requiredLocales = (
+  locales: ReadonlyArray<string>,
+  own: Readonly<Record<string, PageLocale>>,
+  routed: boolean,
+) => {
+  const available = availableLocales(locales, own, routed)
+  return available.length > 0 ? available : [locales[0]!]
+}
+
+/** Every required field of a group filled; a localized one in each of `locales`, or in the
+ *  default locale. */
 export const checkFields = (
   group: FieldGroup,
   defaultLocale: string,
+  locales: ReadonlyArray<string>,
   data: Readonly<Record<string, unknown>>,
 ): Effect.Effect<void, CmsInvalid> =>
   Effect.gen(function* () {
     for (const [name, field] of Object.entries(group.fields)) {
+      if (!field.required) continue
+      const label = labelText(field.label, 'en')
       const value = data[name]
-      const filled = field.localized
-        ? isRecord(value) && present(value[defaultLocale])
-        : Array.isArray(value)
-          ? value.length > 0
-          : present(value)
-      if (field.required && !filled)
-        return yield* invalid(
-          `"${labelText(field.label, 'en')}" is required${field.localized ? ` in ${defaultLocale}` : ''}.`,
-        )
+      if (!field.localized) {
+        if (Array.isArray(value) ? value.length === 0 : !present(value))
+          return yield* invalid(`"${label}" is required.`)
+        continue
+      }
+      const values = isRecord(value) ? value : {}
+      if (present(values[defaultLocale])) continue
+      const missing = locales.find((locale) => !present(values[locale]))
+      if (missing !== undefined) return yield* invalid(`"${label}" is required in ${missing}.`)
     }
   })
 
 /** Publishing a page needs every section's required fields filled. */
 export const checkRequired = (
   definitions: CmsDefinitions,
-  defaultLocale: string,
+  contentLocales: ReadonlyArray<string>,
   document: PageDocument,
 ): Effect.Effect<void, CmsInvalid> =>
   Effect.gen(function* () {
+    const locales = requiredLocales(contentLocales, document.locales, true)
     for (const [index, section] of document.sections.entries()) {
       const type = definitions.sections[section.type]
       if (!type)
         return yield* invalid(`Section ${index + 1} has an unknown type "${section.type}".`)
-      yield* checkFields(type, defaultLocale, section.data).pipe(
+      yield* checkFields(type, contentLocales[0]!, locales, section.data).pipe(
         Effect.mapError((error) =>
           invalid(`Section ${index + 1} (${labelText(type.label, 'en')}): ${error.message}`),
         ),

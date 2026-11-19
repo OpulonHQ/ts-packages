@@ -20,6 +20,7 @@ import createRedirect from './migrations/0002_create_redirect.ts'
 import singletons from './migrations/0003_singletons.ts'
 import itemListOrder from './migrations/0004_item_list_order.ts'
 import documentVersion from './migrations/0005_document_version.ts'
+import unroutedItemsAvailable from './migrations/0006_unrouted_items_available.ts'
 import { Pages } from './pages.ts'
 import { makeReader, type Tagged } from './read.ts'
 import { Redirects } from './redirects.ts'
@@ -120,6 +121,11 @@ export const cms = (options: CmsOptions) =>
       '0003_singletons': singletons,
       '0004_item_list_order': itemListOrder,
       '0005_document_version': documentVersion,
+      '0006_unrouted_items_available': unroutedItemsAvailable(
+        Object.keys(options.definitions.collections).filter(
+          (key) => !options.definitions.collections[key]!.routed,
+        ),
+      ),
     },
     permissions: cmsPermissions,
     auditActions: cmsAuditActions,

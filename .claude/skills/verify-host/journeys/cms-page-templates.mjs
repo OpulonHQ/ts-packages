@@ -45,7 +45,7 @@ export default async (ctx) => {
 
   await outline.getByRole('button', { name: 'Page settings', exact: true }).click()
   await page.getByRole('textbox', { name: 'Path' }).fill(path)
-  await page.getByRole('switch', { name: 'Available in this language' }).click()
+  await page.getByRole('checkbox', { name: 'English' }).click()
   await page.getByRole('textbox', { name: 'SEO title' }).fill(`Template ${run}`)
   const draft = page.waitForResponse((r) => r.url().includes(`/api/cms/pages/${id}/draft?`) && r.request().method() === 'PUT')
   await page.getByRole('button', { name: 'Save draft' }).click()

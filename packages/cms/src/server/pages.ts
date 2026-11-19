@@ -15,7 +15,8 @@ import {
   type PagePreview,
   type PageSummary,
 } from '../api.ts'
-import { emptyLocale, pagePreview } from '../localize.ts'
+import { availableLocales, emptyLocale, listLocale, pagePreview } from '../localize.ts'
+import { publicPath } from '../public.ts'
 import { checkRequired, normalizeDocument } from './document.ts'
 import { type DocumentRow, documentState, makeDocuments } from './documents.ts'
 
@@ -68,20 +69,21 @@ export class Pages extends Context.Service<
       Effect.gen(function* () {
         const sql = yield* SqlClient
         const locales = yield* ContentLocales
-        const defaultLocale = locales[0]!
 
-        const title = (row: DocumentRow<PageDocument>) => {
-          const own = row.draft.locales[defaultLocale]
+        const toSummary = (row: DocumentRow<PageDocument>): PageSummary => {
+          const available = availableLocales(locales, row.draft.locales, true)
+          const shown = listLocale(locales, available)
+          const own = row.draft.locales[shown]
           const system = row.key === null ? undefined : definitions.systemPages[row.key]
-          return own?.seo.title || labelText(system?.label, 'en') || own?.path || 'Untitled'
+          return {
+            id: row.id,
+            systemKey: row.key,
+            title: own?.seo.title || labelText(system?.label, 'en') || own?.path || 'Untitled',
+            path: own?.path ? publicPath(locales, shown, own.path) : '',
+            locales: available,
+            ...documentState(row),
+          }
         }
-        const toSummary = (row: DocumentRow<PageDocument>): PageSummary => ({
-          id: row.id,
-          systemKey: row.key,
-          title: title(row),
-          path: row.draft.locales[defaultLocale]?.path ?? '',
-          ...documentState(row),
-        })
         const toPage = (row: DocumentRow<PageDocument>): Page => ({
           ...toSummary(row),
           draft: row.draft,
@@ -103,10 +105,10 @@ export class Pages extends Context.Service<
             unpublished: 'cms.page.unpublished',
             deleted: 'cms.page.deleted',
           },
-          subject: (row) => ({ type: 'page', id: row.id, label: title(row) }),
+          subject: (row) => ({ type: 'page', id: row.id, label: toSummary(row).title }),
           tags: (row) => pageTags(row.id),
           normalize: (_key, document) => normalizeDocument(definitions, locales, document),
-          checkRequired: (_key, document) => checkRequired(definitions, defaultLocale, document),
+          checkRequired: (_key, document) => checkRequired(definitions, locales, document),
           routes: (document) => document.locales,
           beforeRemove: (row) =>
             row.key === null

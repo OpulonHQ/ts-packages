@@ -39,6 +39,7 @@ const row = {
   collection: 'posts',
   title: 'Decoded pack-check item',
   path: '/decoded',
+  locales: ['en'],
   status: 'draft',
   updatedAt: '2026-01-01T00:00:00.000Z',
   publishedAt: null,

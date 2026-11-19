@@ -1,5 +1,5 @@
 <script setup lang="ts">
-/** Content > Pages: every page with its path and publish status; system pages first. */
+/** Content > Pages: every page with its path, languages and publish status; system pages first. */
 import { CachePurgeNotice, useI18n } from '@opulonjs/admin'
 import { formatDate, queryRows, type TableQuery, UButton, UModal } from '@opulonjs/ui'
 import DataTable from '@opulonjs/ui/components/DataTable'
@@ -8,7 +8,15 @@ import StatusBadge from '@opulonjs/ui/components/StatusBadge'
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { labelText, type PageSummary, type PageTemplate } from '../api.ts'
-import { failureMessage, pageTitle, useCmsContext, usePages } from './use-cms.ts'
+import LocaleChips from './LocaleChips.vue'
+import {
+  failureMessage,
+  languageFilter,
+  pageTitle,
+  useCmsContext,
+  useLanguageColumn,
+  usePages,
+} from './use-cms.ts'
 
 const { t, locale } = useI18n()
 const pages = usePages()
@@ -18,16 +26,18 @@ const creating = ref(false)
 const picking = ref(false)
 const failure = ref<string>()
 
+const languages = useLanguageColumn(() => pages.contentLocales.value)
 const load = async (query: TableQuery) => {
-  const rows = (await pages.list()).rows.map((row) => ({
-    ...row,
-    title: pageTitle(definitions, row, locale.value),
-  }))
-  return queryRows(rows, ['title', 'path'], query)
+  const { [languageFilter]: language, ...filters } = query.filters
+  const rows = (await pages.list()).rows
+    .filter((row) => language === undefined || row.locales.includes(String(language)))
+    .map((row) => ({ ...row, title: pageTitle(definitions, row, locale.value) }))
+  return queryRows(rows, ['title', 'path'], { ...query, filters })
 }
 const columns = computed(() => [
   { key: 'title', label: t('cms.columns.title'), sortable: true },
   { key: 'path', label: t('cms.columns.path'), sortable: true },
+  ...languages.columns.value,
   { key: 'status', label: t('cms.columns.status'), sortable: true, nowrap: true },
   {
     key: 'updatedAt',
@@ -98,6 +108,7 @@ const start = () => (templates.length > 0 ? (picking.value = true) : create())
     <DataTable
       :columns="columns"
       :load="load"
+      :filters="languages.filters.value"
       :caption="t('cms.pages.caption')"
       :empty-title="t('cms.pages.empty')"
       searchable
@@ -108,6 +119,9 @@ const start = () => (templates.length > 0 ? (picking.value = true) : create())
         <span v-if="row.original.systemKey" class="ms-2 text-xs text-muted">
           {{ t('cms.page.system') }}
         </span>
+      </template>
+      <template #locales-cell="{ row }">
+        <LocaleChips :locales="row.original.locales" />
       </template>
       <template #status-cell="{ row }">
         <StatusBadge

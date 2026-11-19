@@ -16,6 +16,19 @@ export const emptyLocale = (path = ''): PageLocale => ({
   seo: { title: '', description: '', image: null, noindex: false },
 })
 
+/** The content locales a document is available in, in content-locale order. A locale the
+ *  document lacks is available only for items without paths (unrouted collections). */
+export const availableLocales = (
+  locales: ReadonlyArray<string>,
+  own: Readonly<Record<string, PageLocale>>,
+  routed: boolean,
+) => locales.filter((locale) => own[locale]?.available ?? !routed)
+
+/** The locale a list shows a document in: the default one when available there, else the
+ *  first available one. */
+export const listLocale = (locales: ReadonlyArray<string>, available: ReadonlyArray<string>) =>
+  available.includes(locales[0]!) ? locales[0]! : (available[0] ?? locales[0]!)
+
 export const localizeData = (
   group: FieldGroup,
   data: Readonly<Record<string, unknown>>,
