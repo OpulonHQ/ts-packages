@@ -144,6 +144,33 @@ export const useLocaleHints = (locales: () => ReadonlyArray<string>) => {
   }
 }
 
+export const languageFilter = 'language'
+
+/** The Languages column and Language filter of the pages and collection lists, while the host
+ *  has several content locales. */
+export const useLanguageColumn = (locales: () => ReadonlyArray<string>) => {
+  const { t, locale } = useI18n()
+  const several = () => locales().length > 1
+  return {
+    columns: computed(() =>
+      several() ? [{ key: 'locales', label: t('cms.columns.languages') }] : [],
+    ),
+    filters: computed(() =>
+      several()
+        ? [
+            {
+              key: languageFilter,
+              label: t('cms.columns.language'),
+              options: locales().map((code) => ({
+                label: languageName(code, locale.value),
+                value: code,
+              })),
+            },
+          ]
+        : [],
+    ),
+  }
+}
 export const useContentLocale = (
   locales: () => ReadonlyArray<string>,
   status: Ref<ActionResult | undefined>,

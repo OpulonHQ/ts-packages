@@ -8,7 +8,14 @@ import StatusBadge from '@opulonjs/ui/components/StatusBadge'
 import { computed, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { type ItemSummary, labelText } from '../api.ts'
-import { failureMessage, useCmsContext, useContent } from './use-cms.ts'
+import LocaleChips from './LocaleChips.vue'
+import {
+  failureMessage,
+  languageFilter,
+  useCmsContext,
+  useContent,
+  useLanguageColumn,
+} from './use-cms.ts'
 
 const { t, locale } = useI18n()
 const content = useContent()
@@ -61,8 +68,9 @@ watch(
   },
   { immediate: true },
 )
-const filters = computed(() =>
-  (collection.value?.filters ?? []).flatMap((name) => {
+const languages = useLanguageColumn(() => content.contentLocales.value)
+const filters = computed(() => [
+  ...(collection.value?.filters ?? []).flatMap((name) => {
     const field = collection.value?.fields[name]
     if (!field) return []
     return [
@@ -79,16 +87,19 @@ const filters = computed(() =>
       },
     ]
   }),
-)
+  ...languages.filters.value,
+])
 
 const load = async (query: TableQuery) => {
   if (!current.value) return { rows: [], total: 0 }
   const sort = query.sort?.column
+  const { [languageFilter]: language, ...fields } = query.filters
   return content.listItems(current.value, {
     page: query.page,
     perPage: query.perPage,
     search: query.search,
-    filter: Object.entries(query.filters).map(([name, value]) => `${name}:${value}`),
+    filter: Object.entries(fields).map(([name, value]) => `${name}:${value}`),
+    ...(language === undefined ? {} : { availableIn: String(language) }),
     ...(sort === 'title' || sort === 'path' || sort === 'status' || sort === 'updatedAt'
       ? { sort }
       : {}),
@@ -100,6 +111,7 @@ const columns = computed(() => [
   ...(collection.value?.routed
     ? [{ key: 'path', label: t('cms.columns.path'), sortable: true }]
     : []),
+  ...languages.columns.value,
   { key: 'status', label: t('cms.columns.status'), sortable: true, nowrap: true },
   {
     key: 'updatedAt',
@@ -160,6 +172,9 @@ async function create() {
       <template #pagination-limit>{{ t('cms.collections.paginationLimit') }}</template>
       <template #title-cell="{ row }">
         <span class="font-medium text-highlighted">{{ row.original.title }}</span>
+      </template>
+      <template #locales-cell="{ row }">
+        <LocaleChips :locales="row.original.locales" />
       </template>
       <template #status-cell="{ row }">
         <StatusBadge

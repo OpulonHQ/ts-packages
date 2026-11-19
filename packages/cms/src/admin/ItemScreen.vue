@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * One collection item: path, availability and SEO per content locale (routed collections
+ * One collection item: its languages, path and SEO per content locale (routed collections
  * only), the collection's fields, and save draft / publish / unpublish / delete.
  */
 import { CachePurgeNotice, useI18n, useNavTarget } from '@opulonjs/admin'
@@ -11,8 +11,10 @@ import PageHeader from '@opulonjs/ui/components/PageHeader'
 import { computed, ref, shallowRef, watch, useTemplateRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { type Item, type ItemDocument, labelText, type PageLocale } from '../api.ts'
+import { emptyLocale } from '../localize.ts'
 import RevisionHistory from './RevisionHistory.vue'
 import FieldsForm from './FieldsForm.vue'
+import LocaleAvailability from './LocaleAvailability.vue'
 import LocaleDetails from './LocaleDetails.vue'
 import PublishActions from './PublishActions.vue'
 import ActionStatus from './ActionStatus.vue'
@@ -73,11 +75,7 @@ const toDraft = (document: ItemDocument): Draft => {
     data: structuredClone(document.data),
   }
   for (const code of locales.value)
-    copy.locales[code] ??= {
-      path: '',
-      available: false,
-      seo: { title: '', description: '', image: null, noindex: false },
-    }
+    copy.locales[code] ??= { ...emptyLocale(), available: !collection.value?.routed }
   return copy
 }
 const show = (next: Item) => {
@@ -180,11 +178,16 @@ useDraftChanges({
       <LocaleSwitch v-model="contentLocale" :locales="locales" class="mb-4" />
       <form ref="form" tabindex="-1" :aria-label="item.title" @submit.prevent="save">
         <fieldset :disabled="pending || revisionPending" class="min-w-0 space-y-6">
-          <UCard v-if="collection.routed">
+          <UCard>
             <template #header>
-              <h2 class="font-semibold text-highlighted">{{ t('cms.item.details') }}</h2>
+              <h2 class="font-semibold text-highlighted">
+                {{ t(collection.routed ? 'cms.item.details' : 'cms.page.languages') }}
+              </h2>
             </template>
+            <LocaleAvailability :value="draft.locales" :locales="locales" :disabled="locked" />
             <LocaleDetails
+              v-if="collection.routed"
+              class="mt-6"
               :value="draft.locales"
               :locales="locales"
               :locale="contentLocale"

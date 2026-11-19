@@ -140,12 +140,12 @@ test('a switch is named by its label alone and described by its language or "Vš
   expect(labelOf(visible)).toBe('Visible')
   expect(description(visible)).toBe('Všetky jazyky')
   expect(describedBy(visible)[0]?.classList.contains('sr-only')).toBe(false)
-  const available = [...document.querySelectorAll<HTMLElement>('button[role="switch"]')].find(
-    (el) => labelOf(el) === 'Dostupná v tomto jazyku',
+  const noindex = [...document.querySelectorAll<HTMLElement>('button[role="switch"]')].find(
+    (el) => labelOf(el) === 'Skryť pred vyhľadávačmi',
   )
-  expect(available).toBeDefined()
-  expect(description(available)).toBe('Angličtina')
-  expect(describedBy(available)[0]?.classList.contains('sr-only')).toBe(true)
+  expect(noindex).toBeDefined()
+  expect(description(noindex)).toBe('Angličtina')
+  expect(describedBy(noindex)[0]?.classList.contains('sr-only')).toBe(true)
 })
 
 test('site settings: what is typed in Italian stays after switching back, and Save stores both', async () => {
