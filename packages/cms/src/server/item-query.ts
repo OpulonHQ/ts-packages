@@ -35,7 +35,6 @@ export const listItems = Effect.fn('Items.list')(
           : sql`draft -> 'data' -> ${field}`
     const title = sql`coalesce(nullif(case when jsonb_typeof(${value}) = 'string' then ${value} #>> '{}' end, ''),
       nullif(draft -> 'locales' -> shown -> 'seo' ->> 'title', ''), nullif(own_path, ''), 'Untitled')`
-    // `publicPath` in SQL: search and sort see the path the list shows.
     const path = sql`case when own_path = '' or shown = ${locale} then own_path
       when own_path = '/' then '/' || shown else '/' || shown || own_path end`
     const perPage = query.perPage ?? listDefaultPerPage

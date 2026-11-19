@@ -175,7 +175,6 @@ test('migration 0006 makes stored unrouted items available in every locale witho
     data: { title: { en: 'Routed' } },
   })
 
-  // Items as an earlier version stored them: no locale available.
   const unavailableEverywhere = (column: string) =>
     `jsonb_set(${column}, '{locales}', (select jsonb_object_agg(k, v || '{"available": false}')
       from jsonb_each(${column}->'locales') e(k, v)))`
