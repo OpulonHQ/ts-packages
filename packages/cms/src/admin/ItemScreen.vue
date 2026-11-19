@@ -179,10 +179,8 @@ useDraftChanges({
       <form ref="form" tabindex="-1" :aria-label="item.title" @submit.prevent="save">
         <fieldset :disabled="pending || revisionPending" class="min-w-0 space-y-6">
           <UCard>
-            <template #header>
-              <h2 class="font-semibold text-highlighted">
-                {{ t(collection.routed ? 'cms.item.details' : 'cms.page.languages') }}
-              </h2>
+            <template v-if="collection.routed" #header>
+              <h2 class="font-semibold text-highlighted">{{ t('cms.item.details') }}</h2>
             </template>
             <LocaleAvailability :value="draft.locales" :locales="locales" :disabled="locked" />
             <LocaleDetails
