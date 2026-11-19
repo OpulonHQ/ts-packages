@@ -176,6 +176,28 @@ test('a collection list filters by the fields its definition names and by langua
   expect(filterControls()).toHaveLength(1)
 })
 
+test('a collection field named language filters apart from the Language filter', async () => {
+  for (const [author, language, it] of [
+    ['Ann', 'en', true],
+    ['Bea', 'it', true],
+    ['Cid', 'en', false],
+  ] as const)
+    await host.call('POST', '/collections/testimonials/items', {
+      body: {
+        locales: it ? {} : { it: unavailable },
+        data: { quote: { en: 'Great' }, author, language },
+      },
+    })
+
+  const text = mountAdmin('/admin/cms/collections/testimonials')
+  await expect.poll(text).toContain('Cid')
+  const authors = () => ['Ann', 'Bea', 'Cid'].filter((a) => text().includes(a))
+  await pick('Written in', 'English')
+  await expect.poll(authors).toEqual(['Ann', 'Cid'])
+  await pick('Jazyk', 'Taliančina')
+  await expect.poll(authors).toEqual(['Ann'])
+})
+
 async function pick(filter: string, option: string) {
   document.querySelector<HTMLElement>(`[aria-haspopup="listbox"][aria-label="${filter}"]`)!.click()
   const item = () =>

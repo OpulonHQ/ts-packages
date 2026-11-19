@@ -70,9 +70,17 @@ export const definitions = defineCms({
     testimonials: {
       label: 'Testimonials',
       titleField: 'author',
+      filters: ['language'],
       fields: {
         quote: fields.textarea({ label: 'Quote', required: true }),
         author: fields.text({ label: 'Author', localized: false }),
+        language: fields.select({
+          label: 'Written in',
+          options: [
+            { value: 'en', label: 'English' },
+            { value: 'it', label: 'Italian' },
+          ],
+        }),
       },
     },
   },

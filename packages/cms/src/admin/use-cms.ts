@@ -144,7 +144,7 @@ export const useLocaleHints = (locales: () => ReadonlyArray<string>) => {
   }
 }
 
-export const languageFilter = 'language'
+export const languageFilter = ':language'
 
 /** The Languages column and Language filter of the pages and collection lists, while the host
  *  has several content locales. */
