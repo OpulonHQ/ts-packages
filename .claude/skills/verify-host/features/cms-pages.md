@@ -22,7 +22,7 @@ Editors create a page, set a path and availability per language, add sections, s
 
 Preconditions: a session with cms rights (smoke owner).
 
-- **Create, publish, resolve.** `$V/ui.sh .claude/skills/verify-host/journeys/cms-pages.mjs email=<owner> 'password=smoke password <run>'`. Proves: `POST /api/cms/pages` 200; English (the editor's `Content language` switch starts on it) `Path` `/verify-<run>`, `Available in this language` on, `SEO title`; draft `PUT` 200 + `Draft saved.`; publish 200 + `Published.`; the Read API answers 200 with the tags; the list row shows the SEO title and `Published`.
+- **Create, publish, resolve.** `$V/ui.sh .claude/skills/verify-host/journeys/cms-pages.mjs email=<owner> 'password=smoke password <run>'`. Proves: `POST /api/cms/pages` 200; English (the editor's `Content language` switch starts on it) `Path` `/verify-<run>`, the `English` box of `Languages` checked, `SEO title`; draft `PUT` 200 + `Draft saved.`; publish 200 + `Published.`; the Read API answers 200 with the tags; the list row shows the SEO title and `Published`; a second, Italian-only page (`Italian` content language, `Italian` box) lists with its Italian SEO title, `/it/solo-<run>` and only the `IT` chip, and the `Language` filter set to Italian keeps it and drops the English page.
 - **Create from a template.** `$V/ui.sh .claude/skills/verify-host/journeys/cms-page-templates.mjs`. Proves: the picker offers `Blank page` and `Landing page` with `Sections: Hero, Stats, Rich text`; picking it sends `POST /api/cms/pages` 200 with three sections and fresh ids; the editor shows the hero title `Welcome`, stats count `120` and the rich text copy; draft and publish answer 200; the Read API serves the template copy.
 - **Live preview.** `VERIFY_VIDEO=1 $V/ui.sh .claude/skills/verify-host/journeys/cms-live-preview.mjs`. Proves: three panes side by side at 1440 px; typing the hero title updates the frame while the stored draft keeps the old title; clicking the stats note in the frame focuses `sections.1.note`; Enter on an outline entry selects it; an added Rich text section shows in the frame as typed; Mobile narrows the frame to 390 px; Save stores and Publish serves the edits; at 390 px the panes stack with no horizontal scroll.
 - **Purge.** Resolve, edit the SEO title, Publish, resolve again: the new title is served.
@@ -37,7 +37,7 @@ Preconditions: a session with cms rights (smoke owner).
 - Reach the preview with `page.locator('iframe[title="Live preview of the page"]').contentFrame()`.
 
 - There is no Title field: the list shows the en SEO title, else the en path, else `Untitled`.
-- `Available in this language` is off by default; without it the Read API does not serve the page.
+- Every `Languages` box is off on a new page; without one the Read API does not serve the page in that locale.
 - Paths start with `/`, lowercase letters, digits and dashes.
 - Assert that Cache-Tag contains the tags, not equality: linked targets add tags and a large set collapses to `cms:routes`.
 - `getByRole('button', { name: 'Publish', exact: true })`; Unpublish also matches a substring search.
