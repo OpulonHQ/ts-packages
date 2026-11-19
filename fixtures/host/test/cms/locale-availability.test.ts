@@ -181,6 +181,8 @@ test('migration 0006 makes stored unrouted items available in every locale witho
   await host.query(`update cms.document set draft = ${unavailableEverywhere('draft')},
     published = case when published is not null then ${unavailableEverywhere('published')} end
     where kind = 'item' and key = 'categories'`)
+  await host.query(`update cms.revision set document = ${unavailableEverywhere('document')}
+    where document_id in (select id from cms.document where kind = 'item' and key = 'categories')`)
   const statuses = async () =>
     Object.fromEntries(
       (await listItems('categories', `ids=${[draft, published, changed].join(',')}`)).body.rows.map(
@@ -208,4 +210,14 @@ test('migration 0006 makes stored unrouted items available in every locale witho
     `/collections/categories?locale=it&ids=${[draft, published, changed].join(',')}`,
   )
   expect(italian.body.rows.map((row) => row.id).sort()).toEqual([published, changed].sort())
+
+  const earlier = (await host.call<Item>('GET', `/items/${changed}`)).body
+  const restored = await host.call<Item>(
+    'POST',
+    `/items/${changed}/revisions/${earlier.publishedRevisionId}/restore?version=${earlier.version}`,
+  )
+  expect(restored.status).toBe(200)
+  await host.publishDraft(`/items/${changed}`)
+  const afterRestore = await read<List>(`/collections/categories?locale=it&ids=${changed}`)
+  expect(afterRestore.body.rows.map((row) => row.id)).toEqual([changed])
 })
