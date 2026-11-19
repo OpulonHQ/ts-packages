@@ -53,6 +53,21 @@ whose draft holds the chosen value (a many reference: among its items). The Admi
 same filter as `GET /collections/posts/items?filter=categories:<item id>`, repeatable, and
 answers 400 for a field `filters` does not name.
 
+## Publish in some languages
+
+A page or item is published in the content locales its `locales[<locale>].available` holds. The
+editors show them as one Languages control, a checkbox per content locale. A routed document
+needs a path in each locale it is available in; an unrouted item is available in a locale its
+document does not name, and the Read API's `collection()` lists it only in its available locales.
+
+Admin lists show each row in its list locale: the default locale when available there, else the
+first available one, so the title and the public path (`/it/contatti`) are that locale's. Rows
+carry `locales`, the available ones, and `GET /collections/:collection/items?availableIn=it`
+lists the items available in Italian.
+
+Publishing needs each required localized field filled in every available locale, or in the
+default locale, which the Read API falls back to.
+
 ## Live preview
 
 The page editor can show the host site's page in a frame and update it as the editor types,
