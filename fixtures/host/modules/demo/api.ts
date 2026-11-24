@@ -44,6 +44,8 @@ export const DemoGroup = HttpApiGroup.make('demo')
         bcc: Schema.optional(Schema.Array(Schema.String)),
         replyTo: Schema.optional(Schema.String),
         note: Schema.String,
+        storedBytes: Schema.optional(Schema.Number),
+        fetchedBytes: Schema.optional(Schema.Number),
       }),
       success: Schema.Struct({ id: Schema.String }),
       error: AttachmentsTooLarge,

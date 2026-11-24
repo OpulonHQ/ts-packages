@@ -73,6 +73,9 @@ export const privateNote = {
   content: new TextEncoder().encode('Fetched at send time, never stored in the email log.'),
 }
 
+export const sizedKey = 'demo/bytes/'
+export const sizedBytes = (size: number) => Uint8Array.from({ length: size }, (_, i) => i % 251)
+
 /** A throwaway host module proving the module contract end to end. */
 export const demo = defineModule({
   id: 'demo',
@@ -93,24 +96,47 @@ export const demo = defineModule({
               if (!hit.allowed) return yield* new TooManyRequests({ retryAfter: hit.retryAfter })
             }),
           )
-          .handle('share', ({ payload: { note, ...addresses } }) =>
+          .handle('share', ({ payload: { note, storedBytes, fetchedBytes, ...addresses } }) =>
             mail
               .send(noteShared, {
                 ...addresses,
                 vars: { note },
-                attachments: [
-                  {
-                    filename: 'note.txt',
-                    contentType: 'text/plain; charset=utf-8',
-                    content: new TextEncoder().encode(note),
-                  },
-                  {
-                    filename: 'private.txt',
-                    contentType: 'text/plain; charset=utf-8',
-                    size: privateNote.content.byteLength,
-                    key: privateNote.key,
-                  },
-                ],
+                attachments:
+                  storedBytes === undefined && fetchedBytes === undefined
+                    ? [
+                        {
+                          filename: 'note.txt',
+                          contentType: 'text/plain; charset=utf-8',
+                          content: new TextEncoder().encode(note),
+                        },
+                        {
+                          filename: 'private.txt',
+                          contentType: 'text/plain; charset=utf-8',
+                          size: privateNote.content.byteLength,
+                          key: privateNote.key,
+                        },
+                      ]
+                    : [
+                        ...(storedBytes === undefined
+                          ? []
+                          : [
+                              {
+                                filename: 'stored.bin',
+                                contentType: 'application/octet-stream',
+                                content: sizedBytes(storedBytes),
+                              },
+                            ]),
+                        ...(fetchedBytes === undefined
+                          ? []
+                          : [
+                              {
+                                filename: 'fetched.bin',
+                                contentType: 'application/octet-stream',
+                                size: fetchedBytes,
+                                key: `${sizedKey}${fetchedBytes}`,
+                              },
+                            ]),
+                      ],
               })
               .pipe(Effect.catchTag('SqlError', Effect.die)),
           )

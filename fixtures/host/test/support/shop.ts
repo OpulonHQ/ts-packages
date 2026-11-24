@@ -74,6 +74,7 @@ const ShopGroup = HttpApiGroup.make('shop')
             filename: Schema.String,
             contentType: Schema.String,
             text: Schema.optional(Schema.String),
+            fill: Schema.optional(Schema.Number),
             key: Schema.optional(Schema.String),
             size: Schema.optional(Schema.Number),
           }),
@@ -127,10 +128,18 @@ const shop = defineModule({
                 bcc: payload.bcc,
                 replyTo: payload.replyTo,
                 vars: { name: 'Jana', order: 'A-9' },
-                attachments: payload.files.map(({ filename, contentType, text, key, size }) =>
-                  key === undefined
-                    ? { filename, contentType, content: new TextEncoder().encode(text) }
-                    : { filename, contentType, key, size: size ?? 0 },
+                attachments: payload.files.map(
+                  ({ filename, contentType, text, fill, key, size }) =>
+                    key === undefined
+                      ? {
+                          filename,
+                          contentType,
+                          content:
+                            fill === undefined
+                              ? new TextEncoder().encode(text)
+                              : patternBytes(fill),
+                        }
+                      : { filename, contentType, key, size: size ?? 0 },
                 ),
               })
               .pipe(Effect.catchTag('SqlError', Effect.die)),
@@ -138,6 +147,9 @@ const shop = defineModule({
       }),
     ),
 })
+
+/** `size` bytes that are not all alike, so a wrong encoding or a shifted chunk shows. */
+export const patternBytes = (size: number) => Uint8Array.from({ length: size }, (_, i) => i % 251)
 
 /** A host email component: a coupon code box. */
 export const coupon = emailComponent({
@@ -258,6 +270,7 @@ export function makeShop(
         filename: string
         contentType: string
         text?: string
+        fill?: number
         key?: string
         size?: number
       }>

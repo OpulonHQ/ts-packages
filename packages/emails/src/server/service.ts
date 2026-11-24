@@ -18,8 +18,10 @@ import {
   type EmailStatus,
   type EmailTemplateInfo,
   maxAttachmentsBytes,
+  maxStoredAttachmentsBytes,
   TemplateInvalid,
 } from '../api.ts'
+import { decodeBase64, encodeBase64 } from './base64.ts'
 import type { EmailComponent } from './components.ts'
 import { AttachmentResolver, Mailer, MailerError } from './mailer.ts'
 import {
@@ -61,7 +63,10 @@ export interface SendInput<P extends string> {
   readonly bcc?: string | ReadonlyArray<string> | undefined
   /** Where replies go. Default: the module's configured `replyTo`. */
   readonly replyTo?: string | undefined
-  /** Together at most `maxAttachmentsBytes`; a larger send fails with `AttachmentsTooLarge`. */
+  /**
+   * Together at most `maxAttachmentsBytes`, those with `content` at most
+   * `maxStoredAttachmentsBytes`; a larger send fails with `AttachmentsTooLarge`.
+   */
   readonly attachments?: ReadonlyArray<EmailAttachment> | undefined
   /**
    * Staff templates: the recipient's admin locale (null: the admin default). Public templates:
@@ -115,13 +120,13 @@ const StoredAttachment = Schema.Union([
   Schema.Struct({
     filename: Schema.String,
     contentType: Schema.String,
-    content: Schema.Uint8ArrayFromBase64,
+    size: Schema.Number,
+    key: Schema.String,
   }),
   Schema.Struct({
     filename: Schema.String,
     contentType: Schema.String,
-    size: Schema.Number,
-    key: Schema.String,
+    content: Schema.String,
   }),
 ])
 
@@ -349,14 +354,7 @@ export class EmailService extends Context.Service<
                   replyTo: o.replyTo,
                   ...o.rendered,
                   attachments: attachments.map((a) =>
-                    'key' in a
-                      ? {
-                          filename: a.filename,
-                          contentType: a.contentType,
-                          size: a.size,
-                          key: a.key,
-                        }
-                      : { filename: a.filename, contentType: a.contentType, content: a.content },
+                    'key' in a ? a : { ...a, content: encodeBase64(a.content) },
                   ),
                 }),
               )
@@ -394,11 +392,14 @@ export class EmailService extends Context.Service<
               ),
             onSome: (r) =>
               r.resolve(a.key).pipe(
-                Effect.mapError(
-                  (cause) =>
-                    new MailerError({
-                      message: `attachment "${a.filename}" could not be fetched: ${cause}`,
-                    }),
+                Effect.catchCause((cause) =>
+                  Effect.logWarning(`attachment "${a.filename}" could not be fetched`, cause).pipe(
+                    Effect.andThen(
+                      new MailerError({
+                        message: `attachment "${a.filename}" could not be fetched`,
+                      }),
+                    ),
+                  ),
                 ),
                 Effect.filterOrFail(
                   (content) => content instanceof Uint8Array && content.byteLength === a.size,
@@ -431,7 +432,7 @@ export class EmailService extends Context.Service<
                     contentType: a.contentType,
                     content,
                   }))
-                : Effect.succeed(a),
+                : Effect.sync(() => ({ ...a, content: decodeBase64(a.content) })),
             ).pipe(
               Effect.flatMap((attachments) =>
                 mailer.send({ ...message, attachments, idempotencyKey: id }),
@@ -482,9 +483,20 @@ export class EmailService extends Context.Service<
             return yield* Effect.die(
               new Error('an attachment with a key needs an AttachmentResolver in the host infra'),
             )
-          const size = attachments.reduce((sum, a) => sum + sizeOf(a), 0)
+          const total = (files: ReadonlyArray<EmailAttachment>) =>
+            files.reduce((sum, a) => sum + sizeOf(a), 0)
+          const stored = total(attachments.filter((a) => !('key' in a)))
+          if (stored > maxStoredAttachmentsBytes)
+            return yield* new AttachmentsTooLarge({
+              scope: 'stored',
+              size: stored,
+              limit: maxStoredAttachmentsBytes,
+              message: `The attachments stored with the email add up to ${stored} bytes, over the ${maxStoredAttachmentsBytes} byte limit. Attach larger files by key.`,
+            })
+          const size = total(attachments)
           if (size > maxAttachmentsBytes)
             return yield* new AttachmentsTooLarge({
+              scope: 'total',
               size,
               limit: maxAttachmentsBytes,
               message: `The attachments add up to ${size} bytes, over the ${maxAttachmentsBytes} byte limit.`,

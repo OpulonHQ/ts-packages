@@ -14,8 +14,8 @@ import {
   r2MediaStorage,
   serveMedia,
 } from '@opulonjs/media/server'
-import { Effect, Layer } from 'effect'
-import { privateNote } from './modules/demo/server.ts'
+import { Effect, Layer, Schema } from 'effect'
+import { privateNote, sizedBytes, sizedKey } from './modules/demo/server.ts'
 import { server } from './server/opulon.ts'
 
 export interface Env {
@@ -29,6 +29,35 @@ export interface Env {
   readonly USERS_BASE_URL: string
   /** Signs session cookies (a secret: `wrangler secret put`). */
   readonly USERS_AUTH_SECRET: string
+  readonly DEMO_RESEND_STUB?: string
+}
+
+const StubbedEmail = Schema.Struct({
+  to: Schema.Array(Schema.String),
+  attachments: Schema.optional(
+    Schema.Array(Schema.Struct({ filename: Schema.String, content: Schema.String })),
+  ),
+})
+const failedOnce = new Set<string>()
+
+const resendStub: typeof fetch = async (input, init) => {
+  const request = new Request(input, init)
+  const key = request.headers.get('idempotency-key') ?? ''
+  const email = Schema.decodeUnknownSync(StubbedEmail)(await request.json())
+  const failing = email.to.some((to) => to.startsWith('fail-once')) && !failedOnce.has(key)
+  failedOnce.add(key)
+  console.log(
+    `resend stub ${failing ? '503' : '200'} ${JSON.stringify({
+      to: email.to,
+      attachments: (email.attachments ?? []).map((a) => ({
+        filename: a.filename,
+        base64Length: a.content.length,
+      })),
+    })}`,
+  )
+  return failing
+    ? Response.json({ message: 'stub: the first attempt fails' }, { status: 503 })
+    : Response.json({ id: `stub-${key}` })
 }
 
 const withCacheControl = (response: Response, value: string) => {
@@ -64,20 +93,23 @@ const serveContact = async (request: Request, env: Env) => {
 }
 
 /** The fixture Worker with a given Mailer; tests pass `captureMailer().layer`. */
-export const hostWorker = (mailer: Layer.Layer<Mailer> = Mailer.log) => {
+export const hostWorker = (mailer?: Layer.Layer<Mailer>) => {
   const opulon = createWorker(server, {
     infra: (env: Env, ctx) =>
       Layer.mergeAll(
         PgFromHyperdrive(env.HYPERDRIVE),
         R2MediaStorage(env.MEDIA_BUCKET),
-        mailer,
+        mailer ??
+          (env.DEMO_RESEND_STUB ? Layer.orDie(Mailer.resend({ fetch: resendStub })) : Mailer.log),
         Layer.succeed(
           AttachmentResolver,
           AttachmentResolver.of({
             resolve: (key) =>
               key === privateNote.key
                 ? Effect.succeed(privateNote.content)
-                : Effect.fail(new Error(`no attachment "${key}"`)),
+                : key.startsWith(sizedKey)
+                  ? Effect.succeed(sizedBytes(Number(key.slice(sizedKey.length))))
+                  : Effect.fail(new Error(`no attachment "${key}"`)),
           }),
         ),
         // Purges Read API (and in-process SSR) Cache-Tags on publish from this Worker's own

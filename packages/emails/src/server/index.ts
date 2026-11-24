@@ -11,7 +11,7 @@ import { defaultLayout, type EmailBrand, type EmailLayout } from './template.ts'
 
 export { defaultComponents, emailComponent, escapeHtml } from './components.ts'
 export type { EmailComponent, EmailComponentPropKind } from './components.ts'
-export { AttachmentsTooLarge, maxAttachmentsBytes } from '../api.ts'
+export { AttachmentsTooLarge, maxAttachmentsBytes, maxStoredAttachmentsBytes } from '../api.ts'
 export { AttachmentResolver, captureMailer, Mailer, MailerError } from './mailer.ts'
 export type { OutgoingAttachment, OutgoingEmail } from './mailer.ts'
 export { EmailService, maxAttempts } from './service.ts'

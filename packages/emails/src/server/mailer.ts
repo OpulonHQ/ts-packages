@@ -1,5 +1,5 @@
 import { Config, Context, Effect, Layer, Option, Redacted, Schema } from 'effect'
-import { Base64 } from 'effect/encoding'
+import { encodeBase64 } from './base64.ts'
 
 /** A file as a provider receives it. */
 export interface OutgoingAttachment {
@@ -81,7 +81,7 @@ export class Mailer extends Context.Service<
                       ? {
                           attachments: email.attachments.map((a) => ({
                             filename: a.filename,
-                            content: Base64.encode(a.content),
+                            content: encodeBase64(a.content),
                             content_type: a.contentType,
                           })),
                         }
