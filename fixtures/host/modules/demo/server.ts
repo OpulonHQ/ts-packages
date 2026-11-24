@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises'
 import { sitemapSource } from '@opulonjs/cms/server'
 import {
   Background,
@@ -8,6 +9,7 @@ import {
   withTransaction,
 } from '@opulonjs/core'
 import { emailTemplate } from '@opulonjs/emails/server'
+import { importUsers } from '@opulonjs/users/server'
 import { Context, Effect, Layer, Schema } from 'effect'
 import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import { SqlClient } from 'effect/sql/SqlClient'
@@ -91,6 +93,19 @@ export const demo = defineModule({
   migrations: { '0001_create_note': createNote, '0002_create_tick': createTick },
   permissions: demoPermissions,
   tasks: [{ name: 'tick', every: '5m', run: tick }],
+  commands: {
+    'import-users': {
+      description: 'imports users of another system: --file <JSON array of ImportedUser>',
+      options: { file: { type: 'string' } },
+      run: ({ file }) =>
+        typeof file === 'string'
+          ? Effect.tryPromise(() => readFile(file, 'utf8')).pipe(
+              Effect.flatMap((text) => importUsers(JSON.parse(text))),
+              Effect.map((ids) => `imported ${ids.length} user(s)`),
+            )
+          : Effect.fail(new Error('--file <path> is required')),
+    },
+  },
   // A host module's own sitemap child (/sitemaps/demo.notes.xml).
   contributes: [
     noteShared,

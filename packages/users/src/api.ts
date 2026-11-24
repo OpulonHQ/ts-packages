@@ -19,6 +19,7 @@ export const usersAuditActions = [
   { key: 'users.signed_out', subject: 'user' },
   { key: 'users.invited', subject: 'invitation' },
   { key: 'users.invitation_accepted', subject: 'user' },
+  { key: 'users.imported', subject: 'user' },
   { key: 'users.password_reset_requested', subject: 'user' },
   { key: 'users.password_reset', subject: 'user' },
   { key: 'users.role_created', subject: 'role' },
@@ -66,7 +67,8 @@ export class InvalidToken extends Schema.TaggedError<InvalidToken>()(
   { httpApiStatus: 400 },
 ) {}
 
-const Email = Schema.String.check(Schema.isMaxLength(254))
+/** An email address as the API takes it: at most 254 characters. */
+export const Email = Schema.String.check(Schema.isMaxLength(254))
 /** Better Auth's limits: 8 to 128 characters. */
 const Password = Schema.String.check(Schema.isMinLength(8), Schema.isMaxLength(128))
 const Token = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200))

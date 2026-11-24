@@ -108,6 +108,7 @@ export default {
     'users.signed_out': 'Signed out',
     'users.invited': 'Invited a user',
     'users.invitation_accepted': 'Accepted an invitation',
+    'users.imported': 'Imported a user',
     'users.password_reset_requested': 'Requested a password reset',
     'users.password_reset': 'Reset the password',
     'users.role_created': 'Created a role',

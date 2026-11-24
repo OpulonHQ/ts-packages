@@ -30,6 +30,8 @@ export interface AuthResult {
   readonly resetRequested?: { readonly userId: string; readonly token: string }
   /** The password of this user was reset. */
   readonly passwordReset?: string
+  /** The stored hash a sign-in verified the password against. */
+  readonly verifiedHash?: string
 }
 
 // Better Auth endpoints are reached only through users' own HttpApi endpoints, which build the
@@ -93,13 +95,12 @@ export class BetterAuth extends Context.Service<
       const make = Effect.fn('BetterAuth.make')(function* (report: {
         resetRequested?: { userId: string; token: string }
         passwordReset?: string
+        verifiedHash?: string
       }) {
         const config = yield* Effect.orDie(usersConfig)
         const pool = yield* getPool
         const context = yield* Effect.context<never>()
         const origin = new URL(config.baseUrl).origin
-        // The stored hash this call's sign-in verified; its session carries it as a stamp.
-        let verifiedHash: string | undefined
         return betterAuth({
           database: {
             dialect: new PostgresDialect({ pool }),
@@ -137,7 +138,7 @@ export class BetterAuth extends Context.Service<
               hash: hashPassword,
               verify: async (input) => {
                 const ok = await verifyPassword(input)
-                if (ok) verifiedHash = input.hash
+                if (ok) report.verifiedHash = input.hash
                 return ok
               },
             },
@@ -189,9 +190,14 @@ export class BetterAuth extends Context.Service<
             session: {
               create: {
                 before: async (session) =>
-                  verifiedHash === undefined
+                  report.verifiedHash === undefined
                     ? false
-                    : { data: { ...session, passwordStamp: await sha256Hex(verifiedHash) } },
+                    : {
+                        data: {
+                          ...session,
+                          passwordStamp: await sha256Hex(report.verifiedHash),
+                        },
+                      },
               },
             },
           },
@@ -203,6 +209,7 @@ export class BetterAuth extends Context.Service<
           const report: {
             resetRequested?: { userId: string; token: string }
             passwordReset?: string
+            verifiedHash?: string
           } = {}
           const auth = yield* make(report)
           const config = yield* Effect.orDie(usersConfig)

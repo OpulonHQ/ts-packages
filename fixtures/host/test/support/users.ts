@@ -168,6 +168,7 @@ export async function seedUser(
     email?: string
     name?: string
     password?: string
+    passwordHash?: string
     permissions?: ReadonlyArray<string>
     superAdmin?: boolean
     locale?: string | null
@@ -188,7 +189,7 @@ export async function seedUser(
     await client.query(
       `insert into users.account (id, account_id, provider_id, user_id, password, updated_at)
        values ($1, $2, 'credential', $2, $3, now())`,
-      [randomUUID(), id, await hashPassword(password)],
+      [randomUUID(), id, o.passwordHash ?? (await hashPassword(password))],
     )
     let roleId = 'super_admin'
     if (!o.superAdmin) {
