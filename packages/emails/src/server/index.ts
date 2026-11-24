@@ -5,15 +5,17 @@ import { EmailsGroup, emailsAuditActions, emailsPermissions } from '../api.ts'
 import { componentRegistry, type EmailComponent } from './components.ts'
 import createEmailLog from './migrations/0001_create_email_log.ts'
 import createTemplateOverride from './migrations/0002_create_template_override.ts'
+import addCopiesAndAttachments from './migrations/0003_add_email_log_copies_and_attachments.ts'
 import { EmailService } from './service.ts'
 import { defaultLayout, type EmailBrand, type EmailLayout } from './template.ts'
 
 export { defaultComponents, emailComponent, escapeHtml } from './components.ts'
 export type { EmailComponent, EmailComponentPropKind } from './components.ts'
-export { captureMailer, Mailer, MailerError } from './mailer.ts'
-export type { OutgoingEmail } from './mailer.ts'
+export { AttachmentsTooLarge, maxAttachmentsBytes } from '../api.ts'
+export { AttachmentResolver, captureMailer, Mailer, MailerError } from './mailer.ts'
+export type { OutgoingAttachment, OutgoingEmail } from './mailer.ts'
 export { EmailService, maxAttempts } from './service.ts'
-export type { SendInput } from './service.ts'
+export type { EmailAttachment, SendInput } from './service.ts'
 export { defaultLayout, emailTemplate, EmailTemplates, sanitizeBody } from './template.ts'
 export type {
   EmailAudience,
@@ -27,6 +29,7 @@ export type {
 export interface EmailsOptions {
   /** Sender, `Name <address>` or a bare address. */
   readonly from: string
+  /** Where replies go unless a send sets its own `replyTo`. */
   readonly replyTo?: string
   readonly brand: EmailBrand
   /** Replaces the package layout (header, card, footer) for every email. */
@@ -105,6 +108,7 @@ export const emails = (options: EmailsOptions) =>
     migrations: {
       '0001_create_email_log': createEmailLog,
       '0002_create_template_override': createTemplateOverride,
+      '0003_add_email_log_copies_and_attachments': addCopiesAndAttachments,
     },
     permissions: emailsPermissions,
     auditActions: emailsAuditActions,

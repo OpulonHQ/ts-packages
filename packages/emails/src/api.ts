@@ -26,6 +26,12 @@ export const EmailLogEntry = Schema.Struct({
   templateKey: Schema.String,
   locale: Schema.String,
   recipients: Schema.Array(Schema.String),
+  cc: Schema.Array(Schema.String),
+  bcc: Schema.Array(Schema.String),
+  /** The address replies go to: the send's own, else the module's configured one. */
+  replyTo: Schema.NullOr(Schema.String),
+  /** Name and size in bytes of each attached file; the content is never part of the log. */
+  attachments: Schema.Array(Schema.Struct({ filename: Schema.String, size: Schema.Number })),
   /** The rendered subject. */
   subject: Schema.String,
   status: EmailStatus,
@@ -88,6 +94,16 @@ export const RenderedPreview = Schema.Struct({
   html: Schema.String,
   text: Schema.String,
 })
+
+/** Bytes all attachments of one email may add up to (Resend takes 40 MB after Base64). */
+export const maxAttachmentsBytes = 10 * 1024 * 1024
+
+/** The attachments of one send add up to more than `maxAttachmentsBytes`; nothing was queued. */
+export class AttachmentsTooLarge extends Schema.TaggedError<AttachmentsTooLarge>()(
+  'AttachmentsTooLarge',
+  { size: Schema.Number, limit: Schema.Number, message: Schema.String },
+  { httpApiStatus: 413 },
+) {}
 
 /** The wording breaks the template's rules (undeclared placeholder, unknown component, …). */
 export class TemplateInvalid extends Schema.TaggedError<TemplateInvalid>()(

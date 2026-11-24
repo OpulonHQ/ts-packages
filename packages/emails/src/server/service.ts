@@ -7,19 +7,21 @@ import {
   requirePermission,
   withTransaction,
 } from '@opulonjs/core'
-import { Cause, Context, Effect, Exit, Layer, Schema } from 'effect'
+import { Cause, Context, Effect, Exit, Layer, Option, Schema } from 'effect'
 import { type Forbidden, NotFound } from 'effect/http-api/HttpApiError'
 import { SqlClient } from 'effect/sql/SqlClient'
 import type { SqlError } from 'effect/sql/SqlError'
 import {
+  AttachmentsTooLarge,
   type EmailComponentInfo,
   type EmailLogEntry,
   type EmailStatus,
   type EmailTemplateInfo,
+  maxAttachmentsBytes,
   TemplateInvalid,
 } from '../api.ts'
 import type { EmailComponent } from './components.ts'
-import { Mailer, MailerError, type OutgoingEmail } from './mailer.ts'
+import { AttachmentResolver, Mailer, MailerError } from './mailer.ts'
 import {
   contentError,
   type EmailBrand,
@@ -33,9 +35,34 @@ import {
   sanitizeBody,
 } from './template.ts'
 
+/**
+ * A file sent with an email. With `content` the bytes are stored with the queued email until
+ * it is sent or failed. With `key` only the name, type and size are stored, and the host's
+ * `AttachmentResolver` returns the bytes at every delivery attempt, so a private document is
+ * never copied into the email log; `size` is its length in bytes.
+ */
+export type EmailAttachment =
+  | {
+      readonly filename: string
+      readonly contentType: string
+      readonly content: Uint8Array
+    }
+  | {
+      readonly filename: string
+      readonly contentType: string
+      readonly size: number
+      readonly key: string
+    }
+
 export interface SendInput<P extends string> {
   /** One address or several; all receive the same email. */
   readonly to: string | ReadonlyArray<string>
+  readonly cc?: string | ReadonlyArray<string> | undefined
+  readonly bcc?: string | ReadonlyArray<string> | undefined
+  /** Where replies go. Default: the module's configured `replyTo`. */
+  readonly replyTo?: string | undefined
+  /** Together at most `maxAttachmentsBytes`; a larger send fails with `AttachmentsTooLarge`. */
+  readonly attachments?: ReadonlyArray<EmailAttachment> | undefined
   /**
    * Staff templates: the recipient's admin locale (null: the admin default). Public templates:
    * a content locale. A locale outside the audience's set, or without wording, falls back to
@@ -84,13 +111,30 @@ const deliveryDeadline = '1 minute'
 // queues more than ~20 emails per 5 minutes while its provider is down.
 const sweepBatch = 20
 
+const StoredAttachment = Schema.Union([
+  Schema.Struct({
+    filename: Schema.String,
+    contentType: Schema.String,
+    content: Schema.Uint8ArrayFromBase64,
+  }),
+  Schema.Struct({
+    filename: Schema.String,
+    contentType: Schema.String,
+    size: Schema.Number,
+    key: Schema.String,
+  }),
+])
+
 const StoredMessage = Schema.Struct({
   from: Schema.String,
   to: Schema.Array(Schema.String),
+  cc: Schema.optional(Schema.Array(Schema.String)),
+  bcc: Schema.optional(Schema.Array(Schema.String)),
   replyTo: Schema.optional(Schema.String),
   subject: Schema.String,
   html: Schema.String,
   text: Schema.String,
+  attachments: Schema.optional(Schema.Array(StoredAttachment)),
 })
 
 const LogRow = Schema.Struct({
@@ -98,6 +142,10 @@ const LogRow = Schema.Struct({
   templateKey: Schema.String,
   locale: Schema.String,
   recipients: Schema.Array(Schema.String),
+  cc: Schema.Array(Schema.String),
+  bcc: Schema.Array(Schema.String),
+  replyTo: Schema.NullOr(Schema.String),
+  attachments: Schema.Array(Schema.Struct({ filename: Schema.String, size: Schema.Number })),
   subject: Schema.String,
   status: Schema.Literals(['queued', 'sent', 'failed', 'skipped']),
   attempts: Schema.Number,
@@ -109,6 +157,31 @@ const LogRow = Schema.Struct({
 })
 
 const addressPattern = /^[^\s@<>]+@[^\s@<>]+$/
+const filenamePattern = /^[^\p{Cc}/\\]{1,255}$/u
+const contentTypePattern = /^[\w.+-]+\/[\w.+-]+(?:;[^\p{Cc}]*)?$/u
+
+const addresses = (value: string | ReadonlyArray<string> | undefined) =>
+  value === undefined ? [] : typeof value === 'string' ? [value] : [...value]
+const sizeOf = (attachment: EmailAttachment) =>
+  'key' in attachment ? attachment.size : attachment.content.byteLength
+const validAttachment = (a: EmailAttachment) =>
+  filenamePattern.test(a.filename) &&
+  contentTypePattern.test(a.contentType) &&
+  ('key' in a
+    ? a.key.length > 0 && Number.isSafeInteger(a.size) && a.size >= 0
+    : a.content instanceof Uint8Array)
+
+type Sent = { readonly id: string }
+interface Send {
+  <P extends string>(
+    template: Contribution<EmailTemplate<P>>,
+    input: SendInput<P> & { readonly attachments?: undefined },
+  ): Effect.Effect<Sent, SqlError>
+  <P extends string>(
+    template: Contribution<EmailTemplate<P>>,
+    input: SendInput<P>,
+  ): Effect.Effect<Sent, SqlError | AttachmentsTooLarge>
+}
 
 /**
  * Sends templated emails through the outbox (ADR 0002): `send` writes a queued email log row
@@ -119,12 +192,11 @@ export class EmailService extends Context.Service<
   {
     /**
      * Queues `template` for `input.to` in the caller's transaction (if any) and delivers it
-     * after commit; a rollback never sends. Resolves with the email log id.
+     * after commit; a rollback never sends. Resolves with the email log id. A retry sends the
+     * same copies, reply-to and attachments. Only a send with attachments can fail with
+     * `AttachmentsTooLarge`, which queues nothing.
      */
-    readonly send: <P extends string>(
-      template: Contribution<EmailTemplate<P>>,
-      input: SendInput<P>,
-    ) => Effect.Effect<{ readonly id: string }, SqlError>
+    readonly send: Send
     /** Retries due queued emails in a bounded batch (the `emails.outbox_sweep` task). */
     readonly sweep: () => Effect.Effect<void, SqlError>
     /** Deletes log rows older than `days` in bounded batches (the `emails.log_purge` task). */
@@ -179,6 +251,7 @@ export class EmailService extends Context.Service<
       Effect.gen(function* () {
         const sql = yield* SqlClient
         const mailer = yield* Mailer
+        const resolver = yield* Effect.serviceOption(AttachmentResolver)
         const background = yield* Background
         // Public emails use the host's content locales (ADR 0005), staff emails the admin's.
         const contentLocales = yield* ContentLocales
@@ -254,22 +327,49 @@ export class EmailService extends Context.Service<
           readonly key: string
           readonly locale: string
           readonly to: ReadonlyArray<string>
+          readonly cc?: ReadonlyArray<string>
+          readonly bcc?: ReadonlyArray<string>
+          readonly replyTo: string | undefined
+          readonly attachments?: ReadonlyArray<EmailAttachment>
           readonly rendered: RenderedEmail
           readonly about: SendInput<string>['about']
           readonly skipped: boolean
         }) {
-          const message: OutgoingEmail = {
-            from: options.from,
-            to: o.to,
-            replyTo: options.replyTo,
-            ...o.rendered,
-          }
+          const cc = o.cc ?? []
+          const bcc = o.bcc ?? []
+          const attachments = o.attachments ?? []
+          const message = o.skipped
+            ? null
+            : JSON.stringify(
+                Schema.encodeSync(StoredMessage)({
+                  from: options.from,
+                  to: o.to,
+                  cc,
+                  bcc,
+                  replyTo: o.replyTo,
+                  ...o.rendered,
+                  attachments: attachments.map((a) =>
+                    'key' in a
+                      ? {
+                          filename: a.filename,
+                          contentType: a.contentType,
+                          size: a.size,
+                          key: a.key,
+                        }
+                      : { filename: a.filename, contentType: a.contentType, content: a.content },
+                  ),
+                }),
+              )
+          const listed = attachments.map((a) => ({ filename: a.filename, size: sizeOf(a) }))
           const [row] = yield* sql<{ id: string }>`
             insert into emails.email_log
-              (template_key, locale, recipients, subject, status, message, about_type, about_id)
+              (template_key, locale, recipients, cc, bcc, reply_to, attachments, subject, status,
+                message, about_type, about_id)
             values (${o.key}, ${o.locale}, ${JSON.stringify(o.to)}::jsonb,
+              ${JSON.stringify(cc)}::jsonb, ${JSON.stringify(bcc)}::jsonb, ${o.replyTo ?? null},
+              ${JSON.stringify(listed)}::jsonb,
               ${o.rendered.subject}, ${o.skipped ? 'skipped' : 'queued'},
-              ${o.skipped ? null : JSON.stringify(message)}::jsonb,
+              ${message}::jsonb,
               ${o.about?.type ?? null}, ${o.about?.id ?? null})
             returning id`
           const id = row!.id
@@ -279,6 +379,37 @@ export class EmailService extends Context.Service<
             )
           return { id }
         })
+
+        /** The bytes of a reference attachment, fetched again at every attempt. */
+        const resolved = (a: {
+          readonly filename: string
+          readonly size: number
+          readonly key: string
+        }) =>
+          Option.match(resolver, {
+            onNone: () =>
+              Effect.fail(
+                new MailerError({
+                  message: `attachment "${a.filename}" needs an AttachmentResolver, and the host provides none`,
+                }),
+              ),
+            onSome: (r) =>
+              r.resolve(a.key).pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new MailerError({
+                      message: `attachment "${a.filename}" could not be fetched: ${cause}`,
+                    }),
+                ),
+                Effect.filterOrFail(
+                  (content) => content instanceof Uint8Array && content.byteLength === a.size,
+                  () =>
+                    new MailerError({
+                      message: `attachment "${a.filename}" is not the ${a.size} bytes it was queued with`,
+                    }),
+                ),
+              ),
+          })
 
         /** Claims a due queued row (one attempt), sends it and records the outcome. */
         const deliver = Effect.fn('EmailService.deliver')(function* (id: string) {
@@ -290,11 +421,22 @@ export class EmailService extends Context.Service<
               and attempts < ${maxAttempts}
             returning attempts, message`
           if (!claimed) return
-          const message = yield* Schema.decodeUnknownEffect(StoredMessage)(claimed.message).pipe(
-            Effect.orDie,
-          )
+          const { attachments: stored = [], ...message } = yield* Schema.decodeUnknownEffect(
+            StoredMessage,
+          )(claimed.message).pipe(Effect.orDie)
           const exit = yield* Effect.exit(
-            mailer.send({ ...message, idempotencyKey: id }).pipe(
+            Effect.forEach(stored, (a) =>
+              'key' in a
+                ? Effect.map(resolved(a), (content) => ({
+                    filename: a.filename,
+                    contentType: a.contentType,
+                    content,
+                  }))
+                : Effect.succeed(a),
+            ).pipe(
+              Effect.flatMap((attachments) =>
+                mailer.send({ ...message, attachments, idempotencyKey: id }),
+              ),
               Effect.timeoutOrElse({
                 duration: deliveryDeadline,
                 orElse: () =>
@@ -318,41 +460,75 @@ export class EmailService extends Context.Service<
           else yield* sql`update emails.email_log set error = ${error} where id = ${id}`
         })
 
-        return EmailService.of({
-          send: Effect.fn('EmailService.send')(function* <P extends string>(
-            template: Contribution<EmailTemplate<P>>,
-            input: SendInput<P>,
-          ) {
-            const registered = templates.get(template.key)
-            if (!registered)
-              return yield* Effect.die(
-                new Error(`email template "${template.key}" is not contributed by any module`),
-              )
-            const to = typeof input.to === 'string' ? [input.to] : [...input.to]
-            if (to.length === 0 || !to.every((a) => addressPattern.test(a)))
-              return yield* Effect.die(new Error(`invalid email recipients: ${to.join(', ')}`))
-            const locales = localesOf(registered)
-            const fallback = resolveLocale(registered, input.locale, locales)
-            // An override in the requested locale wins, even where the code ships no wording.
-            const requested =
-              input.locale && locales.includes(input.locale) ? input.locale : fallback
-            const [overrides, [disabled]] = yield* Effect.all([
-              overridesOf(registered.key, [requested, fallback]),
-              sql`select 1 from emails.disabled_template where template_key = ${registered.key}`,
-            ])
-            const override =
-              overrides.find((o) => o.locale === requested) ??
-              overrides.find((o) => o.locale === fallback)
-            const locale = override?.locale ?? fallback
-            return yield* queue({
-              key: registered.key,
-              locale,
-              to,
-              rendered: render(override ?? registered.defaults[locale]!, locale, input.vars),
-              about: input.about,
-              skipped: disabled !== undefined,
+        const sendTemplate = Effect.fn('EmailService.send')(function* (
+          template: Contribution<EmailTemplate>,
+          input: SendInput<string>,
+        ) {
+          const registered = templates.get(template.key)
+          if (!registered)
+            return yield* Effect.die(
+              new Error(`email template "${template.key}" is not contributed by any module`),
+            )
+          const to = addresses(input.to)
+          const cc = addresses(input.cc)
+          const bcc = addresses(input.bcc)
+          const all = [...to, ...cc, ...bcc, ...addresses(input.replyTo)]
+          if (to.length === 0 || !all.every((a) => addressPattern.test(a)))
+            return yield* Effect.die(new Error(`invalid email addresses: ${all.join(', ')}`))
+          const attachments = input.attachments ?? []
+          const invalid = attachments.find((a) => !validAttachment(a))
+          if (invalid)
+            return yield* Effect.die(new Error(`invalid email attachment "${invalid.filename}"`))
+          if (Option.isNone(resolver) && attachments.some((a) => 'key' in a))
+            return yield* Effect.die(
+              new Error('an attachment with a key needs an AttachmentResolver in the host infra'),
+            )
+          const size = attachments.reduce((sum, a) => sum + sizeOf(a), 0)
+          if (size > maxAttachmentsBytes)
+            return yield* new AttachmentsTooLarge({
+              size,
+              limit: maxAttachmentsBytes,
+              message: `The attachments add up to ${size} bytes, over the ${maxAttachmentsBytes} byte limit.`,
             })
-          }),
+          const locales = localesOf(registered)
+          const fallback = resolveLocale(registered, input.locale, locales)
+          // An override in the requested locale wins, even where the code ships no wording.
+          const requested = input.locale && locales.includes(input.locale) ? input.locale : fallback
+          const [overrides, [disabled]] = yield* Effect.all([
+            overridesOf(registered.key, [requested, fallback]),
+            sql`select 1 from emails.disabled_template where template_key = ${registered.key}`,
+          ])
+          const override =
+            overrides.find((o) => o.locale === requested) ??
+            overrides.find((o) => o.locale === fallback)
+          const locale = override?.locale ?? fallback
+          return yield* queue({
+            key: registered.key,
+            locale,
+            to,
+            cc,
+            bcc,
+            replyTo: input.replyTo ?? options.replyTo,
+            attachments,
+            rendered: render(override ?? registered.defaults[locale]!, locale, input.vars),
+            about: input.about,
+            skipped: disabled !== undefined,
+          })
+        })
+        function send<P extends string>(
+          template: Contribution<EmailTemplate<P>>,
+          input: SendInput<P> & { readonly attachments?: undefined },
+        ): Effect.Effect<Sent, SqlError>
+        function send<P extends string>(
+          template: Contribution<EmailTemplate<P>>,
+          input: SendInput<P>,
+        ): Effect.Effect<Sent, SqlError | AttachmentsTooLarge>
+        function send(template: Contribution<EmailTemplate>, input: SendInput<string>) {
+          return sendTemplate(template, input)
+        }
+
+        return EmailService.of({
+          send,
 
           sweep: Effect.fn('EmailService.sweep')(function* () {
             // A last attempt cut off before its outcome was recorded (the Worker was killed)
@@ -387,7 +563,8 @@ export class EmailService extends Context.Service<
             const offset = (Math.max(Math.trunc(query.page), 1) - 1) * perPage
             const [rows, [count]] = yield* Effect.all(
               [
-                sql`select id::text, template_key as "templateKey", locale, recipients, subject,
+                sql`select id::text, template_key as "templateKey", locale, recipients, cc, bcc,
+                    reply_to as "replyTo", attachments, subject,
                     status, attempts, error, created_at as "createdAt", sent_at as "sentAt",
                     about_type as "aboutType", about_id as "aboutId"
                   from emails.email_log
@@ -526,6 +703,7 @@ export class EmailService extends Context.Service<
                   key,
                   locale: used,
                   to: [to],
+                  replyTo: options.replyTo,
                   rendered,
                   about: { type: 'email_template', id: key },
                   skipped: false,
