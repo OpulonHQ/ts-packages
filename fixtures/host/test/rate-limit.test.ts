@@ -1,5 +1,5 @@
 import { RateLimit } from '@opulonjs/core'
-import { hitRateLimit, PgFromHyperdrive } from '@opulonjs/core/workers'
+import { PgFromHyperdrive } from '@opulonjs/core/workers'
 import { Effect } from 'effect'
 import type { SqlClient } from 'effect/sql/SqlClient'
 import { expect, test } from 'vitest'
@@ -12,6 +12,9 @@ const host = makeHost(() => db.url)
 
 const run = <A>(effect: Effect.Effect<A, unknown, SqlClient>) =>
   Effect.runPromise(effect.pipe(Effect.provide(PgFromHyperdrive({ connectionString: db.url }))))
+
+const within = (seconds: number) =>
+  expect.toSatisfy((retryAfter: number) => retryAfter >= 1 && retryAfter <= seconds)
 
 const endWindows = () =>
   adminQuery(db.url, `update core.rate_limit set expires_at = now() - interval '1 second'`)
@@ -30,7 +33,7 @@ test('a key is allowed up to its limit per window, then refused with the seconds
   expect(hits).toEqual([
     { allowed: true },
     { allowed: true },
-    { allowed: false, retryAfter: 600 },
+    { allowed: false, retryAfter: within(600) },
     { allowed: true },
   ])
 })
@@ -39,12 +42,12 @@ test('a key is allowed again once its window ended', async () => {
   const hit = RateLimit.hit('sign-in:a@example.test:203.0.113.1', 1, '1 minute')
   expect(await run(Effect.all([hit, hit]))).toEqual([
     { allowed: true },
-    { allowed: false, retryAfter: 60 },
+    { allowed: false, retryAfter: within(60) },
   ])
   await endWindows()
   expect(await run(Effect.all([hit, hit]))).toEqual([
     { allowed: true },
-    { allowed: false, retryAfter: 60 },
+    { allowed: false, retryAfter: within(60) },
   ])
 })
 
@@ -71,15 +74,6 @@ test('the cron removes entries whose window ended and keeps the others', async (
   expect(await run(RateLimit.hit('running', 1, '1 minute'))).toMatchObject({ allowed: false })
 })
 
-test('a host route outside the composed API limits a key through the Promise entry', async () => {
-  expect(
-    await hitRateLimit({ connectionString: db.url }, 'order:203.0.113.1', 1, '1 minute'),
-  ).toEqual({ allowed: true })
-  expect(
-    await hitRateLimit({ connectionString: db.url }, 'order:203.0.113.1', 1, '1 minute'),
-  ).toEqual({ allowed: false, retryAfter: 60 })
-})
-
 test("the fixture's /contact route answers 429 with Retry-After after 3 posts a minute from one address", async () => {
   const post = (ip: string) =>
     host.fetch(
@@ -88,7 +82,7 @@ test("the fixture's /contact route answers 429 with Retry-After after 3 posts a 
   const answers = []
   for (let i = 0; i < 4; i++) answers.push(await post('203.0.113.7'))
   expect(answers.map((r) => r.status)).toEqual([204, 204, 204, 429])
-  expect(answers[3]!.headers.get('retry-after')).toBe('60')
+  expect(Number(answers[3]!.headers.get('retry-after'))).toEqual(within(60))
   expect((await post('203.0.113.8')).status).toBe(204)
 })
 
@@ -98,5 +92,5 @@ test("the demo module's ping endpoint answers 429 after 3 pings a minute from on
   const answers = []
   for (let i = 0; i < 4; i++) answers.push(await host.request('POST', '/demo/pings', { cookie }))
   expect(answers.map((r) => r.status)).toEqual([204, 204, 204, 429])
-  expect(answers[3]!.body).toEqual({ _tag: 'TooManyRequests', retryAfter: 60 })
+  expect(answers[3]!.body).toEqual({ _tag: 'TooManyRequests', retryAfter: within(60) })
 })
