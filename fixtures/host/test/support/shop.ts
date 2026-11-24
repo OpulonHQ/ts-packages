@@ -11,8 +11,9 @@ import {
   withTransaction,
 } from '@opulonjs/core'
 import { createWorker, PgFromHyperdrive } from '@opulonjs/core/workers'
-import { EmailLogPage } from '@opulonjs/emails/api'
+import { AttachmentsTooLarge, EmailLogPage } from '@opulonjs/emails/api'
 import {
+  AttachmentResolver,
   captureMailer,
   emailComponent,
   type Mailer,
@@ -72,11 +73,14 @@ const ShopGroup = HttpApiGroup.make('shop')
           Schema.Struct({
             filename: Schema.String,
             contentType: Schema.String,
-            text: Schema.String,
+            text: Schema.optional(Schema.String),
+            key: Schema.optional(Schema.String),
+            size: Schema.optional(Schema.Number),
           }),
         ),
       }),
       success: Schema.Struct({ id: Schema.String }),
+      error: AttachmentsTooLarge,
     }).annotate(Policy, 'signedIn'),
   )
   .middleware(Authorization)
@@ -123,13 +127,13 @@ const shop = defineModule({
                 bcc: payload.bcc,
                 replyTo: payload.replyTo,
                 vars: { name: 'Jana', order: 'A-9' },
-                attachments: payload.files.map((file) => ({
-                  filename: file.filename,
-                  contentType: file.contentType,
-                  content: new TextEncoder().encode(file.text),
-                })),
+                attachments: payload.files.map(({ filename, contentType, text, key, size }) =>
+                  key === undefined
+                    ? { filename, contentType, content: new TextEncoder().encode(text) }
+                    : { filename, contentType, key, size: size ?? 0 },
+                ),
               })
-              .pipe(Effect.orDie),
+              .pipe(Effect.catchTag('SqlError', Effect.die)),
           )
       }),
     ),
@@ -149,6 +153,7 @@ export const shopServer = composeServer({
     core(),
     emails({
       from: 'Shop <noreply@example.test>',
+      replyTo: 'help@example.test',
       brand: { name: 'Shop', footer: { en: 'Shop footer', sk: 'Pätička obchodu' } },
       components: [coupon],
     }),
@@ -170,11 +175,25 @@ export function makeShop(
   options: { readonly mailer?: Layer.Layer<Mailer>; readonly clock?: Clock.Clock } = {},
 ) {
   const mailer = captureMailer()
+  const files = new Map<string, Uint8Array>()
+  const resolved: Array<string> = []
+  const resolver = Layer.succeed(
+    AttachmentResolver,
+    AttachmentResolver.of({
+      resolve: (key) =>
+        Effect.suspend(() => {
+          resolved.push(key)
+          const file = files.get(key)
+          return file ? Effect.succeed(file) : Effect.fail(new Error(`no file "${key}"`))
+        }),
+    }),
+  )
   const worker = createWorker(shopServer, {
     infra: (env: ShopEnv) =>
       Layer.mergeAll(
         PgFromHyperdrive({ connectionString: env.url }),
         options.mailer ?? mailer.layer,
+        resolver,
         options.clock ? Layer.succeed(Clock.Clock, options.clock) : Layer.empty,
         authorization(() =>
           Effect.succeed({
@@ -219,6 +238,8 @@ export function makeShop(
 
   return {
     mailer,
+    files,
+    resolved,
     request,
     fetch,
     order: (o: { email?: string; name?: string; locale?: string | null; rollback?: boolean }) =>
@@ -233,7 +254,13 @@ export function makeShop(
       cc?: ReadonlyArray<string>
       bcc?: ReadonlyArray<string>
       replyTo?: string
-      files?: ReadonlyArray<{ filename: string; contentType: string; text: string }>
+      files?: ReadonlyArray<{
+        filename: string
+        contentType: string
+        text?: string
+        key?: string
+        size?: number
+      }>
     }) =>
       request('POST', '/shop/documents', {
         to: o.to ?? 'visitor@example.test',

@@ -10,9 +10,13 @@ export default {
       templateKey: 'Template',
       recipients: 'Recipients',
       subject: 'Subject',
+      attachments: 'Attachments',
       status: 'Status',
       attempts: 'Attempts',
     },
+    cc: 'Cc',
+    bcc: 'Bcc',
+    replyTo: 'Reply to',
     status: { queued: 'Queued', sent: 'Sent', failed: 'Failed', skipped: 'Skipped' },
   },
   templates: {

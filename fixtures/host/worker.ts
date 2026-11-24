@@ -7,14 +7,15 @@ import {
   type WorkerContext,
 } from '@opulonjs/core/workers'
 import { workersCachePurge } from '@opulonjs/core/workers'
-import { Mailer } from '@opulonjs/emails/server'
+import { AttachmentResolver, Mailer } from '@opulonjs/emails/server'
 import {
   type R2BucketLike,
   R2MediaStorage,
   r2MediaStorage,
   serveMedia,
 } from '@opulonjs/media/server'
-import { Layer } from 'effect'
+import { Effect, Layer } from 'effect'
+import { privateNote } from './modules/demo/server.ts'
 import { server } from './server/opulon.ts'
 
 export interface Env {
@@ -70,6 +71,15 @@ export const hostWorker = (mailer: Layer.Layer<Mailer> = Mailer.log) => {
         PgFromHyperdrive(env.HYPERDRIVE),
         R2MediaStorage(env.MEDIA_BUCKET),
         mailer,
+        Layer.succeed(
+          AttachmentResolver,
+          AttachmentResolver.of({
+            resolve: (key) =>
+              key === privateNote.key
+                ? Effect.succeed(privateNote.content)
+                : Effect.fail(new Error(`no attachment "${key}"`)),
+          }),
+        ),
         // Purges Read API (and in-process SSR) Cache-Tags on publish from this Worker's own
         // Workers Cache (`cache.enabled` in wrangler.jsonc).
         workersCachePurge(ctx),

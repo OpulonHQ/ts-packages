@@ -14,11 +14,7 @@ const email = {
 }
 
 // Resend is reached through an injected fetch; nothing leaves the machine.
-const send = (
-  env: Record<string, string>,
-  reply: Response,
-  message: OutgoingEmail = email,
-) => {
+const send = (env: Record<string, string>, reply: Response, message: OutgoingEmail = email) => {
   const calls: Array<Request> = []
   const fetch: typeof globalThis.fetch = async (input, init) => {
     calls.push(new Request(input, init))

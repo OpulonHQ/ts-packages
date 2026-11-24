@@ -8,7 +8,7 @@ import {
   RateLimit,
   withTransaction,
 } from '@opulonjs/core'
-import { emailTemplate } from '@opulonjs/emails/server'
+import { EmailService, emailTemplate } from '@opulonjs/emails/server'
 import { importUsers } from '@opulonjs/users/server'
 import { Context, Effect, Layer, Schema } from 'effect'
 import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
@@ -68,6 +68,11 @@ export const noteShared = emailTemplate({
   },
 })
 
+export const privateNote = {
+  key: 'demo/private-note',
+  content: new TextEncoder().encode('Fetched at send time, never stored in the email log.'),
+}
+
 /** A throwaway host module proving the module contract end to end. */
 export const demo = defineModule({
   id: 'demo',
@@ -77,6 +82,7 @@ export const demo = defineModule({
     HttpApiBuilder.group(api, 'demo', (h) =>
       Effect.gen(function* () {
         const notes = yield* Notes
+        const mail = yield* EmailService
         return h
           .handle('notes', () => notes.list())
           .handle('ticks', () => notes.ticks())
@@ -86,6 +92,27 @@ export const demo = defineModule({
               const hit = yield* RateLimit.hit(`demo.ping:${user.id}`, 3, '1 minute')
               if (!hit.allowed) return yield* new TooManyRequests({ retryAfter: hit.retryAfter })
             }),
+          )
+          .handle('share', ({ payload: { note, ...addresses } }) =>
+            mail
+              .send(noteShared, {
+                ...addresses,
+                vars: { note },
+                attachments: [
+                  {
+                    filename: 'note.txt',
+                    contentType: 'text/plain; charset=utf-8',
+                    content: new TextEncoder().encode(note),
+                  },
+                  {
+                    filename: 'private.txt',
+                    contentType: 'text/plain; charset=utf-8',
+                    size: privateNote.content.byteLength,
+                    key: privateNote.key,
+                  },
+                ],
+              })
+              .pipe(Effect.catchTag('SqlError', Effect.die)),
           )
       }),
     ),

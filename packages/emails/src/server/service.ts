@@ -380,7 +380,6 @@ export class EmailService extends Context.Service<
           return { id }
         })
 
-        /** The bytes of a reference attachment, fetched again at every attempt. */
         const resolved = (a: {
           readonly filename: string
           readonly size: number

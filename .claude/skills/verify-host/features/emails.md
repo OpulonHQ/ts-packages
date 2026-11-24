@@ -6,7 +6,8 @@ Emails are written to an outbox row inside the transaction, sent after commit, a
 
 - `after-commit` an action that emails (invite, reset) yields a log row `Sent` after 1 attempt.
 - `sweep` a queued row is sent by the scheduled handler.
-- `log` Email log: table `Email log`, columns Queued, Template, Recipients, Subject, Status, Attempts; statuses Queued, Sent, Failed, Skipped.
+- `log` Email log: table `Email log`, columns Queued, Template, Recipients, Subject, Attachments, Status, Attempts; statuses Queued, Sent, Failed, Skipped. The Recipients cell also lists `Cc`, `Bcc` and `Reply to`; Attachments lists each file as `name (size)`.
+- `attachments` `POST /api/demo/notes/share` (`{ to, cc?, bcc?, replyTo?, note }`, permission `demo.notes.view`) emails the note with `note.txt` stored with the queued email and `private.txt` fetched by the fixture's `AttachmentResolver` at send time. Reply-to falls back to the fixture's `help@example.test`; attachments over 10 MiB answer 413 `AttachmentsTooLarge`.
 - `templates` `users.invitation` and `users.password_reset`; Save -> `The template was saved.`, badge `Customized`.
 
 ## How to get to it (user POV)
@@ -19,11 +20,12 @@ Emails are written to an outbox row inside the transaction, sent after commit, a
 Preconditions: a Super admin session (smoke owner).
 
 - **Template -> invite -> log.** `$V/ui.sh .claude/skills/verify-host/journeys/emails.mjs email=<owner> 'password=smoke password <run>'`. Proves: `PUT /api/emails/templates/users.invitation/locales/en` 200 + `The template was saved.`; an invite; the Email log row for the invitee with the customised subject and `Sent`.
+- **Attachments, copies, reply-to.** `$V/ui.sh .claude/skills/verify-host/journeys/email-attachments.mjs email=<owner> 'password=smoke password <run>'`. Proves: share 200; the log API row's `cc`, `bcc`, `replyTo` and `attachments` (name and size only); the configured reply-to on a send without one; 413 over the limit with no log row; the Email log row showing all of them.
 - **After commit + sweep.** `$V/smoke.sh` steps `an invitation email is delivered after commit` and `the cron tick sweeps a queued email` (sweep within ~15 s).
 - **API view.** `GET /api/emails/log?page=&perPage=&status=` -> `{ rows: [{ templateKey, recipients, subject, status, attempts, ... }], total }`.
 
 ## Gotchas
 
 - Locally nothing fires the cron unless something calls `/__scheduled`; `smoke.sh` does, a plain launch doesn't.
-- `Mailer.log` logs recipient and subject only; there are no bodies or links anywhere to read.
+- `Mailer.log` logs addresses, subject and attachment names and sizes only; there are no bodies, links or file contents anywhere to read.
 - The emails journey leaves `users.invitation` customised for later runs; cleanup's database drop resets it.

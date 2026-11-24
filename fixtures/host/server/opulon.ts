@@ -11,7 +11,11 @@ import { demo } from '../modules/demo/server.ts'
 export const server = composeServer({
   modules: [
     core(),
-    emails({ from: 'Fixture host <noreply@example.test>', brand: { name: 'Fixture host' } }),
+    emails({
+      from: 'Fixture host <noreply@example.test>',
+      replyTo: 'help@example.test',
+      brand: { name: 'Fixture host' },
+    }),
     users(),
     media({ widths: [320, 640, 1280] }),
     cms({ definitions }),
