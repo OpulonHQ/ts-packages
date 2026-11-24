@@ -35,8 +35,7 @@ const parsePreview = (value: unknown): PagePreview | undefined => {
     !isString(seo.title) ||
     !isString(seo.description) ||
     !(seo.image === null || isString(seo.image)) ||
-    typeof seo.noindex !== 'boolean' ||
-    !extras.every((key) => seo[key] === undefined || isString(seo[key]))
+    typeof seo.noindex !== 'boolean'
   )
     return undefined
   if (!Array.isArray(value.sections)) return undefined

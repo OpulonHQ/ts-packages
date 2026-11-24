@@ -60,7 +60,6 @@ export const cmsAuditActions = [
   { key: 'cms.redirect.imported', subject: 'redirect' },
 ] as const
 
-/** Optional SEO of a page or item in one locale; a save omits an empty one. */
 const seoExtras = {
   keywords: Schema.optionalKey(Schema.String),
   /** Replaces the page's own URL as canonical: an http(s) URL or a site path. */
