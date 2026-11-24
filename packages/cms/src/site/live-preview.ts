@@ -24,6 +24,8 @@ export type FrameMessage =
 const isString = (value: unknown): value is string => typeof value === 'string'
 const isFilled = (value: unknown): value is string => isString(value) && value !== ''
 
+const extras = ['keywords', 'canonical', 'jsonLd'] as const
+
 const parsePreview = (value: unknown): PagePreview | undefined => {
   if (!isRecord(value) || !isString(value.id) || !isString(value.locale) || !isString(value.path))
     return undefined
@@ -47,7 +49,13 @@ const parsePreview = (value: unknown): PagePreview | undefined => {
     id: value.id,
     locale: value.locale,
     path: value.path,
-    seo: { title: seo.title, description: seo.description, image: seo.image, noindex: seo.noindex },
+    seo: {
+      title: seo.title,
+      description: seo.description,
+      image: seo.image,
+      noindex: seo.noindex,
+      ...Object.fromEntries(extras.flatMap((key) => (isString(seo[key]) ? [[key, seo[key]]] : []))),
+    },
     sections,
   }
 }

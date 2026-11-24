@@ -61,11 +61,22 @@ test('pages list system pages; an editor edits the draft in generated forms and 
 
   type('sections.0.title.en', 'About us')
   type('locales.en.seo.title', 'About')
+  type('locales.en.seo.keywords', 'about, team')
+  type('locales.en.seo.canonical', 'https://example.test/about')
+  type('locales.en.seo.jsonLd', '{"@type":"AboutPage"}')
   await saveDraft()
   await expect.poll(text).toContain('Koncept uložený.')
   const draft = await stored(created.id)
   expect(draft.draft.sections[0]?.data).toEqual({ title: { en: 'About us' }, tone: 'light' })
-  expect(draft.draft.locales.en?.seo.title).toBe('About')
+  expect(draft.draft.locales.en?.seo).toEqual({
+    title: 'About',
+    description: '',
+    image: null,
+    noindex: false,
+    keywords: 'about, team',
+    canonical: 'https://example.test/about',
+    jsonLd: '{"@type":"AboutPage"}',
+  })
   expect(draft.status).toBe('draft')
 
   button('Zverejniť')!.click()

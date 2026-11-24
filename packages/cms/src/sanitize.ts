@@ -36,16 +36,26 @@ export const sanitizeRichText = (html: string): string | null => {
   return clean === '' || clean === '<p></p>' ? null : clean
 }
 
-export const cleanLocaleText = (given: PageLocale): PageLocale => ({
-  path: given.path.trim(),
-  available: given.available,
-  seo: {
-    title: given.seo.title.trim().slice(0, 300),
-    description: given.seo.description.trim().slice(0, 1000),
-    image: given.seo.image,
-    noindex: given.seo.noindex,
-  },
-})
+export const maxJsonLdLength = 20_000
+
+export const cleanLocaleText = (given: PageLocale): PageLocale => {
+  const keywords = given.seo.keywords?.trim().slice(0, 500)
+  const canonical = given.seo.canonical?.trim().slice(0, 2048)
+  const jsonLd = given.seo.jsonLd?.trim()
+  return {
+    path: given.path.trim(),
+    available: given.available,
+    seo: {
+      title: given.seo.title.trim().slice(0, 300),
+      description: given.seo.description.trim().slice(0, 1000),
+      image: given.seo.image,
+      noindex: given.seo.noindex,
+      ...(keywords ? { keywords } : {}),
+      ...(canonical ? { canonical } : {}),
+      ...(jsonLd ? { jsonLd } : {}),
+    },
+  }
+}
 
 export const present = (value: unknown) => value !== null && value !== undefined && value !== ''
 
