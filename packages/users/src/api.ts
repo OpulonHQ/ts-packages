@@ -19,6 +19,7 @@ export const usersAuditActions = [
   { key: 'users.signed_out', subject: 'user' },
   { key: 'users.invited', subject: 'invitation' },
   { key: 'users.invitation_accepted', subject: 'user' },
+  { key: 'users.imported', subject: 'user' },
   { key: 'users.password_reset_requested', subject: 'user' },
   { key: 'users.password_reset', subject: 'user' },
   { key: 'users.role_created', subject: 'role' },

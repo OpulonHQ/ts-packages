@@ -18,11 +18,11 @@ import { InvalidToken, Refused, TooManyRequests } from '../api.ts'
 import { canGrant, loadAccess, lockAccessWrites } from './access.ts'
 import { type AuthResult, BetterAuth, usersConfig } from './auth.ts'
 import { adminLink, createInvitation, hashToken } from './invitations.ts'
-import { hashPassword } from './password.ts'
+import { hashPassword, isCurrentHash } from './password.ts'
 import { invitationEmail, passwordResetEmail } from './templates.ts'
 
-const addressPattern = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/
-const normalizeEmail = (email: string) => email.trim().toLowerCase()
+export const addressPattern = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/
+export const normalizeEmail = (email: string) => email.trim().toLowerCase()
 
 const userActor = (u: { readonly id: string; readonly name: string }): Actor => ({
   kind: 'user',
@@ -197,6 +197,13 @@ export class Users extends Context.Service<
               context: { email: email.slice(0, 254) },
             })
             return yield* new Unauthorized()
+          }
+          const verified = result.verifiedHash
+          if (verified !== undefined && !isCurrentHash(verified)) {
+            const upgraded = yield* Effect.promise(() => hashPassword(input.password))
+            yield* sql`update users.account set password = ${upgraded}, updated_at = now()
+              where user_id = ${known.id} and provider_id = 'credential'
+                and password = ${verified}`.pipe(Effect.orDie)
           }
           yield* auditBestEffort(
             { action: 'users.signed_in', subject: { type: 'user', id: known.id, label: email } },

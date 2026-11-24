@@ -112,6 +112,7 @@ export default {
     'users.signed_out': 'Odhlásenie',
     'users.invited': 'Pozvanie používateľa',
     'users.invitation_accepted': 'Prijatie pozvánky',
+    'users.imported': 'Import používateľa',
     'users.password_reset_requested': 'Žiadosť o obnovenie hesla',
     'users.password_reset': 'Obnovenie hesla',
     'users.role_created': 'Vytvorenie roly',

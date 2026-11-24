@@ -25,6 +25,7 @@ import { Users } from './service.ts'
 import { invitationEmail, passwordResetEmail } from './templates.ts'
 
 export { usersConfig } from './auth.ts'
+export { type ImportedUser, importUsers } from './import.ts'
 export { hashPassword, verifyPassword } from './password.ts'
 export { UserManagement } from './manage.ts'
 export { Users } from './service.ts'

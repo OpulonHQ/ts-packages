@@ -48,6 +48,7 @@
     "@opulonjs/core": "workspace:*",
     "@opulonjs/emails": "workspace:*",
     "@opulonjs/ui": "workspace:*",
+    "bcryptjs": "3.0.3",
     "better-auth": "1.7.7",
     "kysely": "0.29.6",
     "pg": "8.23.1"

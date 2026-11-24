@@ -30,6 +30,8 @@ export interface AuthResult {
   readonly resetRequested?: { readonly userId: string; readonly token: string }
   /** The password of this user was reset. */
   readonly passwordReset?: string
+  /** The stored hash a sign-in verified the password against. */
+  readonly verifiedHash?: string
 }
 
 // Better Auth endpoints are reached only through users' own HttpApi endpoints, which build the
@@ -93,6 +95,7 @@ export class BetterAuth extends Context.Service<
       const make = Effect.fn('BetterAuth.make')(function* (report: {
         resetRequested?: { userId: string; token: string }
         passwordReset?: string
+        verifiedHash?: string
       }) {
         const config = yield* Effect.orDie(usersConfig)
         const pool = yield* getPool
@@ -137,7 +140,7 @@ export class BetterAuth extends Context.Service<
               hash: hashPassword,
               verify: async (input) => {
                 const ok = await verifyPassword(input)
-                if (ok) verifiedHash = input.hash
+                if (ok) verifiedHash = report.verifiedHash = input.hash
                 return ok
               },
             },
@@ -203,6 +206,7 @@ export class BetterAuth extends Context.Service<
           const report: {
             resetRequested?: { userId: string; token: string }
             passwordReset?: string
+            verifiedHash?: string
           } = {}
           const auth = yield* make(report)
           const config = yield* Effect.orDie(usersConfig)
