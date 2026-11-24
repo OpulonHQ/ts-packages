@@ -12,13 +12,14 @@ import {
 } from '../api.ts'
 import { linkProblem, maxSections, uuid } from '../document-rules.ts'
 import { availableLocales, emptyLocale, isRecord } from '../localize.ts'
-import { cleanFields, cleanLocaleText, isLink, present } from '../sanitize.ts'
+import { cleanFields, cleanLocaleText, isLink, maxJsonLdLength, present } from '../sanitize.ts'
 
 /** Locale-relative path: `/` or lowercase segments of letters, digits and dashes. */
 const pathPattern = /^\/(?:[\p{Ll}\p{Lo}\p{N}-]+(?:\/[\p{Ll}\p{Lo}\p{N}-]+)*)?$/u
 /** Characters of a locale-relative path, for pages, items and redirects alike: what a write
  *  accepts, `resolve` answers (after the locale prefix). */
 export const maxPathLength = 1024
+const canonicalPattern = /^(?:https?:\/\/|\/(?!\/))\S*$/i
 
 const invalid = (message: string) => new CmsInvalid({ message })
 
@@ -64,6 +65,21 @@ const cleanLocale = (locale: string, given: PageLocale | undefined, withPaths = 
     const image = clean.seo.image
     if (image !== null && !uuid.test(image))
       return yield* invalid(`The ${locale} social image is not a media item.`)
+    const { canonical, jsonLd } = clean.seo
+    if (canonical !== undefined && !canonicalPattern.test(canonical))
+      return yield* invalid(`The ${locale} canonical URL must start with https:// or "/".`)
+    if (jsonLd !== undefined) {
+      if (jsonLd.length > maxJsonLdLength)
+        return yield* invalid(
+          `The ${locale} structured data is longer than ${maxJsonLdLength} characters.`,
+        )
+      const parsed = yield* Effect.try({
+        try: (): unknown => JSON.parse(jsonLd),
+        catch: () => invalid(`The ${locale} structured data is not valid JSON.`),
+      })
+      if (typeof parsed !== 'object' || parsed === null)
+        return yield* invalid(`The ${locale} structured data must be a JSON object or array.`)
+    }
     return clean
   })
 

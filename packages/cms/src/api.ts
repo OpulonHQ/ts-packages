@@ -60,6 +60,15 @@ export const cmsAuditActions = [
   { key: 'cms.redirect.imported', subject: 'redirect' },
 ] as const
 
+/** Optional SEO of a page or item in one locale; a save omits an empty one. */
+const seoExtras = {
+  keywords: Schema.optionalKey(Schema.String),
+  /** Replaces the page's own URL as canonical: an http(s) URL or a site path. */
+  canonical: Schema.optionalKey(Schema.String),
+  /** Structured data: the JSON text of one object or array. */
+  jsonLd: Schema.optionalKey(Schema.String),
+}
+
 /** A page in one content locale. `path` is locale-relative (`/`, `/about`); the public URL
  *  adds the locale prefix. Only `available` locales are published at their path. */
 export const PageLocale = Schema.Struct({
@@ -71,6 +80,7 @@ export const PageLocale = Schema.Struct({
     /** Media id of the OG image. */
     image: Schema.NullOr(Schema.String),
     noindex: Schema.Boolean,
+    ...seoExtras,
   }),
 })
 export type PageLocale = typeof PageLocale.Type
@@ -736,6 +746,7 @@ export const PublicSeo = Schema.Struct({
   description: Schema.String,
   image: Schema.NullOr(ResolvedMedia),
   noindex: Schema.Boolean,
+  ...seoExtras,
 })
 export type PublicSeo = typeof PublicSeo.Type
 

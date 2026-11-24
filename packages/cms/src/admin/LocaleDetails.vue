@@ -54,6 +54,31 @@ const hints = useLocaleHints(() => props.locales)
         accept="image"
         :disabled="disabled"
       />
+      <FieldText
+        v-model="value[code]!.seo.keywords"
+        :name="`${namePrefix ?? 'locales'}.${code}.seo.keywords`"
+        :label="t('cms.page.seoKeywords')"
+        :sr-hint="hints.language(code)"
+        :help="t('cms.page.seoKeywordsHelp')"
+        :disabled="disabled"
+      />
+      <FieldText
+        v-model="value[code]!.seo.canonical"
+        :name="`${namePrefix ?? 'locales'}.${code}.seo.canonical`"
+        :label="t('cms.page.seoCanonical')"
+        :sr-hint="hints.language(code)"
+        :help="t('cms.page.seoCanonicalHelp')"
+        :disabled="disabled"
+      />
+      <FieldTextarea
+        v-model="value[code]!.seo.jsonLd"
+        :name="`${namePrefix ?? 'locales'}.${code}.seo.jsonLd`"
+        :label="t('cms.page.seoJsonLd')"
+        :sr-hint="hints.language(code)"
+        :help="t('cms.page.seoJsonLdHelp')"
+        :rows="4"
+        :disabled="disabled"
+      />
       <FieldToggle
         v-model="value[code]!.seo.noindex"
         :name="`${namePrefix ?? 'locales'}.${code}.seo.noindex`"

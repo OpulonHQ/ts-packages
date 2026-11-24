@@ -1,4 +1,4 @@
-import type { Item, Page, ResolveResult } from '@opulonjs/cms/api'
+import type { Item, Page, PageLocale, ResolveResult } from '@opulonjs/cms/api'
 import { buildHead, type PublicSite } from '@opulonjs/cms/site'
 import { expect, test } from 'vitest'
 import { locale, useCmsHost } from './helpers.ts'
@@ -16,8 +16,8 @@ const filled = {
   canonical: 'https://example.test/offer',
   jsonLd,
 }
-const withSeo = (path: string, seo: object) => ({
-  locales: { en: locale(path, { seo: seo as Page['draft']['locales'][string]['seo'] }) },
+const withSeo = (path: string, seo: PageLocale['seo']) => ({
+  locales: { en: locale(path, { seo }) },
   sections: [],
 })
 
@@ -27,7 +27,6 @@ test('a page drafts, publishes and keeps in revisions its keywords, canonical an
   )
   expect(created.status).toBe(200)
   expect(created.body.draft.locales.en?.seo).toEqual(filled)
-  // The other content locale sets none of the new fields: stored as before.
   expect(created.body.draft.locales.it?.seo).toEqual({
     title: '',
     description: '',
@@ -77,7 +76,7 @@ test('a page drafts, publishes and keeps in revisions its keywords, canonical an
 test('a routed item carries the same SEO fields to the Read API', async () => {
   const created = await host.call<Item>('POST', '/collections/posts/items', {
     body: {
-      locales: { en: locale('/blog/structured', { seo: filled as never }) },
+      locales: { en: locale('/blog/structured', { seo: filled }) },
       data: { title: { en: 'Structured' } },
     },
   })
@@ -91,9 +90,17 @@ test('a routed item carries the same SEO fields to the Read API', async () => {
 })
 
 test.for([
-  ['/broken', '{"@type": "Thing"', 'The en structured data is not valid JSON.'],
-  ['/scalar', '"text"', 'The en structured data must be a JSON object or array.'],
-])('JSON-LD at %s is refused on save', async ([path, given, message]) => {
+  {
+    path: '/broken',
+    given: '{"@type": "Thing"',
+    message: 'The en structured data is not valid JSON.',
+  },
+  {
+    path: '/scalar',
+    given: '"text"',
+    message: 'The en structured data must be a JSON object or array.',
+  },
+])('JSON-LD at $path is refused on save', async ({ path, given, message }) => {
   const refused = await host.create(withSeo(path, { ...plain, jsonLd: given }))
   expect(refused.status).toBe(400)
   expect(refused.body).toMatchObject({ _tag: 'CmsInvalid', message })
