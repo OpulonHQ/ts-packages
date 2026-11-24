@@ -8,10 +8,8 @@ const iterations = 100_000
 const encoder = new TextEncoder()
 const bcryptPattern = /^\$2[aby]\$(0[4-9]|[12]\d|3[01])\$[./A-Za-z0-9]{53}$/
 
-/** Whether a stored hash is in the format `hashPassword` writes. */
 export const isCurrentHash = (hash: string) => hash.startsWith(prefix)
 
-/** Whether sign-in can verify a stored hash: the current format, or bcrypt (`$2a$`, `$2b$`, `$2y$`). */
 export const isVerifiableHash = (hash: string) => isCurrentHash(hash) || bcryptPattern.test(hash)
 
 async function derive(password: string, salt: Uint8Array<ArrayBuffer>) {

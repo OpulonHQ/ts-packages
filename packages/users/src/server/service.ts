@@ -183,10 +183,11 @@ export class Users extends Context.Service<
           // Login CSRF: another site must not sign a visitor in to an account it controls.
           if (yield* foreignOrigin(headers)) return yield* new Unauthorized()
           const email = normalizeEmail(input.email)
-          const result = yield* auth.post('/sign-in/email', headers, {
-            email,
-            password: input.password,
-          })
+          const { verifiedHash: verified, ...result } = yield* auth.post(
+            '/sign-in/email',
+            headers,
+            { email, password: input.password },
+          )
           yield* failOnServerError(result)
           if (result.status === 429) return yield* tooMany(result)
           const known = yield* userIdByEmail(email)
@@ -198,7 +199,6 @@ export class Users extends Context.Service<
             })
             return yield* new Unauthorized()
           }
-          const verified = result.verifiedHash
           if (verified !== undefined && !isCurrentHash(verified)) {
             const upgraded = yield* Effect.promise(() => hashPassword(input.password))
             yield* sql`update users.account set password = ${upgraded}, updated_at = now()
