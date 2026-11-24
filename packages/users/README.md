@@ -75,7 +75,7 @@ transaction. It fails and creates nothing when a row is malformed (a missing `ro
 example), an address is one sign-in would not accept or is already in use, a role does not exist,
 or a hash is in a format sign-in cannot verify (argon2 and scrypt are not supported). The error
 names the row, as in `user 3 (eva@example.com): unknown role editors`. Sign-in accepts ASCII
-addresses only, so an address with a non-ASCII or punycode domain is refused.
+domains only, so an address with a non-ASCII domain or a punycode top-level domain is refused.
 
 A bcrypt check runs in JavaScript on Workers. A hash with cost 12 took 0.2 to 0.3 seconds of CPU
 on a local workerd; later sign-ins use the current format. That is far more than the 10 ms of CPU
