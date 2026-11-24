@@ -30,6 +30,10 @@ Preconditions: a session with cms rights (smoke owner).
 - **Collection list filters.** `$V/ui.sh .claude/skills/verify-host/journeys/cms-collection-filters.mjs`. Seeds two categories and three posts through the API; on Posts, Categories = News sends `filter=categories:<id>` 200 and lists the two posts in News, Kind = Guide adds `filter=kind:guide` and lists one, Reset lists all three; `filter=title:x` answers 400 `CmsInvalid`; Categories shows no filter.
 - **Picker upload during a save.** `$V/ui.sh .claude/skills/verify-host/journeys/cms-media-pick-during-save.mjs [only=<case>]`. On a post's `Cover`, the picker's `POST /api/media/items` is held, the dialog closed, then `Save draft`, `Publish` (held on its `PUT .../draft`, then on its `POST .../publish`) or `Restore to draft` is held; the upload returns while the action waits. After the action's message the Cover shows the uploaded file, the stored draft has no cover yet, and the next `Save draft` stores it.
 
+## SEO head
+
+`ui.sh journeys/cms-seo.mjs email=... password=...` fills Keywords, Canonical URL and Structured data (JSON-LD) on a new page, shows that a broken JSON-LD save answers 400, publishes, sets the X handle in site settings, then calls `buildHead` from `packages/cms/dist` on the Read API answers. It checks the keywords tag, the canonical override, the `twitter:*` tags, and that a `</script>` payload stays inside its `application/ld+json` script when Chrome parses the head. It also publishes a page without the new fields and checks its head has none of the new output. The journey leaves `twitterHandle` set to `example` in this worktree's database.
+
 ## Gotchas
 
 - The page editor shows one selection's inputs: click `Page settings` in the `Page outline` before filling Path or SEO fields of a page that has sections (the first section is selected on load).
