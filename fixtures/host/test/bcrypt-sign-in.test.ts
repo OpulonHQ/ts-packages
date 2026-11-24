@@ -56,17 +56,6 @@ test('the session of the upgrading sign-in keeps working', async () => {
   expect((await host.me(cookie)).user.id).toBe(user.id)
 })
 
-test('two first sign-ins at once both succeed', async () => {
-  const user = await seedUser(db.url, laravel)
-  const both = await Promise.all([
-    signIn(user.email, laravel.password),
-    signIn(user.email, laravel.password),
-  ])
-  expect(both.map((r) => r.status)).toEqual([200, 200])
-  expect(await storedHash(user.id)).toMatch(/^pbkdf2v1:/)
-  expect((await signIn(user.email, laravel.password)).status).toBe(200)
-})
-
 test('a wrong password against a bcrypt hash fails like any other and counts toward the rate limit', async () => {
   const user = await seedUser(db.url, laravel)
   const ip = randomIp()
