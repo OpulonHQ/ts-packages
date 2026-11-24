@@ -1,10 +1,17 @@
 import { sitemapSource } from '@opulonjs/cms/server'
-import { Background, CurrentActor, defineModule, withTransaction } from '@opulonjs/core'
+import {
+  Background,
+  CurrentActor,
+  CurrentUser,
+  defineModule,
+  RateLimit,
+  withTransaction,
+} from '@opulonjs/core'
 import { emailTemplate } from '@opulonjs/emails/server'
 import { Context, Effect, Layer, Schema } from 'effect'
 import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import { SqlClient } from 'effect/sql/SqlClient'
-import { DemoGroup, demoPermissions, Note, Tick } from './api.ts'
+import { DemoGroup, demoPermissions, Note, Tick, TooManyRequests } from './api.ts'
 import createNote from './migrations/0001_create_note.ts'
 import createTick from './migrations/0002_create_tick.ts'
 
@@ -68,7 +75,16 @@ export const demo = defineModule({
     HttpApiBuilder.group(api, 'demo', (h) =>
       Effect.gen(function* () {
         const notes = yield* Notes
-        return h.handle('notes', () => notes.list()).handle('ticks', () => notes.ticks())
+        return h
+          .handle('notes', () => notes.list())
+          .handle('ticks', () => notes.ticks())
+          .handle('ping', () =>
+            Effect.gen(function* () {
+              const user = yield* CurrentUser
+              const hit = yield* RateLimit.hit(`demo.ping:${user.id}`, 3, '1 minute')
+              if (!hit.allowed) return yield* new TooManyRequests({ retryAfter: hit.retryAfter })
+            }),
+          )
       }),
     ),
   layer: Notes.layer,

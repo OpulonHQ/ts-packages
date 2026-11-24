@@ -10,6 +10,12 @@ export const Note = Schema.Struct({ id: Schema.Number, body: Schema.String })
 /** One run of the demo task; its afterCommit work sets `confirmed`. */
 export const Tick = Schema.Struct({ actor: Schema.String, confirmed: Schema.Boolean })
 
+export class TooManyRequests extends Schema.TaggedError<TooManyRequests>()(
+  'TooManyRequests',
+  { retryAfter: Schema.Number },
+  { httpApiStatus: 429 },
+) {}
+
 export const DemoGroup = HttpApiGroup.make('demo')
   .add(
     HttpApiEndpoint.get('notes', '/notes', { success: Schema.Array(Note) }).annotate(
@@ -19,6 +25,12 @@ export const DemoGroup = HttpApiGroup.make('demo')
   )
   .add(
     HttpApiEndpoint.get('ticks', '/ticks', { success: Schema.Array(Tick) }).annotate(
+      Policy,
+      'demo.notes.view',
+    ),
+  )
+  .add(
+    HttpApiEndpoint.post('ping', '/pings', { error: TooManyRequests }).annotate(
       Policy,
       'demo.notes.view',
     ),
