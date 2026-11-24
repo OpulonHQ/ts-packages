@@ -61,6 +61,24 @@ const ShopGroup = HttpApiGroup.make('shop')
     }).annotate(Policy, 'signedIn'),
   )
   .add(HttpApiEndpoint.post('alert', '/alerts').annotate(Policy, 'signedIn'))
+  .add(
+    HttpApiEndpoint.post('document', '/documents', {
+      payload: Schema.Struct({
+        to: Schema.String,
+        cc: Schema.optional(Schema.Array(Schema.String)),
+        bcc: Schema.optional(Schema.Array(Schema.String)),
+        replyTo: Schema.optional(Schema.String),
+        files: Schema.Array(
+          Schema.Struct({
+            filename: Schema.String,
+            contentType: Schema.String,
+            text: Schema.String,
+          }),
+        ),
+      }),
+      success: Schema.Struct({ id: Schema.String }),
+    }).annotate(Policy, 'signedIn'),
+  )
   .middleware(Authorization)
 
 const shop = defineModule({
@@ -96,6 +114,22 @@ const shop = defineModule({
                 vars: { name: user.name },
               })
             }).pipe(Effect.orDie),
+          )
+          .handle('document', ({ payload }) =>
+            mail
+              .send(orderConfirmed, {
+                to: payload.to,
+                cc: payload.cc,
+                bcc: payload.bcc,
+                replyTo: payload.replyTo,
+                vars: { name: 'Jana', order: 'A-9' },
+                attachments: payload.files.map((file) => ({
+                  filename: file.filename,
+                  contentType: file.contentType,
+                  content: new TextEncoder().encode(file.text),
+                })),
+              })
+              .pipe(Effect.orDie),
           )
       }),
     ),
@@ -193,6 +227,20 @@ export function makeShop(
         name: o.name ?? 'Jana',
         locale: o.locale ?? null,
         rollback: o.rollback ?? false,
+      }),
+    document: (o: {
+      to?: string
+      cc?: ReadonlyArray<string>
+      bcc?: ReadonlyArray<string>
+      replyTo?: string
+      files?: ReadonlyArray<{ filename: string; contentType: string; text: string }>
+    }) =>
+      request('POST', '/shop/documents', {
+        to: o.to ?? 'visitor@example.test',
+        cc: o.cc,
+        bcc: o.bcc,
+        replyTo: o.replyTo,
+        files: o.files ?? [],
       }),
     log: async (query = '') =>
       Schema.decodeUnknownSync(EmailLogPage)((await request('GET', `/emails/log${query}`)).body),

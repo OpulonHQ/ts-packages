@@ -1,7 +1,7 @@
 import { ConfigProvider, Effect, Exit, Fiber, Layer } from 'effect'
 import * as TestClock from 'effect/testing/TestClock'
 import { expect, test } from 'vitest'
-import { Mailer } from '../src/server/index.ts'
+import { Mailer, type OutgoingEmail } from '../src/server/index.ts'
 
 const email = {
   from: 'Shop <noreply@example.test>',
@@ -14,7 +14,11 @@ const email = {
 }
 
 // Resend is reached through an injected fetch; nothing leaves the machine.
-const send = (env: Record<string, string>, reply: Response) => {
+const send = (
+  env: Record<string, string>,
+  reply: Response,
+  message: OutgoingEmail = email,
+) => {
   const calls: Array<Request> = []
   const fetch: typeof globalThis.fetch = async (input, init) => {
     calls.push(new Request(input, init))
@@ -24,7 +28,7 @@ const send = (env: Record<string, string>, reply: Response) => {
     Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord(env))),
   )
   const exit = Effect.runPromiseExit(
-    Effect.flatMap(Mailer, (m) => m.send(email)).pipe(Effect.provide(layer)),
+    Effect.flatMap(Mailer, (m) => m.send(message)).pipe(Effect.provide(layer)),
   )
   return { exit, calls }
 }
@@ -46,6 +50,34 @@ test('posts the email to Resend with the key and the idempotency key', async () 
     html: '<p>Hi</p>',
     text: 'Hi',
     reply_to: 'help@example.test',
+  })
+})
+
+test('posts copies and attachments to Resend, the content as Base64', async () => {
+  const { exit, calls } = send(
+    { EMAILS_RESEND_KEY: 're_123' },
+    Response.json({ id: 'msg-2' }, { status: 200 }),
+    {
+      ...email,
+      cc: ['copy@example.test'],
+      bcc: ['hidden@example.test'],
+      attachments: [
+        {
+          filename: 'invoice.pdf',
+          contentType: 'application/pdf',
+          content: new Uint8Array([37, 80, 68, 70, 0, 255]),
+        },
+      ],
+    },
+  )
+  expect(await exit).toEqual(Exit.succeed({ id: 'msg-2' }))
+  expect(await calls[0]?.json()).toMatchObject({
+    reply_to: 'help@example.test',
+    cc: ['copy@example.test'],
+    bcc: ['hidden@example.test'],
+    attachments: [
+      { filename: 'invoice.pdf', content_type: 'application/pdf', content: 'JVBERgD/' },
+    ],
   })
 })
 
