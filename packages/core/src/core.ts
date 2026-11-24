@@ -12,7 +12,9 @@ import { CachePurgeStatusAccess } from './cache-purge-access.ts'
 import { BuildId, Composed, ContentLocales } from './compose.ts'
 import createAuditEvent from './migrations/0001_create_audit_event.ts'
 import createCachePurge from './migrations/0002_create_cache_purge.ts'
+import createRateLimit from './migrations/0003_create_rate_limit.ts'
 import { defineModule } from './module.ts'
+import { RateLimit } from './rate-limit.ts'
 
 export interface CoreOptions {
   readonly audit?: {
@@ -89,10 +91,12 @@ export const core = (options: CoreOptions = {}) => {
     migrations: {
       '0001_create_audit_event': createAuditEvent,
       '0002_create_cache_purge': createCachePurge,
+      '0003_create_rate_limit': createRateLimit,
     },
     permissions: corePermissions,
     tasks: [
       { name: 'cache_purge_sweep', every: '5m', run: CachePurge.sweep() },
+      { name: 'rate_limit_sweep', every: '5m', run: RateLimit.sweep() },
       {
         name: 'audit_purge',
         every: '1d',

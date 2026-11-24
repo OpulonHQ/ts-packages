@@ -1,11 +1,20 @@
 import * as PgClient from '@effect/sql-pg/PgClient'
-import { Cause, ConfigProvider, Effect, Layer, ManagedRuntime, Redacted } from 'effect'
+import {
+  Cause,
+  ConfigProvider,
+  type Duration,
+  Effect,
+  Layer,
+  ManagedRuntime,
+  Redacted,
+} from 'effect'
 import * as HttpRouter from 'effect/http/HttpRouter'
 import * as HttpServer from 'effect/http/HttpServer'
 import * as HttpServerError from 'effect/http/HttpServerError'
 import { Background } from './background.ts'
 import { CachePurger, CachePurgeFailed } from './cache-purge.ts'
 import { BuildId, type ComposedServer } from './compose.ts'
+import { RateLimit } from './rate-limit.ts'
 import { describeError } from './redact.ts'
 import { runDueTasks } from './tasks.ts'
 
@@ -192,3 +201,17 @@ export const PgFromHyperdrive = (binding: { readonly connectionString: string })
     maxConnections: 5,
     minConnections: 0,
   })
+
+/**
+ * `RateLimit.hit` for a host route outside the composed API (a Worker route next to `/api`),
+ * over the route's own Hyperdrive connection. Rejects when Postgres cannot be reached.
+ */
+export const hitRateLimit = (
+  binding: { readonly connectionString: string },
+  key: string,
+  limit: number,
+  window: Duration.Input,
+) =>
+  Effect.runPromise(
+    RateLimit.hit(key, limit, window).pipe(Effect.provide(PgFromHyperdrive(binding))),
+  )

@@ -1,6 +1,7 @@
 import {
   type AssetsBinding,
   createWorker,
+  hitRateLimit,
   PgFromHyperdrive,
   serveAdmin,
   type WorkerContext,
@@ -48,6 +49,19 @@ const serveSite = async (request: Request, assets: AssetsBinding) => {
   return withCacheControl(index, 'no-store')
 }
 
+const serveContact = async (request: Request, env: Env) => {
+  if (new URL(request.url).pathname !== '/contact' || request.method !== 'POST') return undefined
+  const hit = await hitRateLimit(
+    env.HYPERDRIVE,
+    `contact:${request.headers.get('cf-connecting-ip')}`,
+    3,
+    '1 minute',
+  )
+  return hit.allowed
+    ? new Response(null, { status: 204 })
+    : new Response(null, { status: 429, headers: { 'retry-after': String(hit.retryAfter) } })
+}
+
 /** The fixture Worker with a given Mailer; tests pass `captureMailer().layer`. */
 export const hostWorker = (mailer: Layer.Layer<Mailer> = Mailer.log) => {
   const opulon = createWorker(server, {
@@ -69,6 +83,7 @@ export const hostWorker = (mailer: Layer.Layer<Mailer> = Mailer.log) => {
         (await serveSite(request, env.ASSETS)) ??
         (await serveAdmin(request, env.ASSETS)) ??
         (await serveMedia(request, r2MediaStorage(env.MEDIA_BUCKET))) ??
+        (await serveContact(request, env)) ??
         opulon.fetch(request, env, ctx)
       )
     },
