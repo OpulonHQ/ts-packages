@@ -68,6 +68,8 @@ const cleanLocale = (locale: string, given: PageLocale | undefined, withPaths = 
     const { canonical, jsonLd } = clean.seo
     if (canonical !== undefined && !canonicalPattern.test(canonical))
       return yield* invalid(`The ${locale} canonical URL must start with https:// or "/".`)
+    if (canonical !== undefined && !URL.canParse(canonical, 'https://site.invalid'))
+      return yield* invalid(`The ${locale} canonical URL "${canonical}" is not a valid URL.`)
     if (jsonLd !== undefined) {
       if (jsonLd.length > maxJsonLdLength)
         return yield* invalid(

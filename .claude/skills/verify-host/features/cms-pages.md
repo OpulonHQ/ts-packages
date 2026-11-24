@@ -32,7 +32,7 @@ Preconditions: a session with cms rights (smoke owner).
 
 ## SEO head
 
-`ui.sh journeys/cms-seo.mjs email=... password=...` fills Keywords, Canonical URL and Structured data (JSON-LD) on a new page, shows that a broken JSON-LD save answers 400, publishes, sets the X handle in site settings, then calls `buildHead` from `packages/cms/dist` on the Read API answers. It checks the keywords tag, the canonical override, the `twitter:*` tags, and that a `</script>` payload stays inside its `application/ld+json` script when Chrome parses the head. It also publishes a page without the new fields and checks its head has none of the new output. The journey leaves `twitterHandle` set to `example` in this worktree's database.
+`ui.sh journeys/cms-seo.mjs email=... password=...` fills Keywords, Canonical URL and Structured data (JSON-LD) on a new page, shows that a save with the canonical `https://` or a broken JSON-LD answers 400, publishes, sets the X handle in site settings, then calls `buildHead` from `packages/cms/dist` on the Read API answers. It checks the keywords tag, the canonical override, the `twitter:*` tags, and that a `</script>` payload stays inside its `application/ld+json` script when Chrome parses the head. It also publishes a page without the new fields and checks its head has none of the new output. The journey leaves `twitterHandle` set to `example` in this worktree's database.
 
 ## Gotchas
 

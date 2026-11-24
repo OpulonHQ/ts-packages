@@ -58,6 +58,14 @@ export default async (ctx) => {
   await field('SEO title').fill(`Offer ${run}`)
   await field('SEO description').fill('Our offer')
   await field('Keywords').fill('notary, rome')
+  await field('Canonical URL').fill('https://')
+  const incomplete = await save()
+  const incompleteBody = await incomplete.json()
+  check(
+    incomplete.status() === 400 &&
+      incompleteBody.message === 'The en canonical URL "https://" is not a valid URL.',
+    `Save with canonical "https://": ${incomplete.status()} ${incompleteBody._tag} "${incompleteBody.message}"`,
+  )
   await field('Canonical URL').fill('/original-offer')
   await field('Structured data (JSON-LD)').fill('{"@type": "Organization"')
   const refused = await save()
