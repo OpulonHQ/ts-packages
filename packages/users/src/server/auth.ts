@@ -101,8 +101,6 @@ export class BetterAuth extends Context.Service<
         const pool = yield* getPool
         const context = yield* Effect.context<never>()
         const origin = new URL(config.baseUrl).origin
-        // The stored hash this call's sign-in verified; its session carries it as a stamp.
-        let verifiedHash: string | undefined
         return betterAuth({
           database: {
             dialect: new PostgresDialect({ pool }),
@@ -140,7 +138,7 @@ export class BetterAuth extends Context.Service<
               hash: hashPassword,
               verify: async (input) => {
                 const ok = await verifyPassword(input)
-                if (ok) verifiedHash = report.verifiedHash = input.hash
+                if (ok) report.verifiedHash = input.hash
                 return ok
               },
             },
@@ -192,9 +190,14 @@ export class BetterAuth extends Context.Service<
             session: {
               create: {
                 before: async (session) =>
-                  verifiedHash === undefined
+                  report.verifiedHash === undefined
                     ? false
-                    : { data: { ...session, passwordStamp: await sha256Hex(verifiedHash) } },
+                    : {
+                        data: {
+                          ...session,
+                          passwordStamp: await sha256Hex(report.verifiedHash),
+                        },
+                      },
               },
             },
           },

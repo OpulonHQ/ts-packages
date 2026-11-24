@@ -1,7 +1,8 @@
+import { readFile } from 'node:fs/promises'
 import { sitemapSource } from '@opulonjs/cms/server'
 import { Background, CurrentActor, defineModule, withTransaction } from '@opulonjs/core'
 import { emailTemplate } from '@opulonjs/emails/server'
-import { type ImportedUser, importUsers } from '@opulonjs/users/server'
+import { importUsers } from '@opulonjs/users/server'
 import { Context, Effect, Layer, Schema } from 'effect'
 import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import { SqlClient } from 'effect/sql/SqlClient'
@@ -78,15 +79,15 @@ export const demo = defineModule({
   tasks: [{ name: 'tick', every: '5m', run: tick }],
   commands: {
     'import-users': {
-      description: 'imports users of another system: --users <JSON array of ImportedUser>',
-      options: { users: { type: 'string' } },
-      run: ({ users }) =>
-        typeof users === 'string'
-          ? Effect.map(
-              importUsers(JSON.parse(users) as ReadonlyArray<ImportedUser>),
-              (ids) => `imported ${ids.length} user(s)`,
+      description: 'imports users of another system: --file <JSON array of ImportedUser>',
+      options: { file: { type: 'string' } },
+      run: ({ file }) =>
+        typeof file === 'string'
+          ? Effect.tryPromise(() => readFile(file, 'utf8')).pipe(
+              Effect.flatMap((text) => importUsers(JSON.parse(text))),
+              Effect.map((ids) => `imported ${ids.length} user(s)`),
             )
-          : Effect.fail(new Error('--users <JSON> is required')),
+          : Effect.fail(new Error('--file <path> is required')),
     },
   },
   // A host module's own sitemap child (/sitemaps/demo.notes.xml).

@@ -9,37 +9,52 @@ this package's own format. The first successful sign-in replaces a bcrypt hash w
 format, so the old hash is gone from then on.
 
 Call it from a command of a host module. The `opulon` CLI gives the command its database
-connection and records each imported user in the audit log under the actor `CLI`:
+connection and records each imported user in the audit log under the actor `CLI`. Read the batch
+from a file, never from a command-line argument: arguments show up in the process list and stay in
+the shell history, and the batch holds password hashes.
 
 ```ts
 // modules/legacy/server.ts
+import { readFile } from 'node:fs/promises'
 import { defineModule } from '@opulonjs/core'
-import { type ImportedUser, importUsers } from '@opulonjs/users/server'
+import { importUsers } from '@opulonjs/users/server'
 import { Effect } from 'effect'
 
 export const legacy = defineModule({
   id: 'legacy',
   commands: {
     'import-users': {
-      description: 'imports users of the old system: --users <JSON array>',
-      options: { users: { type: 'string' } },
-      run: ({ users }) =>
-        typeof users === 'string'
-          ? Effect.map(
-              importUsers(JSON.parse(users) as ReadonlyArray<ImportedUser>),
-              (ids) => `imported ${ids.length} user(s)`,
+      description: 'imports users of the old system: --file <JSON array>',
+      options: { file: { type: 'string' } },
+      run: ({ file }) =>
+        typeof file === 'string'
+          ? Effect.tryPromise(() => readFile(file, 'utf8')).pipe(
+              Effect.flatMap((text) => importUsers(JSON.parse(text))),
+              Effect.map((ids) => `imported ${ids.length} user(s)`),
             )
-          : Effect.fail(new Error('--users <JSON> is required')),
+          : Effect.fail(new Error('--file <path> is required')),
     },
   },
 })
 ```
 
-```sh
-opulon legacy import-users --server server/opulon.ts --users '[
-  { "email": "eva@example.com", "name": "Eva", "passwordHash": "$2y$12$...", "roleIds": ["super_admin"] }
-]'
+```json
+[
+  {
+    "email": "eva@example.com",
+    "name": "Eva",
+    "passwordHash": "$2y$12$...",
+    "roleIds": ["super_admin"]
+  }
+]
 ```
+
+```sh
+opulon legacy import-users --server server/opulon.ts --file users.json
+```
+
+Delete the file afterwards. The other way is a host script that reads the old database and calls
+`importUsers` with the rows directly, so the hashes never touch a file.
 
 Each user needs:
 
@@ -55,9 +70,14 @@ verified, and they sign in with the password they already have. `importUsers` gr
 you name without an escalation check, so call it only from trusted host code, never from a request
 handler.
 
-One call is one transaction. It fails and creates nothing when an address is invalid or already in
-use, a role does not exist, or a hash is in a format sign-in cannot verify (argon2 and scrypt are
-not supported). The error names the address.
+`importUsers` checks every row itself, so parsed JSON can go in as it is. One call is one
+transaction. It fails and creates nothing when a row is malformed (a missing `roleIds`, for
+example), an address is one sign-in would not accept or is already in use, a role does not exist,
+or a hash is in a format sign-in cannot verify (argon2 and scrypt are not supported). The error
+names the row, as in `user 3 (eva@example.com): unknown role editors`. Sign-in accepts ASCII
+addresses only, so an address with a non-ASCII or punycode domain is refused.
 
-A bcrypt check runs in JavaScript on Workers. A hash with cost 12 takes a few hundred milliseconds
-of CPU on the user's first sign-in; later sign-ins use the current format.
+A bcrypt check runs in JavaScript on Workers. A hash with cost 12 took 0.2 to 0.3 seconds of CPU
+on a local workerd; later sign-ins use the current format. That is far more than the 10 ms of CPU
+per request of Workers Free, so imported bcrypt users need Workers Paid until their first sign-in
+has upgraded the hash.

@@ -67,7 +67,8 @@ export class InvalidToken extends Schema.TaggedError<InvalidToken>()(
   { httpApiStatus: 400 },
 ) {}
 
-const Email = Schema.String.check(Schema.isMaxLength(254))
+/** An email address as the API takes it: at most 254 characters. */
+export const Email = Schema.String.check(Schema.isMaxLength(254))
 /** Better Auth's limits: 8 to 128 characters. */
 const Password = Schema.String.check(Schema.isMinLength(8), Schema.isMaxLength(128))
 const Token = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200))
