@@ -91,7 +91,7 @@ async function focusField(sectionId: string, field: string | undefined, locale: 
   contentLocale.value = locale
   await nextTick()
   const wrapper = [...panel.querySelectorAll<HTMLElement>('[data-field]')].find(
-    (el) => el.dataset.field === field,
+    (el) => el.dataset.field === field && !el.parentElement?.closest('[data-field]'),
   )
   const control = (wrapper && firstControl(wrapper)) ?? firstControl(panel) ?? panel
   control.focus()

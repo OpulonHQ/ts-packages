@@ -3,6 +3,7 @@ import {
   createCmsClient,
   type PagePreview,
   type PublicData,
+  type SectionData,
   sectionComponents,
   useCmsLivePreview,
 } from '@opulonjs/cms/site'
@@ -28,7 +29,24 @@ const Stats: FunctionalComponent<SectionProps> = (props) =>
   ])
 Stats.props = ['data']
 
-const components = sectionComponents<typeof definitions>({ hero: Hero, stats: Stats })
+const Cards: FunctionalComponent<{ data: SectionData<typeof definitions, 'cards'> }> = (props) =>
+  h('section', [
+    h('h2', { 'data-cms-field': 'heading' }, text(props.data.heading)),
+    h(
+      'ul',
+      { 'data-cms-field': 'cards' },
+      (props.data.cards ?? []).map((card) =>
+        h('li', { key: card.id }, [
+          card.data.link?.href
+            ? h('a', { href: card.data.link.href }, text(card.data.title))
+            : text(card.data.title),
+        ]),
+      ),
+    ),
+  ])
+Cards.props = ['data']
+
+const components = sectionComponents<typeof definitions>({ hero: Hero, stats: Stats, cards: Cards })
 const params = new URLSearchParams(location.search)
 const cms = createCmsClient({ fetch: (input, init) => fetch(input, init) })
 

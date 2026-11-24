@@ -5,6 +5,7 @@ export type {
   ItemPreview,
   PagePreview,
   PublicData,
+  PublicDataOf,
   PublicItem,
   PublicItems,
   PublicSeo,
@@ -17,6 +18,7 @@ export type {
   ResolvedPage,
   ResolvedRedirect,
   ResolveResult,
+  SectionData,
 } from '../api.ts'
 export { publicPath, readCacheControl } from '../public.ts'
 export * from './client.ts'

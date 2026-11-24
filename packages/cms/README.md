@@ -30,6 +30,61 @@ export const definitions = defineCms({ sections: { hero }, systemPages: {} })
 
 `Hero.vue` sits next to `hero.ts` and receives the localized data as its `data` prop.
 
+## Repeat items in a list field
+
+`fields.list` holds repeated items, each with its own fields. Use it in a section type, a
+collection or the site settings, for cards, FAQ entries, steps or testimonials:
+
+```ts
+cards: {
+  label: 'Cards',
+  fields: {
+    cards: fields.list({
+      label: 'Cards',
+      min: 1,
+      max: 6,
+      item: {
+        title: fields.text({ label: 'Title', required: true }),
+        image: fields.media({ label: 'Image', accept: 'image' }),
+        link: fields.link({ label: 'Link' }),
+      },
+    }),
+  },
+}
+```
+
+An item holds any field kind except a list, and each item field is localized or not, as at the
+top level. Editors add, remove and reorder items with buttons or by dragging the grip. A save
+refuses more than `max` items (100 when unset). Publishing needs at least `min` items (one for a
+`required` list) and every item's required fields, in each available locale or in the default one.
+
+A list is stored as `[{ id, data }]` in the editor's order; `data` is stored like a section's
+data, so a localized item field holds `{ [locale]: value }`. The server keeps each item's id
+across saves, reorders and revisions. The Read API and the live preview return the same
+`[{ id, data }]` in one locale, with media and links inside items resolved like top-level ones.
+
+`SectionData` types a section component's `data` prop from the definitions, list items included:
+
+```vue
+<script setup lang="ts">
+import type { SectionData } from '@opulonjs/cms/site'
+import type { definitions } from '../../cms/definitions.ts'
+
+defineProps<{ data: SectionData<typeof definitions, 'cards'> }>()
+</script>
+
+<template>
+  <ul>
+    <li v-for="card in data.cards" :key="card.id">
+      <a :href="card.data.link?.href ?? undefined">{{ card.data.title }}</a>
+    </li>
+  </ul>
+</template>
+```
+
+`PublicDataOf<typeof definitions.collections.posts>` does the same for a collection's or the site
+settings' data.
+
 ## Filter a collection's admin list
 
 Name the reference and select fields editors filter a collection's list by:

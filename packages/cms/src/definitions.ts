@@ -4,6 +4,7 @@
 // collections and site settings all use `Field`.
 import { Schema } from 'effect'
 import { linkProblem, maxSections } from './document-rules.ts'
+import { isRecord, listItems } from './localize.ts'
 
 /** Admin text: one string, or one per admin locale (`{ en: 'Title', sk: 'Nadpis' }`). */
 export type Label = string | Readonly<Record<string, string>>
@@ -19,6 +20,7 @@ export type FieldKind =
   | 'link'
   | 'reference'
   | 'custom'
+  | 'list'
 
 const uuidString = Schema.String.check(Schema.isUUID())
 
@@ -41,8 +43,8 @@ export type Link = typeof Link.Type
  * One field of a section type: its value schema (Effect Schema, validated on the server) and
  * the metadata the admin builds its form control from.
  */
-export interface Field<T = unknown> {
-  readonly kind: FieldKind
+export interface Field<T = unknown, K extends FieldKind = FieldKind> {
+  readonly kind: K
   readonly label: Label
   readonly help?: Label
   /** Holds one value per content locale, edited in the language the editor's switch shows. */
@@ -57,13 +59,32 @@ export interface Field<T = unknown> {
   readonly options?: ReadonlyArray<{ readonly value: string; readonly label: Label }>
   /** `media`: which media the picker offers. */
   readonly accept?: 'image' | 'pdf'
-  /** `number`: bounds, also shown by the widget. */
+  /** `number`: bounds, also shown by the widget. `list`: the least and most items. */
   readonly min?: number
   readonly max?: number
+  /** `list`: the fields of one item. */
+  readonly item?: Readonly<Record<string, Field>>
   /** `reference`: the collection whose items it points at, and whether it holds a list. */
   readonly collection?: string
   readonly many?: boolean
 }
+
+/** One item of a list field: a stable id and its fields' data, stored like a field group's. */
+export interface ListItem {
+  readonly id: string
+  readonly data: Readonly<Record<string, unknown>>
+}
+
+/** A field a list item may hold: any kind but a list. */
+export type ItemField = Field<unknown, Exclude<FieldKind, 'list'>>
+
+export interface ListField<
+  I extends Readonly<Record<string, ItemField>> = Readonly<Record<string, ItemField>>,
+> extends Field<ReadonlyArray<ListItem>, 'list'> {
+  readonly item: I
+}
+
+export const maxListItems = 100
 
 interface FieldOptions {
   readonly label: Label
@@ -74,13 +95,13 @@ interface FieldOptions {
   readonly widget?: string
 }
 
-const make = <T>(
-  kind: FieldKind,
+const make = <T, K extends FieldKind>(
+  kind: K,
   schema: Schema.Decoder<T>,
   options: FieldOptions,
   localized: boolean,
-  extra: Partial<Field<T>> = {},
-): Field<T> => ({
+  extra: Partial<Field<T, K>> = {},
+): Field<T, K> => ({
   kind,
   schema,
   label: options.label,
@@ -125,7 +146,7 @@ export const fields = {
       ]
     },
   ) =>
-    make<V>('select', Schema.Literals(o.options.map((x) => x.value)), o, false, {
+    make<V, 'select'>('select', Schema.Literals(o.options.map((x) => x.value)), o, false, {
       options: o.options,
     }),
   boolean: (o: FieldOptions) => make('boolean', Schema.Boolean, o, false),
@@ -138,7 +159,7 @@ export const fields = {
   link: (o: FieldOptions) => make('link', Link, o, false),
   /** Item id(s) of one collection; `many` holds an ordered list (at most 100). */
   reference: (o: FieldOptions & { readonly collection: string; readonly many?: boolean }) =>
-    make<string | ReadonlyArray<string>>(
+    make<string | ReadonlyArray<string>, 'reference'>(
       'reference',
       o.many ? Schema.Array(uuidString).check(Schema.isMaxLength(100)) : uuidString,
       o,
@@ -148,7 +169,73 @@ export const fields = {
   /** Any value schema with a host widget (`cmsAdmin({ widgets: { [widget]: ... } })`). */
   custom: <T>(o: FieldOptions & { readonly widget: string; readonly schema: Schema.Decoder<T> }) =>
     make('custom', o.schema, o, false),
+  /**
+   * Repeated items in an order the editor sets, each with its own fields (any kind but a list,
+   * localized or not per field). `min` and `max` bound the count (at most 100); `min` and
+   * `required` are checked on publish.
+   */
+  list: <I extends Readonly<Record<string, ItemField>>>(
+    o: Pick<FieldOptions, 'label' | 'help' | 'required'> & {
+      readonly item: I
+      readonly min?: number
+      readonly max?: number
+    },
+  ): ListField<I> => {
+    const fail = (message: string) => {
+      throw new Error(`cms definitions: the list "${labelText(o.label, 'en')}" ${message}.`)
+    }
+    const kinds: Array<[string, FieldKind]> = Object.entries(o.item).map(([k, f]) => [k, f.kind])
+    const nested = kinds.find(([, kind]) => kind === 'list')
+    if (nested) fail(`has the list "${nested[0]}" in its items`)
+    if (kinds.length === 0) fail('needs at least one item field')
+    const { item, min = 0, max = maxListItems } = o
+    if (
+      !Number.isInteger(min) ||
+      !Number.isInteger(max) ||
+      min < 0 ||
+      min > max ||
+      max > maxListItems
+    )
+      fail(`needs whole item counts with 0 <= min <= max <= ${maxListItems}`)
+    const schema = Schema.Array(
+      Schema.Struct({ id: Schema.String, data: sectionDataSchema({ fields: item }) }),
+    ).check(Schema.isMaxLength(max))
+    return { ...make('list', schema, o, false, { min, max }), item }
+  },
 }
+
+/** A group's fields and, named `<list>.<field>`, the item fields of its lists. */
+export const allFields = (group: FieldGroup): Array<[string, Field]> =>
+  Object.entries(group.fields).flatMap(([name, field]) => [
+    [name, field] satisfies [string, Field],
+    ...Object.entries(field.item ?? {}).map(([inner, itemField]): [string, Field] => [
+      `${name}.${inner}`,
+      itemField,
+    ]),
+  ])
+
+/**
+ * Every stored value of a group's fields with its field: one per locale of a localized field,
+ * and those of list items, where `where` names the item (`"Cards", item 2: `).
+ */
+export const storedValues = (
+  group: FieldGroup,
+  data: Readonly<Record<string, unknown>>,
+  where = '',
+): Array<{ name: string; field: Field; value: unknown; where: string }> =>
+  Object.entries(group.fields).flatMap(([name, field]) => {
+    const value = data[name]
+    if (field.kind === 'list')
+      return listItems(value).flatMap((item, index) =>
+        storedValues(
+          { fields: field.item ?? {} },
+          item.data,
+          `${where}"${labelText(field.label, 'en')}", item ${index + 1}: `,
+        ),
+      )
+    const values = field.localized && isRecord(value) ? Object.values(value) : [value]
+    return values.map((one) => ({ name, field, value: one, where }))
+  })
 
 /** Anything holding a set of fields: a section type, a collection, the site settings. */
 export interface FieldGroup {
@@ -280,7 +367,7 @@ export const defineCms = <
     ['site settings', settings],
   ]
   for (const [owner, group] of groups)
-    for (const [name, field] of Object.entries(group.fields))
+    for (const [name, field] of allFields(group))
       if (field.kind === 'reference' && !Object.hasOwn(collections, field.collection ?? ''))
         fail(`field "${name}" of ${owner} references the unknown collection "${field.collection}".`)
   for (const [key, collection] of Object.entries(collections))
@@ -312,13 +399,10 @@ export const defineCms = <
           `${owner} ("${type}") has invalid data: ${error instanceof Error ? error.message : String(error)}`,
         )
       }
-      for (const [name, field] of Object.entries(sectionType.fields)) {
-        const value = data[name]
-        if (field.kind !== 'link' || typeof value !== 'object' || value === null) continue
-        for (const link of field.localized ? Object.values(value) : [value]) {
-          const problem = Schema.is(Link)(link) ? linkProblem({ systemPages }, link) : undefined
-          if (problem) fail(`${owner} ("${type}") field "${name}": ${problem}`)
-        }
+      for (const { name, field, value, where } of storedValues(sectionType, data)) {
+        if (field.kind !== 'link' || !Schema.is(Link)(value)) continue
+        const problem = linkProblem({ systemPages }, value)
+        if (problem) fail(`${owner} ("${type}") ${where}field "${name}": ${problem}`)
       }
     })
   }

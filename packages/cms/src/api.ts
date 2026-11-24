@@ -14,7 +14,7 @@ import { Schema } from 'effect'
 import * as HttpApiEndpoint from 'effect/http-api/HttpApiEndpoint'
 import * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
 import * as HttpApiSchema from 'effect/http-api/HttpApiSchema'
-import { Link } from './definitions.ts'
+import { type Field, type FieldGroup, Link } from './definitions.ts'
 
 export * from './definitions.ts'
 
@@ -756,6 +756,29 @@ export type PublicSeo = typeof PublicSeo.Type
  */
 export const PublicData = Schema.Record(Schema.String, Schema.Unknown)
 export type PublicData = typeof PublicData.Type
+
+type PublicValue<F> = F extends { readonly kind: 'list'; readonly item: infer I }
+  ? ReadonlyArray<{ readonly id: string; readonly data: PublicFields<I> }>
+  : F extends Field<infer T, infer K>
+    ? K extends 'media'
+      ? ResolvedMedia | null
+      : K extends 'link'
+        ? ResolvedLink
+        : T | null
+    : unknown
+type PublicFields<Fields> = { readonly [Name in keyof Fields]?: PublicValue<Fields[Name]> }
+
+/**
+ * The `PublicData` of one field group, typed from its fields: `PublicDataOf<typeof
+ * definitions.collections.posts>`. A list field holds its items in order, each `{ id, data }`.
+ */
+export type PublicDataOf<Group extends FieldGroup> = PublicFields<Group['fields']>
+
+/** The `data` prop of a section component: `SectionData<typeof definitions, 'hero'>`. */
+export type SectionData<
+  Definitions extends { readonly sections: Readonly<Record<string, FieldGroup>> },
+  Type extends keyof Definitions['sections'],
+> = PublicDataOf<Definitions['sections'][Type]>
 
 const routedFields = {
   id: Schema.String,

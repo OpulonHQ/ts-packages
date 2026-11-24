@@ -151,6 +151,15 @@ export default {
     remove: 'Remove entry',
   },
   fields: { allLanguages: 'All languages' },
+  list: {
+    item: 'Item {n}',
+    add: 'Add item',
+    moveUp: 'Move item {n} up',
+    moveDown: 'Move item {n} down',
+    remove: 'Remove item {n}',
+    drag: 'Drag to reorder',
+    full: 'At most {max} items.',
+  },
   reference: {
     missing: 'Missing or deleted item ({id})',
     selected: 'Selected items',

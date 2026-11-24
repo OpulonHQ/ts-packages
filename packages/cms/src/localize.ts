@@ -1,6 +1,8 @@
 import type {
   CmsDefinitions,
+  Field,
   FieldGroup,
+  ListItem,
   PageDocument,
   PageLocale,
   PagePreview,
@@ -9,6 +11,14 @@ import type {
 
 export const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
+
+export const listItems = (value: unknown): ReadonlyArray<ListItem> =>
+  Array.isArray(value)
+    ? value.filter(
+        (item): item is ListItem =>
+          isRecord(item) && typeof item.id === 'string' && isRecord(item.data),
+      )
+    : []
 
 export const emptyLocale = (path = ''): PageLocale => ({
   path,
@@ -29,24 +39,37 @@ export const availableLocales = (
 export const listLocale = (locales: ReadonlyArray<string>, available: ReadonlyArray<string>) =>
   available.includes(locales[0]!) ? locales[0]! : (available[0] ?? locales[0]!)
 
+export const mapFields = (
+  group: FieldGroup,
+  data: Readonly<Record<string, unknown>>,
+  map: (field: Field, value: unknown) => unknown,
+): Record<string, unknown> => {
+  const out: Record<string, unknown> = {}
+  for (const [name, value] of Object.entries(data)) {
+    const field = Object.hasOwn(group.fields, name) ? group.fields[name] : undefined
+    if (!field) continue
+    out[name] =
+      field.kind === 'list'
+        ? listItems(value).map((item) => ({
+            id: item.id,
+            data: mapFields({ fields: field.item ?? {} }, item.data, map),
+          }))
+        : map(field, value)
+  }
+  return out
+}
+
 export const localizeData = (
   group: FieldGroup,
   data: Readonly<Record<string, unknown>>,
   locale: string,
   fallback: string,
-): Record<string, unknown> => {
-  const out: Record<string, unknown> = {}
-  for (const [name, value] of Object.entries(data)) {
-    const field = group.fields[name]
-    if (!field) continue
-    if (!field.localized) out[name] = value
-    else {
-      const values = isRecord(value) ? value : {}
-      out[name] = values[locale] ?? values[fallback] ?? null
-    }
-  }
-  return out
-}
+): Record<string, unknown> =>
+  mapFields(group, data, (field, value) => {
+    if (!field.localized) return value
+    const values = isRecord(value) ? value : {}
+    return values[locale] ?? values[fallback] ?? null
+  })
 
 const localizeSection = (
   definitions: CmsDefinitions,
