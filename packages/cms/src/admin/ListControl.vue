@@ -44,10 +44,12 @@ async function move(index: number, by: -1 | 1) {
   const moved = row(index + by)
   focus(moved?.querySelector<HTMLElement>(enabled(by)) ?? moved?.querySelector(enabled(-by)))
 }
-async function drop(index: number) {
+async function drop(event: DragEvent, index: number) {
   const from = dragged.value
+  if (from === undefined) return
+  event.preventDefault()
   dragged.value = undefined
-  if (from !== undefined && from !== index) await place(from, index)
+  if (from !== index) await place(from, index)
 }
 async function remove(index: number) {
   model.value = items.value.filter((_, at) => at !== index)
@@ -58,8 +60,8 @@ async function add() {
   model.value = [...items.value, { id: crypto.randomUUID(), data: {} }]
   await nextTick()
   focus(
-    row(items.value.length - 1)?.querySelector<HTMLElement>(
-      '[data-field] :is(input, textarea, select, button, [contenteditable="true"])',
+    row(items.value.length - 1)?.lastElementChild?.querySelector<HTMLElement>(
+      'input, textarea, select, button, [contenteditable="true"]',
     ),
   )
 }
@@ -82,7 +84,7 @@ function startDrag(event: DragEvent, index: number) {
         class="space-y-3 rounded-md border border-default p-3"
         :class="dragged === index && 'opacity-50'"
         @dragover="dragged !== undefined && $event.preventDefault()"
-        @drop.prevent="drop(index)"
+        @drop="drop($event, index)"
       >
         <div class="flex items-center gap-1">
           <span
