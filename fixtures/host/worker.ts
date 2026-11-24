@@ -69,7 +69,6 @@ const privateJson = (body: unknown, setCookies: ReadonlyArray<string>) => {
   return response
 }
 
-/** Host routes outside the composed API, behind the staff session (TSPACK-97). */
 const serveShop = async (request: Request, env: Env) => {
   const { pathname } = new URL(request.url)
   if (pathname === '/shop/staff') {
