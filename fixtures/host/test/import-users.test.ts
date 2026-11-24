@@ -75,3 +75,42 @@ test('an import that cannot be completed creates no user and names the address',
   )
   expect(await emails()).toEqual(before)
 }, 30_000)
+
+test.each([
+  [
+    'an address with a non-ASCII domain',
+    { email: 'info@müller.de' },
+    /user 1 \(info@müller\.de\): not an email address sign-in accepts/,
+  ],
+  [
+    'an address with a punycode top-level domain',
+    { email: 'vera@example.xn--p1ai' },
+    /user 1 \(vera@example\.xn--p1ai\): not an email address sign-in accepts/,
+  ],
+  [
+    'a truncated pbkdf2v1 hash',
+    { passwordHash: 'pbkdf2v1:AAAA' },
+    /user 1 \(row@old\.test\): the password hash is neither bcrypt nor pbkdf2v1/,
+  ],
+  [
+    'a pbkdf2v1 prefix with no payload',
+    { passwordHash: 'pbkdf2v1:' },
+    /user 1 \(row@old\.test\): the password hash is neither bcrypt nor pbkdf2v1/,
+  ],
+  [
+    'a row without roleIds',
+    { roleIds: undefined },
+    /user 1 \(row@old\.test\): Missing key at \["roleIds"\]/,
+  ],
+])(
+  'an import refuses %s, which could not sign in or has no stated roles',
+  async (_, row, message) => {
+    const before = await emails()
+    await expect(
+      importUsers([
+        { email: 'row@old.test', name: 'Row', passwordHash: laravelHash, roleIds: [], ...row },
+      ]),
+    ).rejects.toThrow(message)
+    expect(await emails()).toEqual(before)
+  },
+)
