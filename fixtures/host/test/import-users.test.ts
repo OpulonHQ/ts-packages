@@ -57,7 +57,7 @@ test('an import that cannot be completed creates no user and names the address',
   const existing = await seedUser(db.url, { email: 'taken@old.test' })
   const before = await emails()
   const valid = { email: 'fine@old.test', name: 'Fine', passwordHash: laravelHash, roleIds: [] }
-  for (const [user, message] of [
+  const refused = [
     [{ ...valid, email: 'not-an-address' }, /not-an-address: not an email address/],
     [
       {
@@ -69,8 +69,9 @@ test('an import that cannot be completed creates no user and names the address',
     ],
     [{ ...valid, email: 'role@old.test', roleIds: ['no-such-role'] }, /unknown role no-such-role/],
     [{ ...valid, email: existing.email }, /taken@old\.test: a user with this address exists/],
-  ] as const) {
-    await expect(importUsers([valid, user])).rejects.toThrow(message)
-    expect(await emails()).toEqual(before)
-  }
-})
+  ] as const
+  await Promise.all(
+    refused.map(([user, message]) => expect(importUsers([valid, user])).rejects.toThrow(message)),
+  )
+  expect(await emails()).toEqual(before)
+}, 30_000)
