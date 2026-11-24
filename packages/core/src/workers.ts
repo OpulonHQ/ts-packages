@@ -85,6 +85,17 @@ export interface ScheduledEvent {
   readonly cron: string
 }
 
+/**
+ * Effect Config read from an env's string values (vars and secrets) only. Bindings are objects
+ * and reach modules solely through the host's infra(env, ctx).
+ */
+export const envConfig = (env: object) =>
+  ConfigProvider.layer(
+    ConfigProvider.fromEnvRecord(
+      Object.fromEntries(Object.entries(env).filter(([, v]) => typeof v === 'string')),
+    ),
+  )
+
 /** Turns leftover services into a readable type error at the createWorker call. */
 type MissingServices<R> = [R] extends [never] ? unknown : { readonly missingServices: R }
 
@@ -124,19 +135,8 @@ export const createWorker = <R, Env extends object, I, E>(
     readonly buildId: (env: Env) => string
   } & MissingServices<Exclude<R, I | Background>>,
 ) => {
-  /**
-   * Per invocation: the build id, and Effect Config read from the env's string values (vars and
-   * secrets) only. Bindings are objects and reach modules solely through the host's infra(env, ctx).
-   */
   const envLayer = (env: Env) =>
-    Layer.mergeAll(
-      Layer.succeed(BuildId, options.buildId(env)),
-      ConfigProvider.layer(
-        ConfigProvider.fromEnvRecord(
-          Object.fromEntries(Object.entries(env).filter(([, v]) => typeof v === 'string')),
-        ),
-      ),
-    )
+    Layer.mergeAll(Layer.succeed(BuildId, options.buildId(env)), envConfig(env))
   return {
     async fetch(request: Request, env: Env, ctx: WorkerContext): Promise<Response> {
       const background = makeBackground()

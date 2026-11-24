@@ -5,6 +5,7 @@ import { media } from '@opulonjs/media/server'
 import { users } from '@opulonjs/users/server'
 import { definitions } from '../cms/definitions.ts'
 import { demo } from '../modules/demo/server.ts'
+import { hostPermissions } from './permissions.ts'
 
 // Must import cleanly in Node: `opulon migrate --server server/opulon.ts` loads it.
 // Every module listed here is migrated into the test template database (test/postgres).
@@ -18,4 +19,5 @@ export const server = composeServer({
     demo,
   ],
   contentLocales: ['en', 'it'],
+  permissions: hostPermissions,
 })

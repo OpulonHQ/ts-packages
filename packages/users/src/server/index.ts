@@ -29,6 +29,7 @@ export { type ImportedUser, importUsers } from './import.ts'
 export { hashPassword, verifyPassword } from './password.ts'
 export { UserManagement } from './manage.ts'
 export { Users } from './service.ts'
+export { staffAccess, type StaffCheck, type StaffSession } from './staff.ts'
 export { invitationEmail, passwordResetEmail } from './templates.ts'
 
 const requestHeaders = Effect.map(HttpServerRequest, (r) => ({

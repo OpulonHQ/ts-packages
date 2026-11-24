@@ -5,6 +5,7 @@ export {
   Authorization,
   CurrentActor,
   CurrentUser,
+  holdsPolicy,
   Policy,
   Public,
   requirePermission,

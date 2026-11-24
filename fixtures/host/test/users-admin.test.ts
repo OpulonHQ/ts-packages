@@ -1,5 +1,6 @@
 import { expect, onTestFinished, test, vi } from 'vitest'
 import { useTestDatabase } from '../../../test/postgres/index.ts'
+import { hostMessages } from '../admin/messages.ts'
 import { adminModules } from '../admin/modules.ts'
 import { useAdminLifetime } from './admin-lifetime.ts'
 import { makeHost, seedUser, tokenFrom } from './support/users.ts'
@@ -133,6 +134,33 @@ test('a Super admin reaches every composed admin screen', async () => {
     expect.arrayContaining(['emails.templates.manage', 'users.manage', 'users.roles.manage']),
   )
   expect(me.permissions).toEqual(expect.arrayContaining(needed))
+})
+
+test('the roles screen offers a host permission under its own heading, with the host label', async () => {
+  const owner = await seedUser(db.url, { superAdmin: true })
+  const jar = { cookie: await host.signIn(owner.email, owner.password) }
+  unmountPrevious()
+  const text = lifetime.mount('/admin/roles', {
+    buildId: 'b1',
+    fetch: host.browserFetch(jar),
+    messages: hostMessages,
+  })
+  unmountPrevious = text.unmount
+  await expect.poll(text).toContain('Super admin')
+  button('New role')!.click()
+  await expect.poll(text).toContain('View orders')
+  const legends = [...document.querySelectorAll('legend')].map((l) => l.textContent)
+  expect(legends).toContain('Shop')
+  type('name', 'Order desk')
+  check('View orders')
+  button('Save')!.click()
+  await expect.poll(text).toContain('The role is saved.')
+  const roles = (await host.request('GET', '/users/roles', { cookie: jar.cookie })).body as {
+    roles: ReadonlyArray<{ name: string; permissions: ReadonlyArray<string> }>
+  }
+  expect(roles.roles.find((r) => r.name === 'Order desk')?.permissions).toEqual([
+    'shop.orders.view',
+  ])
 })
 
 test('creates a role from labelled permissions and assigns it on the user screen', async () => {

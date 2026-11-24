@@ -110,6 +110,19 @@ try {
     .filter((c) => !c.endsWith('='))
     .join('; ')
 
+  const signedOutOrders = await worker.dispatchFetch(`${origin}/shop/orders`)
+  const refusal = await signedOutOrders.text()
+  check(
+    signedOutOrders.status === 401 && refusal === '{"_tag":"Unauthorized"}',
+    `/shop/orders signed out ${signedOutOrders.status} ${refusal}`,
+  )
+  const orders = await call('GET', '/shop/orders')
+  const ordersPolicy = orders.response.headers.get('cache-control')
+  check(orders.response.status === 200, `/shop/orders ${orders.response.status} ${orders.text}`)
+  check(orders.text.includes('"orders":[]'), `/shop/orders body ${orders.text}`)
+  check(ordersPolicy === 'private, no-store', `/shop/orders Cache-Control ${ordersPolicy}`)
+  console.log(`ok  /shop/orders (staff route): 401 signed out, 200 for the owner: ${orders.text}`)
+
   const path = '/built-page'
   const created = await call('POST', '/api/cms/pages', {
     locales: {

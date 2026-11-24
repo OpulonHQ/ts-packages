@@ -74,6 +74,10 @@ export class Policy extends Context.Service<Policy, string>()('@opulonjs/core/Po
  */
 export class Public extends Context.Service<Public, true>()('@opulonjs/core/Public') {}
 
+/** Whether `user` passes a policy: `signedIn`, or a permission key they hold. */
+export const holdsPolicy = (user: User, policy: string) =>
+  policy === 'signedIn' || user.permissions.includes(policy)
+
 /**
  * Builds the Authorization middleware from a session lookup. A request without a user gets 401;
  * a user without the endpoint's policy permission gets 403. A missing policy fails closed. The
@@ -92,9 +96,7 @@ export const authorization = <R>(
           if (!user) return yield* new Unauthorized()
           const policy = Context.getOption(endpoint.annotations, Policy)
           if (Option.isNone(policy)) return yield* new Forbidden()
-          if (policy.value !== 'signedIn' && !user.permissions.includes(policy.value)) {
-            return yield* new Forbidden()
-          }
+          if (!holdsPolicy(user, policy.value)) return yield* new Forbidden()
           const actor: Actor = {
             kind: 'user',
             id: user.id,

@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest'
 import { useTestDatabase } from '../../../test/postgres/index.ts'
-import { makeHost, origin, seedUser } from './support/users.ts'
+import { staff } from '../server/staff.ts'
+import { makeHost, origin, seedUser, sqlQuery } from './support/users.ts'
 
 const db = useTestDatabase()
 const host = makeHost(() => db.url)
@@ -131,4 +132,36 @@ test('a host permission key is in the catalog, grantable through a role and held
   })
   expect(assigned.status).toBe(204)
   expect((await send('/shop/orders', { cookie: member.cookie })).status).toBe(200)
+})
+
+test('a host route passes on the session cookie Better Auth refreshed, on a refusal too', async () => {
+  const age = (userId: string) =>
+    sqlQuery(
+      db.url,
+      `update users.session set expires_at = now() + interval '1 hour' where user_id = $1`,
+      [userId],
+    )
+  const member = await signedIn({ permissions: ['shop.orders.view'] })
+  await age(member.id)
+  const served = await send('/shop/orders', { cookie: member.cookie })
+  expect(served.status).toBe(200)
+  expect(served.headers.getSetCookie().join()).toMatch(/session_token=.+Max-Age=604800/i)
+
+  const outsider = await signedIn({ permissions: [] })
+  await age(outsider.id)
+  const refused = await send('/shop/orders', { cookie: outsider.cookie })
+  expect(refused.status).toBe(403)
+  expect(refused.headers.getSetCookie().join()).toMatch(/session_token=.+Max-Age=604800/i)
+})
+
+test('requiring a key outside the composed catalog refuses even a Super admin', async () => {
+  const owner = await signedIn({ superAdmin: true })
+  const env = host.env()
+  const request = new Request(`${origin}/anything`, { headers: { cookie: owner.cookie } })
+  expect(await staff.require(request, env, 'signedIn')).toMatchObject({
+    ok: true,
+    user: { id: owner.id },
+  })
+  const check = await staff.require(request, env, 'shop.orders.delete')
+  expect(check.ok ? 200 : check.response.status).toBe(403)
 })

@@ -16,9 +16,10 @@ import { BadRequest, Conflict, Forbidden, Unauthorized } from 'effect/http-api/H
 import { SqlClient } from 'effect/sql/SqlClient'
 import { InvalidToken, Refused, TooManyRequests } from '../api.ts'
 import { canGrant, loadAccess, lockAccessWrites } from './access.ts'
-import { type AuthResult, BetterAuth, usersConfig } from './auth.ts'
+import { type AuthResult, BetterAuth } from './auth.ts'
 import { adminLink, createInvitation, hashToken } from './invitations.ts'
 import { hashPassword, isBcryptHash } from './password.ts'
+import { authenticate, foreignOrigin } from './session.ts'
 import { invitationEmail, passwordResetEmail } from './templates.ts'
 
 const addressPattern = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/
@@ -154,13 +155,6 @@ export class Users extends Context.Service<
           })
       })
 
-      /** CSRF: the request says it comes from another origin than the host's own. */
-      const foreignOrigin = (headers: Headers) =>
-        Effect.map(Effect.orDie(usersConfig), (config) => {
-          const origin = headers.get('origin')
-          return origin !== null && origin !== new URL(config.baseUrl).origin
-        })
-
       const failOnServerError = (result: AuthResult) =>
         result.status >= 500
           ? Effect.die(
@@ -169,15 +163,8 @@ export class Users extends Context.Service<
           : Effect.void
 
       return Users.of({
-        authenticate: Effect.fn('Users.authenticate')(function* (headers, method) {
-          if (!headers.get('cookie')) return undefined
-          if (!['GET', 'HEAD', 'OPTIONS'].includes(method) && (yield* foreignOrigin(headers)))
-            return undefined
-          const session = yield* auth.session(headers)
-          if (!session) return undefined
-          const loaded = yield* loadUser(session.userId)
-          return loaded && { user: loaded.user, setCookies: session.setCookies }
-        }),
+        authenticate: (headers, method) =>
+          authenticate(headers, method).pipe(Effect.provideService(BetterAuth, auth), withSql),
 
         signIn: Effect.fn('Users.signIn')(function* (headers, input) {
           // Login CSRF: another site must not sign a visitor in to an account it controls.
