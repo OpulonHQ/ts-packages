@@ -115,6 +115,14 @@ test('a canonical URL is an http(s) URL or a site path', async () => {
     _tag: 'CmsInvalid',
     message: 'The en canonical URL must start with https:// or "/".',
   })
+  for (const canonical of ['https://', 'http://[::1']) {
+    const malformed = await host.create(withSeo('/canon', { ...plain, canonical }))
+    expect(malformed.status).toBe(400)
+    expect(malformed.body).toMatchObject({
+      _tag: 'CmsInvalid',
+      message: `The en canonical URL "${canonical}" is not a valid URL.`,
+    })
+  }
   const path = await host.create(withSeo('/canon', { ...plain, canonical: '/offer' }))
   expect(path.body.draft.locales.en?.seo.canonical).toBe('/offer')
 })
