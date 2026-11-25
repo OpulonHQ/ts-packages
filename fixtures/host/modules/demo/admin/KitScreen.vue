@@ -113,7 +113,7 @@ const tasks = ref([
     </UForm>
     <p v-if="done" role="status">{{ t('demo.kit.saved') }}</p>
 
-    <dl :aria-label="t('demo.kit.values')" class="grid max-w-3xl grid-cols-[auto_1fr] gap-x-4">
+    <dl :aria-label="t('demo.kit.values')" class="grid max-w-xl grid-cols-2 gap-x-4 text-sm">
       <dt>{{ t('demo.kit.dueOn') }}</dt>
       <dd data-value="dueOn">{{ draft.dueOn ?? t('demo.kit.none') }}</dd>
       <dt>{{ t('demo.kit.publishAt') }}</dt>

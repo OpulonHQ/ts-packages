@@ -13,7 +13,7 @@ import UFormField from '@nuxt/ui/components/FormField.vue'
 import USelectMenu from '@nuxt/ui/components/SelectMenu.vue'
 import { computed, ref, shallowRef, watch } from 'vue'
 import { srOnlyHint, type FieldProps, type SelectItem } from '../../fields.ts'
-import { latestOnly } from '../../latest.ts'
+import { requestTickets } from '../../latest.ts'
 import { useKitText } from '../../text.ts'
 
 const model = defineModel<string | number | null>()
@@ -39,22 +39,22 @@ const open = ref(false)
 const term = ref('')
 const pending = ref(false)
 const failed = ref(false)
-const nextSearch = latestOnly()
+const searches = requestTickets()
 async function load() {
-  const latest = nextSearch()
+  const ticket = searches.next()
   pending.value = true
   failed.value = false
   try {
     const items = await props.search(term.value.trim())
-    if (latest()) found.value = items
+    if (ticket.isLatest()) found.value = items
   } catch (error) {
-    if (latest()) {
+    if (ticket.isLatest()) {
       found.value = []
       failed.value = true
     }
     console.error(error)
   } finally {
-    if (latest()) pending.value = false
+    if (ticket.isLatest()) pending.value = false
   }
 }
 let debounce: ReturnType<typeof setTimeout> | undefined

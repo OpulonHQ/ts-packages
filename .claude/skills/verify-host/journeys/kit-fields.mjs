@@ -1,13 +1,10 @@
-// Drives the demo module's Kit fields screen: the date, date-time, money, file and relation
-// fields in a form with the Unsaved changes bar, and the table's date-range filter and reorder.
-// ui.sh journeys/kit-fields.mjs email=<user with demo.notes.view> password=<password>
 import signedIn from './signed-in.mjs'
 
 export default async (ctx) => {
   const { page, base, shot, check } = ctx
   await signedIn(ctx)
   await page.goto(`${base}/admin/demo/kit`)
-  await page.getByRole('heading', { name: 'Kit fields' }).waitFor()
+  await page.getByRole('table', { name: 'Tasks' }).waitFor()
   const value = (name) => page.locator(`[data-value="${name}"]`)
   const shows = async (name, text) => {
     await value(name).filter({ hasText: text }).waitFor()
@@ -36,7 +33,7 @@ export default async (ctx) => {
 
   const searches = []
   page.on('response', (r) => r.url().includes('/api/demo/notes/search') && searches.push(`${r.status()} ${new URL(r.url()).search}`))
-  const note = page.getByRole('combobox', { name: 'Note' })
+  const note = page.getByLabel('Note', { exact: true })
   await note.focus()
   await page.keyboard.press('Enter')
   await page.getByRole('option', { name: 'hello from demo' }).waitFor()
@@ -123,6 +120,6 @@ export default async (ctx) => {
 
   await page.emulateMedia({ colorScheme: 'dark' })
   await page.reload()
-  await page.getByRole('heading', { name: 'Kit fields' }).waitFor()
+  await page.getByRole('table', { name: 'Tasks' }).waitFor()
   await shot('dark')
 }

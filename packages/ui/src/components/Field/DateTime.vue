@@ -9,12 +9,12 @@ import UFormField from '@nuxt/ui/components/FormField.vue'
 import UInput from '@nuxt/ui/components/Input.vue'
 import { computed } from 'vue'
 import { srOnlyHint, type FieldProps } from '../../fields.ts'
-import { localIso, toDate } from '../../format.ts'
+import { dateTimeLocalValue, toDate } from '../../format.ts'
 
 const model = defineModel<string | null>()
 const local = (instant: string | null | undefined) => {
   const date = toDate(instant)
-  return date ? localIso(date) : ''
+  return date ? dateTimeLocalValue(date) : ''
 }
 const value = computed({
   get: () => local(model.value),

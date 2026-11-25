@@ -28,14 +28,17 @@ const shown = () =>
   typeof model.value === 'number' ? formatMinor(model.value, digits.value, separator.value) : ''
 
 const typed = ref(shown())
-const invalid = computed(() => parseMoney(typed.value, digits.value) === undefined)
+const amount = (text: string) => {
+  const parsed = parseMoney(text, digits.value)
+  return parsed === 'invalid' ? null : parsed
+}
+const invalid = computed(() => parseMoney(typed.value, digits.value) === 'invalid')
 watch([model, digits], () => {
-  if ((parseMoney(typed.value, digits.value) ?? null) !== (model.value ?? null))
-    typed.value = shown()
+  if (amount(typed.value) !== (model.value ?? null)) typed.value = shown()
 })
 function edit(next: string) {
   typed.value = next
-  model.value = parseMoney(next, digits.value) ?? null
+  model.value = amount(next)
 }
 </script>
 

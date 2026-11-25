@@ -36,7 +36,7 @@ import {
   watch,
 } from 'vue'
 import { EMPTY_PLACEHOLDER, getPath, humanize } from '../format.ts'
-import { latestOnly } from '../latest.ts'
+import { requestTickets } from '../latest.ts'
 import {
   type DataTableColumn,
   type DataTableDateFilter,
@@ -119,20 +119,20 @@ const query = computed<TableQuery>(() => ({
   dateRanges: dateRanges.value,
 }))
 
-const nextLoad = latestOnly()
+const loads = requestTickets()
 async function refresh() {
   if (!props.load) return
-  const latest = nextLoad()
+  const ticket = loads.next()
   pending.value = true
   failed.value = false
   try {
     const result = await props.load(query.value)
-    if (latest()) loaded.value = result
+    if (ticket.isLatest()) loaded.value = result
   } catch (error) {
-    if (latest()) failed.value = true
+    if (ticket.isLatest()) failed.value = true
     console.error(error)
   } finally {
-    if (latest()) pending.value = false
+    if (ticket.isLatest()) pending.value = false
   }
 }
 defineExpose({ refresh })
@@ -210,9 +210,10 @@ const dropTarget = ref<number>()
 const labelOf = (row: Row) =>
   props.rowLabel?.(row) ?? String(getPath(row, props.columns[0]?.key ?? '') ?? '')
 function move(from: number, to: number) {
+  if (from === to) return
   const rows = [...current.value.rows]
   const [row] = rows.splice(from, 1)
-  if (!row || from === to) return
+  if (!row) return
   rows.splice(to, 0, row)
   if (props.load) loaded.value = { ...loaded.value, rows }
   emit('reorder', rows)
@@ -222,11 +223,13 @@ async function step(index: number, direction: 'up' | 'down') {
   const to = direction === 'up' ? index - 1 : index + 1
   move(index, to)
   await nextTick()
-  const buttons = root.value?.querySelectorAll<HTMLButtonElement>(
-    `tbody tr:nth-child(${to + 1}) button[data-move]`,
-  )
-  const same = [...(buttons ?? [])].find((button) => button.dataset.move === direction)
-  ;(same?.disabled ? [...(buttons ?? [])].find((button) => !button.disabled) : same)?.focus()
+  const buttons = [
+    ...(root.value?.querySelectorAll<HTMLButtonElement>(
+      `tbody tr:nth-child(${to + 1}) button[data-move]`,
+    ) ?? []),
+  ].filter((button) => !button.disabled)
+  const same = buttons.find((button) => button.dataset.move === direction)
+  ;(same ?? buttons[0])?.focus()
 }
 const rowIndex = (event: Event) => {
   const row = (event.target as Element).closest('tbody tr')
