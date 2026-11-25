@@ -1,13 +1,20 @@
 <script setup lang="ts">
 import { useCloseGuard, useI18n, useRouter, useUnsavedChanges } from '@opulonjs/admin'
 import { listDefaultPerPage, listMaxOffset } from '@opulonjs/core/api'
-import { type TableQuery, UButton, UCheckbox, UForm, USlideover } from '@opulonjs/ui'
+import {
+  formatDateTime,
+  type TableQuery,
+  UButton,
+  UCheckbox,
+  UForm,
+  USlideover,
+} from '@opulonjs/ui'
 import DataTable from '@opulonjs/ui/components/DataTable'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
 import StatusBadge from '@opulonjs/ui/components/StatusBadge'
 import FieldText from '@opulonjs/ui/components/Field/Text'
 import { computed, onBeforeUnmount, ref, shallowRef, useId } from 'vue'
-import type { UserInfo } from '../api.ts'
+import type { InvitationInfo, UserInfo } from '../api.ts'
 import { failureKey, useUsersClient } from './client.ts'
 
 interface InviteForm {
@@ -15,7 +22,7 @@ interface InviteForm {
   roleIds: string[]
 }
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const router = useRouter()
 const users = useUsersClient()
 const list = shallowRef<{
@@ -86,6 +93,65 @@ const columns = computed(() => [
   { key: 'deactivated', label: t('users.users.columns.status'), sortable: true, nowrap: true },
 ])
 
+const invitations = shallowRef<ReadonlyArray<InvitationInfo>>([])
+let latestInvitations = 0
+const loadInvitations = () => {
+  const ticket = ++latestInvitations
+  return users((client) => client.invitations()).then(
+    (result) => {
+      if (ticket === latestInvitations) invitations.value = result.invitations
+    },
+    () => {},
+  )
+}
+void loadInvitations()
+
+const invitationColumns = computed(() => [
+  { key: 'email', label: t('users.invitations.columns.email') },
+  {
+    key: 'roleIds',
+    label: t('users.invitations.columns.roles'),
+    format: (value: unknown) => (value as ReadonlyArray<string>).map(roleName).join(', '),
+  },
+  {
+    key: 'expiresAt',
+    label: t('users.invitations.columns.expires'),
+    nowrap: true,
+    format: (value: unknown, row: InvitationInfo) =>
+      row.expired ? t('users.invitations.expired') : formatDateTime(value, locale.value),
+  },
+  { key: 'id', label: t('users.invitations.columns.actions'), nowrap: true },
+])
+
+async function changeInvitation(invitation: InvitationInfo, action: 'resend' | 'revoke') {
+  busy.value = true
+  notice.value = undefined
+  const params = { id: invitation.id }
+  try {
+    if (action === 'resend') await users((c) => c.resendInvitation({ params }))
+    else await users((c) => c.revokeInvitation({ params }))
+    notice.value = {
+      error: false,
+      text: t(action === 'resend' ? 'users.invitations.resent' : 'users.invitations.revoked', {
+        email: invitation.email,
+      }),
+    }
+  } catch (error) {
+    notice.value = {
+      error: true,
+      text: t(
+        failureKey(error, {
+          NotFound: 'users.invitations.gone',
+          Conflict: 'users.invitations.taken',
+        }),
+      ),
+    }
+  } finally {
+    await loadInvitations()
+    busy.value = false
+  }
+}
+
 function toggleRole(id: string, on: boolean | 'indeterminate') {
   if (!invite.value) return
   const ids = invite.value.roleIds.filter((x) => x !== id)
@@ -102,16 +168,12 @@ async function send() {
     await users((client) => client.invite({ payload: { email, roleIds: [...form.roleIds] } }))
     show(undefined)
     notice.value = { error: false, text: t('users.invite.sent', { email }) }
+    void loadInvitations()
   } catch (error) {
-    const tag = (error as { _tag?: string } | undefined)?._tag
     notice.value = {
       error: true,
       text: t(
-        tag === 'Conflict'
-          ? 'users.invite.taken'
-          : tag === 'BadRequest'
-            ? 'users.invite.invalid'
-            : failureKey(error),
+        failureKey(error, { Conflict: 'users.invite.taken', BadRequest: 'users.invite.invalid' }),
       ),
     }
   } finally {
@@ -156,6 +218,34 @@ async function send() {
           :status="row.original.deactivated ? 'disabled' : 'enabled'"
           :label="t(row.original.deactivated ? 'users.status.deactivated' : 'users.status.active')"
         />
+      </template>
+    </DataTable>
+
+    <h2 class="pt-4 font-medium">{{ t('users.invitations.title') }}</h2>
+    <DataTable
+      :rows="invitations"
+      :columns="invitationColumns"
+      :caption="t('users.invitations.title')"
+      :empty-title="t('users.invitations.empty')"
+    >
+      <template #id-cell="{ row }">
+        <div class="flex gap-2">
+          <UButton
+            size="xs"
+            variant="soft"
+            :label="t('users.invitations.resend')"
+            :disabled="busy"
+            @click="changeInvitation(row.original, 'resend')"
+          />
+          <UButton
+            size="xs"
+            color="error"
+            variant="soft"
+            :label="t('users.invitations.revoke')"
+            :disabled="busy"
+            @click="changeInvitation(row.original, 'revoke')"
+          />
+        </div>
       </template>
     </DataTable>
 

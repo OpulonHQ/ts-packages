@@ -40,5 +40,7 @@ export const useUsersClient = (options?: Parameters<typeof useApiClient>[1]) =>
   useApiClient(UsersGroup, options)
 
 /** The message key for a failed users or roles change: the guard's reason when it refused. */
-export const failureKey = (error: unknown) =>
-  error instanceof Refused ? `users.refused.${error.reason}` : 'users.errors.failed'
+export const failureKey = (error: unknown, byTag: Record<string, string> = {}) =>
+  error instanceof Refused
+    ? `users.refused.${error.reason}`
+    : (byTag[(error as { _tag?: string } | undefined)?._tag ?? ''] ?? 'users.errors.failed')

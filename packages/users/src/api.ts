@@ -19,12 +19,16 @@ export const usersAuditActions = [
   { key: 'users.signed_out', subject: 'user' },
   { key: 'users.password_confirmation_failed', subject: 'user' },
   { key: 'users.invited', subject: 'invitation' },
+  { key: 'users.invitation_revoked', subject: 'invitation' },
   { key: 'users.invitation_accepted', subject: 'user' },
   { key: 'users.imported', subject: 'user' },
   { key: 'users.password_reset_requested', subject: 'user' },
   { key: 'users.password_reset', subject: 'user' },
+  { key: 'users.password_changed', subject: 'user' },
   { key: 'users.role_created', subject: 'role' },
   { key: 'users.role_updated', subject: 'role' },
+  { key: 'users.role_deleted', subject: 'role' },
+  { key: 'users.updated', subject: 'user' },
   { key: 'users.roles_assigned', subject: 'user' },
   { key: 'users.deactivated', subject: 'user' },
   { key: 'users.reactivated', subject: 'user' },
@@ -68,7 +72,7 @@ export class InvalidToken extends Schema.TaggedError<InvalidToken>()(
   { httpApiStatus: 400 },
 ) {}
 
-/** The password given to confirm a session is not the user's. */
+/** The password given to confirm a session, or to change the password, is not the user's. */
 export class WrongPassword extends Schema.TaggedError<WrongPassword>()(
   'WrongPassword',
   {},
@@ -97,6 +101,11 @@ export const Email = Schema.String.check(Schema.isMaxLength(254))
 /** Better Auth's limits: 8 to 128 characters. */
 const Password = Schema.String.check(Schema.isMinLength(8), Schema.isMaxLength(128))
 const Token = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200))
+const PersonName = Schema.String.check(
+  Schema.isTrimmed(),
+  Schema.isMinLength(1),
+  Schema.isMaxLength(200),
+)
 const OptionalTurnstileToken = Schema.optionalKey(Schema.String.check(Schema.isMaxLength(2048)))
 
 /** Sign-in, sign-out, password reset and invitation acceptance: reachable without a session. */
@@ -136,11 +145,7 @@ export const UsersAuthGroup = HttpApiGroup.make('users.auth')
     HttpApiEndpoint.post('acceptInvitation', '/invitations/accept', {
       payload: Schema.Struct({
         token: Token,
-        name: Schema.String.check(
-          Schema.isTrimmed(),
-          Schema.isMinLength(1),
-          Schema.isMaxLength(200),
-        ),
+        name: PersonName,
         password: Password,
       }),
       error: [InvalidToken, Conflict, TooManyRequests],
@@ -189,6 +194,19 @@ export type UserQuery = typeof UserQuery.Type
 
 export const RoleList = Schema.Struct({ roles: Schema.Array(RoleInfo) })
 
+export const InvitationInfo = Schema.Struct({
+  id: Schema.String,
+  email: Schema.String,
+  /** Roles the invitation still grants: a role deleted since is left out. */
+  roleIds: Schema.Array(Schema.String),
+  createdAt: Schema.String,
+  expiresAt: Schema.String,
+  expired: Schema.Boolean,
+})
+export type InvitationInfo = typeof InvitationInfo.Type
+
+export const InvitationList = Schema.Struct({ invitations: Schema.Array(InvitationInfo) })
+
 const RoleInput = Schema.Struct({
   name: Schema.String.check(Schema.isTrimmed(), Schema.isMinLength(1), Schema.isMaxLength(100)),
   permissions: Schema.Array(Schema.String.check(Schema.isMaxLength(200))).check(
@@ -212,10 +230,45 @@ export const UsersGroup = HttpApiGroup.make('users')
     }).annotate(Policy, 'users.manage'),
   )
   .add(
+    HttpApiEndpoint.get('invitations', '/invitations', { success: InvitationList }).annotate(
+      Policy,
+      'users.manage',
+    ),
+  )
+  .add(
+    HttpApiEndpoint.delete('revokeInvitation', '/invitations/:id', {
+      params: { id: Schema.String },
+      error: [NotFound, Forbidden, Refused],
+    }).annotate(Policy, 'users.manage'),
+  )
+  .add(
+    HttpApiEndpoint.post('resendInvitation', '/invitations/:id/resend', {
+      params: { id: Schema.String },
+      success: Schema.Struct({ id: Schema.String }),
+      error: [NotFound, Conflict, Forbidden, Refused],
+    }).annotate(Policy, 'users.manage'),
+  )
+  .add(
+    HttpApiEndpoint.put('changePassword', '/password', {
+      payload: Schema.Struct({
+        currentPassword: Schema.String.check(Schema.isMaxLength(128)),
+        newPassword: Password,
+      }),
+      error: [WrongPassword, TooManyRequests],
+    }).annotate(Policy, 'signedIn'),
+  )
+  .add(
     HttpApiEndpoint.get('users', '/users', { query: UserQuery, success: UserList }).annotate(
       Policy,
       'users.manage',
     ),
+  )
+  .add(
+    HttpApiEndpoint.put('updateUser', '/users/:id', {
+      params: { id: Schema.String },
+      payload: Schema.Struct({ name: PersonName, email: Email }),
+      error: [BadRequest, Conflict, NotFound, Forbidden, Refused],
+    }).annotate(Policy, 'users.manage'),
   )
   .add(
     HttpApiEndpoint.put('assignRoles', '/users/:id/roles', {
@@ -262,6 +315,12 @@ export const UsersGroup = HttpApiGroup.make('users')
       params: { id: Schema.String },
       payload: RoleInput,
       error: [BadRequest, Conflict, NotFound, Forbidden, Refused],
+    }).annotate(Policy, 'users.roles.manage'),
+  )
+  .add(
+    HttpApiEndpoint.delete('deleteRole', '/roles/:id', {
+      params: { id: Schema.String },
+      error: [Conflict, NotFound, Forbidden, Refused],
     }).annotate(Policy, 'users.roles.manage'),
   )
   .middleware(Authorization)

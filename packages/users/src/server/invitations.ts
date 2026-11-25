@@ -13,6 +13,9 @@ const base64Url = (bytes: Uint8Array) =>
     .replace(/\//g, '_')
     .replace(/=+$/, '')
 
+export const normalizeEmail = (email: string) => email.trim().toLowerCase()
+export const isEmailAddress = (email: string) => /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)
+
 /** SHA-256 hex of an invitation token: only the hash is stored. */
 export const hashToken = (token: string) => Effect.promise(() => sha256Hex(token))
 

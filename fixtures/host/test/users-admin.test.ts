@@ -198,6 +198,114 @@ test('creates a role from labelled permissions and assigns it on the user screen
   expect((await host.request('GET', '/me', { cookie })).status).toBe(401)
 })
 
+test('a user manager edits a name and email on the user screen and is told when the email is taken', async () => {
+  const owner = await seedUser(db.url, { superAdmin: true })
+  const member = await seedUser(db.url, { name: 'Ema Before', permissions: [] })
+  const jar = { cookie: await host.signIn(owner.email, owner.password) }
+  const admin = mountAdmin(`/admin/users/${member.id}`, jar)
+  await expect.poll(() => button('Save the name and email')).toBeDefined()
+
+  type('email', owner.email)
+  button('Save the name and email')!.click()
+  await expect.poll(admin.text).toContain('Another user already has this email.')
+
+  const email = `ema-${member.id.slice(0, 8)}@example.test`
+  type('name', 'Ema After')
+  type('email', email)
+  button('Save the name and email')!.click()
+  await expect.poll(admin.text).toContain('The name and email are saved.')
+  await expect.poll(admin.text).toContain('Edited the name or email of a user')
+  expect((await host.me(await host.signIn(email, member.password))).user.name).toBe('Ema After')
+})
+
+test('the users screen lists open invitations, sends one again and revokes it', async () => {
+  const owner = await seedUser(db.url, { superAdmin: true })
+  const jar = { cookie: await host.signIn(owner.email, owner.password) }
+  const email = `pending-${owner.id.slice(0, 8)}@example.test`
+  await host.request('POST', '/users/invitations', {
+    cookie: jar.cookie,
+    body: { email, roleIds: ['super_admin'] },
+  })
+  const first = tokenFrom(host.mailer.sent.at(-1)!.html)
+  const inspect = async (token: string) =>
+    (await host.request('POST', '/users/invitations/inspect', { body: { token } })).status
+
+  const admin = mountAdmin('/admin/users', jar)
+  await expect.poll(() => row(email)?.textContent).toContain('Super admin')
+  button('Send again', row(email))!.click()
+  await expect.poll(admin.text).toContain(`A new invitation to ${email} is on its way.`)
+  const second = tokenFrom(host.mailer.sent.at(-1)!.html)
+  expect([await inspect(first), await inspect(second)]).toEqual([400, 200])
+
+  await expect.poll(() => button('Revoke', row(email))?.disabled).toBe(false)
+  button('Revoke', row(email))!.click()
+  await expect.poll(admin.text).toContain(`The invitation to ${email} is revoked.`)
+  await expect.poll(() => row(email)).toBeUndefined()
+  expect(await inspect(second)).toBe(400)
+})
+
+test('the role editor deletes a role nobody holds and says why a held role stays', async () => {
+  const owner = await seedUser(db.url, { superAdmin: true })
+  const member = await seedUser(db.url, { permissions: [] })
+  const jar = { cookie: await host.signIn(owner.email, owner.password) }
+  const [held] = await sqlQuery<{ role_id: string }>(
+    db.url,
+    'select role_id from users.user_role where user_id = $1',
+    [member.id],
+  )
+  const created = await host.request('POST', '/users/roles', {
+    cookie: jar.cookie,
+    body: { name: `Spare ${owner.id.slice(0, 8)}`, permissions: [] },
+  })
+  const spare = `Spare ${owner.id.slice(0, 8)}`
+  const admin = mountAdmin('/admin/roles', jar)
+  const remove = async (name: string) => {
+    await expect.poll(() => row(name)).toBeDefined()
+    row(name)!.click()
+    await expect.poll(() => button('Delete')).toBeDefined()
+    button('Delete')!.click()
+    await expect.poll(() => button('Delete the role')).toBeDefined()
+    button('Delete the role')!.click()
+  }
+
+  await remove(held!.role_id)
+  await expect.poll(admin.text).toContain('A user still holds this role')
+  button('Cancel')!.click()
+
+  await remove(spare)
+  await expect.poll(admin.text).toContain('The role is deleted.')
+  await expect.poll(() => row(spare)).toBeUndefined()
+  const roles = (await host.request('GET', '/users/roles', { cookie: jar.cookie })).body as {
+    roles: ReadonlyArray<{ id: string }>
+  }
+  expect(roles.roles.map((r) => r.id)).not.toContain((created.body as { id: string }).id)
+})
+
+test('users change their own password on their account screen', async () => {
+  const user = await seedUser(db.url, { permissions: [] })
+  const jar = { cookie: await host.signIn(user.email, user.password) }
+  const other = await host.signIn(user.email, user.password)
+  const admin = mountAdmin('/admin/account', jar)
+  const submit = async (current: string, password: string, confirm = password) => {
+    await expect.poll(() => button('Change the password')?.disabled).toBe(false)
+    type('current', current)
+    type('password', password)
+    type('confirm', confirm)
+    button('Change the password')!.click()
+  }
+
+  await submit(user.password, 'a brand new password', 'another password')
+  await expect.poll(admin.text).toContain('The passwords do not match.')
+  await submit('not the password', 'a brand new password')
+  await expect.poll(admin.text).toContain('The current password is wrong.')
+  await submit(user.password, 'a brand new password')
+  await expect.poll(admin.text).toContain('Your password is changed.')
+
+  expect((await host.request('GET', '/me', { cookie: jar.cookie })).status).toBe(200)
+  expect((await host.request('GET', '/me', { cookie: other })).status).toBe(401)
+  await host.signIn(user.email, 'a brand new password')
+})
+
 test('says why a change is refused', async () => {
   const manager = await seedUser(db.url, { permissions: ['users.manage'] })
   const jar = { cookie: await host.signIn(manager.email, manager.password) }

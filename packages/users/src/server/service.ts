@@ -12,9 +12,16 @@ import {
 } from '@opulonjs/core'
 import { EmailService } from '@opulonjs/emails/server'
 import { Context, Data, Effect, Layer } from 'effect'
-import { BadRequest, Conflict, Forbidden, Unauthorized } from 'effect/http-api/HttpApiError'
+import {
+  BadRequest,
+  Conflict,
+  Forbidden,
+  NotFound,
+  Unauthorized,
+} from 'effect/http-api/HttpApiError'
 import { SqlClient } from 'effect/sql/SqlClient'
 import {
+  type InvitationInfo,
   InvalidToken,
   Refused,
   TooManyRequests,
@@ -22,16 +29,19 @@ import {
   type TurnstileNotConfigured,
   WrongPassword,
 } from '../api.ts'
-import { canGrant, loadAccess, lockAccessWrites } from './access.ts'
+import { type Access, canGrant, loadAccess, lockAccessWrites } from './access.ts'
 import { type AuthResult, BetterAuth, signInRateLimitKey } from './auth.ts'
-import { adminLink, createInvitation, hashToken } from './invitations.ts'
+import {
+  adminLink,
+  createInvitation,
+  hashToken,
+  isEmailAddress,
+  normalizeEmail,
+} from './invitations.ts'
 import { hashPassword, isBcryptHash, verifyPassword } from './password.ts'
 import { authenticate, foreignOrigin } from './session.ts'
 import { invitationEmail, passwordResetEmail } from './templates.ts'
 import { requireTurnstile } from './turnstile.ts'
-
-const addressPattern = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/
-export const normalizeEmail = (email: string) => email.trim().toLowerCase()
 
 const userActor = (u: { readonly id: string; readonly name: string }): Actor => ({
   kind: 'user',
@@ -86,6 +96,14 @@ export class Users extends Context.Service<
       headers: Headers,
       password: string,
     ) => Effect.Effect<void, Unauthorized | WrongPassword | TooManyRequests>
+    /**
+     * Sets the password of the request's user, who proves the current one; their other sessions
+     * end and the request's stays. Shares the confirmation's rate limit and wrong-password event.
+     */
+    readonly changePassword: (
+      headers: Headers,
+      input: { readonly currentPassword: string; readonly newPassword: string },
+    ) => Effect.Effect<void, Unauthorized | WrongPassword | TooManyRequests>
     readonly signIn: (
       headers: Headers,
       input: {
@@ -124,6 +142,27 @@ export class Users extends Context.Service<
     }) => Effect.Effect<
       { readonly id: string },
       BadRequest | Conflict | Forbidden | Refused,
+      CurrentUser
+    >
+    /** Invitations not yet accepted, newest first, expired ones included. Needs `users.manage`. */
+    readonly invitations: () => Effect.Effect<
+      { readonly invitations: ReadonlyArray<InvitationInfo> },
+      Forbidden,
+      CurrentUser
+    >
+    /** Deletes an open invitation, so its link stops working. Needs `users.manage`. */
+    readonly revokeInvitation: (
+      id: string,
+    ) => Effect.Effect<void, NotFound | Forbidden | Refused, CurrentUser>
+    /**
+     * Invites the address of an open invitation again with its roles: a new link is emailed and
+     * the old one stops working. Needs `users.manage`.
+     */
+    readonly resendInvitation: (
+      id: string,
+    ) => Effect.Effect<
+      { readonly id: string },
+      NotFound | Conflict | Forbidden | Refused,
       CurrentUser
     >
   }
@@ -193,34 +232,126 @@ export class Users extends Context.Service<
             )
           : Effect.void
 
+      /** The request's session, once `password` is its user's. */
+      const withPassword = Effect.fn('Users.withPassword')(function* (
+        headers: Headers,
+        password: string,
+      ) {
+        const signedIn = yield* authenticate(headers, 'POST').pipe(
+          Effect.provideService(BetterAuth, auth),
+        )
+        if (!signedIn) return yield* new Unauthorized()
+        yield* throttle(headers, '/password-confirmation', { window: 60, max: 5 })
+        const { user } = signedIn
+        const [account] = yield* sql<{ password: string | null }>`
+          select password from users.account
+          where user_id = ${user.id} and provider_id = 'credential'`.pipe(Effect.orDie)
+        const hash = account?.password
+        if (!hash || !(yield* Effect.promise(() => verifyPassword({ hash, password })))) {
+          yield* auditBestEffort(
+            {
+              action: 'users.password_confirmation_failed',
+              subject: { type: 'user', id: user.id, label: user.email },
+            },
+            userActor(user),
+          )
+          return yield* new WrongPassword()
+        }
+        return signedIn
+      }, withSql)
+
+      type GrantedRole = { readonly id: string; readonly permissions: ReadonlyArray<string> }
+      const rolesById = (ids: ReadonlyArray<string>) =>
+        sql<GrantedRole>`select id, to_jsonb(permissions) as permissions from users.role
+          where id in (select jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb))`
+
+      /** Runs an invitation change under the users/roles lock, the actor read as of now. */
+      const asManager = <A, E, R>(
+        change: (self: Access, catalog: ReadonlyArray<string>) => Effect.Effect<A, E, R>,
+      ) =>
+        Effect.gen(function* () {
+          yield* requirePermission('users.manage')
+          const me = yield* CurrentUser
+          const catalog = (yield* Composed).permissions
+          return yield* withTransaction(
+            Effect.gen(function* () {
+              yield* lockAccessWrites
+              const self = yield* loadUser(me.id)
+              if (!self?.user.permissions.includes('users.manage')) return yield* new Forbidden()
+              return yield* change(self, catalog)
+            }),
+          ).pipe(
+            Effect.provideService(Background, background),
+            Effect.catchTag('SqlError', Effect.die),
+          )
+        }).pipe(withSql)
+
+      /** An invitation granting what the actor may not grant is not theirs to send or revoke. */
+      const grantable = (
+        self: Access,
+        roles: ReadonlyArray<GrantedRole>,
+        catalog: ReadonlyArray<string>,
+      ) =>
+        roles.every((role) => canGrant(self, role, catalog))
+          ? Effect.void
+          : Effect.fail(new Refused({ reason: 'escalation' }))
+
+      const openInvitation = Effect.fn('Users.openInvitation')(function* (id: string) {
+        const [open] = yield* sql<{ email: string; roleIds: ReadonlyArray<string> }>`
+          select email, to_jsonb(role_ids) as "roleIds" from users.invitation
+          where id = ${id} and accepted_at is null`
+        if (!open) return yield* new NotFound()
+        return { email: open.email, roles: yield* rolesById(open.roleIds) }
+      })
+
+      const sendInvitation = Effect.fn('Users.sendInvitation')(function* (
+        self: Access,
+        catalog: ReadonlyArray<string>,
+        email: string,
+        roles: ReadonlyArray<GrantedRole>,
+      ) {
+        // Escalation guard (TSPACK-10): an invitation grants its roles on acceptance.
+        yield* grantable(self, roles, catalog)
+        if (yield* userIdByEmail(email)) return yield* new Conflict()
+        const invitation = yield* createInvitation({
+          email,
+          roleIds: roles.map((role) => role.id),
+          invitedBy: self.user.id,
+        })
+        yield* mail.send(invitationEmail, {
+          to: email,
+          vars: { link: invitation.link },
+          about: { type: 'invitation', id: invitation.id },
+        })
+        return { id: invitation.id }
+      })
+
       return Users.of({
         authenticate: (headers, method) =>
           authenticate(headers, method).pipe(Effect.provideService(BetterAuth, auth), withSql),
 
         confirmPassword: Effect.fn('Users.confirmPassword')(function* (headers, password) {
-          const signedIn = yield* authenticate(headers, 'POST').pipe(
-            Effect.provideService(BetterAuth, auth),
-          )
-          if (!signedIn) return yield* new Unauthorized()
-          yield* throttle(headers, '/password-confirmation', { window: 60, max: 5 })
-          const { user } = signedIn
-          const [account] = yield* sql<{ password: string | null }>`
-            select password from users.account
-            where user_id = ${user.id} and provider_id = 'credential'`.pipe(Effect.orDie)
-          const hash = account?.password
-          if (!hash || !(yield* Effect.promise(() => verifyPassword({ hash, password })))) {
-            yield* auditBestEffort(
-              {
-                action: 'users.password_confirmation_failed',
-                subject: { type: 'user', id: user.id, label: user.email },
-              },
-              userActor(user),
-            )
-            return yield* new WrongPassword()
-          }
+          const signedIn = yield* withPassword(headers, password)
           yield* sql`update users.session
             set password_confirmed_at = to_timestamp(${Date.now()}::double precision / 1000)
             where id = ${signedIn.sessionId}`.pipe(Effect.orDie)
+        }),
+
+        changePassword: Effect.fn('Users.changePassword')(function* (headers, input) {
+          const { user, sessionId } = yield* withPassword(headers, input.currentPassword)
+          const hash = yield* Effect.promise(() => hashPassword(input.newPassword))
+          yield* withTransaction(
+            Effect.gen(function* () {
+              yield* sql`update users.account set password = ${hash}, updated_at = now()
+                where user_id = ${user.id} and provider_id = 'credential'`
+              yield* sql`delete from users.session
+                where user_id = ${user.id} and id <> ${sessionId}`
+              yield* Audit.record({
+                action: 'users.password_changed',
+                subject: { type: 'user', id: user.id, label: user.email },
+              }).pipe(Effect.provideService(CurrentActor, userActor(user)))
+            }),
+          ).pipe(Effect.catchTag('SqlError', Effect.die))
         }, withSql),
 
         signIn: Effect.fn('Users.signIn')(function* (headers, input) {
@@ -371,39 +502,51 @@ export class Users extends Context.Service<
         }, withSql),
 
         invite: Effect.fn('Users.invite')(function* (input) {
-          yield* requirePermission('users.manage')
-          const inviter = yield* CurrentUser
           const email = normalizeEmail(input.email)
-          if (!addressPattern.test(email)) return yield* new BadRequest()
+          if (!isEmailAddress(email)) return yield* new BadRequest()
           const roleIds = [...new Set(input.roleIds)]
-          const catalog = (yield* Composed).permissions
-          return yield* withTransaction(
+          return yield* asManager((self, catalog) =>
             Effect.gen(function* () {
-              // Under the users/roles lock, the inviter and the roles are read as of now.
-              yield* lockAccessWrites
-              const self = yield* loadUser(inviter.id)
-              if (!self?.user.permissions.includes('users.manage')) return yield* new Forbidden()
-              const roles = yield* sql<{ id: string; permissions: ReadonlyArray<string> }>`
-                select id, to_jsonb(permissions) as permissions from users.role
-                where id in (select jsonb_array_elements_text(${JSON.stringify(roleIds)}::jsonb))`
+              const roles = yield* rolesById(roleIds)
               if (roles.length !== roleIds.length) return yield* new BadRequest()
-              // Escalation guard (TSPACK-10): an invitation grants its roles on acceptance.
-              if (roles.some((role) => !canGrant(self, role, catalog)))
-                return yield* new Refused({ reason: 'escalation' })
-              if (yield* userIdByEmail(email)) return yield* new Conflict()
-              const invitation = yield* createInvitation({ email, roleIds, invitedBy: inviter.id })
-              yield* mail.send(invitationEmail, {
-                to: email,
-                vars: { link: invitation.link },
-                about: { type: 'invitation', id: invitation.id },
-              })
-              return { id: invitation.id }
+              return yield* sendInvitation(self, catalog, email, roles)
             }),
-          ).pipe(
-            Effect.provideService(Background, background),
-            Effect.catchTag('SqlError', Effect.die),
           )
-        }, withSql),
+        }),
+
+        invitations: Effect.fn('Users.invitations')(function* () {
+          yield* requirePermission('users.manage')
+          const invitations = yield* sql<InvitationInfo>`
+            select i.id, i.email, to_json(i.created_at) #>> '{}' as "createdAt",
+              to_json(i.expires_at) #>> '{}' as "expiresAt", i.expires_at <= now() as expired,
+              coalesce((select jsonb_agg(r.id order by r.id) from users.role r
+                where r.id = any(i.role_ids)), '[]'::jsonb) as "roleIds"
+            from users.invitation i where i.accepted_at is null
+            order by i.created_at desc, i.id`.pipe(Effect.orDie)
+          return { invitations }
+        }),
+
+        revokeInvitation: Effect.fn('Users.revokeInvitation')(function* (id) {
+          return yield* asManager((self, catalog) =>
+            Effect.gen(function* () {
+              const open = yield* openInvitation(id)
+              yield* grantable(self, open.roles, catalog)
+              yield* sql`delete from users.invitation where id = ${id}`
+              yield* Audit.record({
+                action: 'users.invitation_revoked',
+                subject: { type: 'invitation', id, label: open.email },
+              })
+            }),
+          )
+        }),
+
+        resendInvitation: Effect.fn('Users.resendInvitation')(function* (id) {
+          return yield* asManager((self, catalog) =>
+            Effect.flatMap(openInvitation(id), (open) =>
+              sendInvitation(self, catalog, open.email, open.roles),
+            ),
+          )
+        }),
       })
     }),
   )

@@ -102,6 +102,27 @@ createAdmin({
 }).mount('#app')
 ```
 
+## Manage staff
+
+| Action                       | Endpoint under `<apiPrefix>/users` | Needs                | Audit event                |
+| ---------------------------- | ---------------------------------- | -------------------- | -------------------------- |
+| Edit a user's name and email | `PUT /users/:id`                   | `users.manage`       | `users.updated`            |
+| List open invitations        | `GET /invitations`                 | `users.manage`       |                            |
+| Send an invitation again     | `POST /invitations/:id/resend`     | `users.manage`       | `users.invited`            |
+| Revoke an invitation         | `DELETE /invitations/:id`          | `users.manage`       | `users.invitation_revoked` |
+| Delete a role                | `DELETE /roles/:id`                | `users.roles.manage` | `users.role_deleted`       |
+| Change the own password      | `PUT /password`                    | a session            | `users.password_changed`   |
+
+A changed email must be free (409 otherwise) and ends that user's sessions. An invitation sent
+again keeps its roles and gets a new link; the old link stops working. A manager cannot send again
+or revoke an invitation that grants a role they may not grant. A role is deleted only when no
+user holds it, deactivated users included (409 otherwise); Super admin is never deleted.
+
+`PUT /password` takes `{ "currentPassword": "...", "newPassword": "..." }`. It ends the user's
+other sessions and keeps the one that sent it. It needs no password confirmation: the current
+password is the proof. A wrong one answers 403 `WrongPassword`, counts against the same 5 attempts
+a minute per client address as a confirmation and writes `users.password_confirmation_failed`.
+
 ## Ask for the password again before a sensitive action
 
 Mark an endpoint `Sensitive` and a signed-in staff user must have entered their password

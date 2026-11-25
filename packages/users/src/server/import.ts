@@ -5,7 +5,7 @@ import * as z from 'zod'
 import { Email } from '../api.ts'
 import { lockAccessWrites } from './access.ts'
 import { isVerifiableHash } from './password.ts'
-import { normalizeEmail } from './service.ts'
+import { normalizeEmail } from './invitations.ts'
 
 const Row = Schema.Struct({
   email: Email.check(

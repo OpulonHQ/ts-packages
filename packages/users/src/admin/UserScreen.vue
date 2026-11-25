@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { AuditTimeline, useAdmin, useI18n, useRoute, useUnsavedChanges } from '@opulonjs/admin'
-import { UButton, UCard, UCheckbox } from '@opulonjs/ui'
+import { UButton, UCard, UCheckbox, UForm } from '@opulonjs/ui'
 import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
+import FieldText from '@opulonjs/ui/components/Field/Text'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
 import StatusBadge from '@opulonjs/ui/components/StatusBadge'
 import { computed, ref, shallowRef } from 'vue'
@@ -16,6 +17,7 @@ const users = useUsersClient()
 const user = shallowRef<UserInfo>()
 const roles = shallowRef<ReadonlyArray<{ id: string; name: string }>>([])
 const roleIds = ref<string[]>([])
+const details = ref<{ name: string | null; email: string | null }>()
 const status = ref<'loading' | 'ready' | 'notFound' | 'failed'>('loading')
 const notice = ref<{ error: boolean; text: string }>()
 const busy = ref(false)
@@ -33,7 +35,7 @@ const roleChanges = useUnsavedChanges({
 })
 
 let latest = 0
-const load = (resetRoles = true) => {
+const load = (resetRoles = true, resetDetails = false) => {
   const ticket = ++latest
   return users((client) => client.users({ query: { id } })).then(
     (list) => {
@@ -42,6 +44,8 @@ const load = (resetRoles = true) => {
       user.value = list.users.find((u) => u.id === id)
       roles.value = list.roles
       if (!keep) roleIds.value = [...(user.value?.roleIds ?? [])]
+      if (user.value && (resetDetails || !details.value))
+        details.value = { name: user.value.name, email: user.value.email }
       status.value = user.value ? 'ready' : 'notFound'
     },
     () => {
@@ -59,7 +63,12 @@ function toggle(roleId: string, on: boolean | 'indeterminate') {
   roleIds.value = on === true ? [...rest, roleId] : rest
 }
 
-async function run(change: () => Promise<void>, done: string, savesRoles = false) {
+async function run(
+  change: () => Promise<void>,
+  done: string,
+  saves?: 'roles' | 'details',
+  errors?: Record<string, string>,
+) {
   busy.value = true
   notice.value = undefined
   let saved = false
@@ -68,10 +77,10 @@ async function run(change: () => Promise<void>, done: string, savesRoles = false
     saved = true
     notice.value = { error: false, text: t(done) }
   } catch (error) {
-    notice.value = { error: true, text: t(failureKey(error)) }
+    notice.value = { error: true, text: t(failureKey(error, errors)) }
   } finally {
     confirming.value = false
-    await load(saved && savesRoles)
+    await load(saved && saves === 'roles', saved && saves === 'details')
     busy.value = false
     await timeline.value?.refresh()
   }
@@ -82,7 +91,20 @@ function saveRoles() {
   return run(
     () => users((c) => c.assignRoles({ params: { id }, payload })),
     'users.user.rolesSaved',
-    true,
+    'roles',
+  )
+}
+
+function saveDetails() {
+  const payload = {
+    name: (details.value?.name ?? '').trim(),
+    email: (details.value?.email ?? '').trim(),
+  }
+  return run(
+    () => users((c) => c.updateUser({ params: { id }, payload })),
+    'users.user.detailsSaved',
+    'details',
+    { Conflict: 'users.user.emailTaken', BadRequest: 'users.user.emailInvalid' },
   )
 }
 
@@ -146,6 +168,29 @@ const setLocale = (locale: string | null) => {
         {{ notice.text }}
       </p>
       <p v-if="user.deactivated">{{ t('users.user.isDeactivated') }}</p>
+
+      <UCard>
+        <UForm v-if="details" :state="details" class="space-y-4" @submit="saveDetails">
+          <h2 class="font-medium">{{ t('users.user.details') }}</h2>
+          <FieldText
+            v-model="details.name"
+            name="name"
+            :label="t('users.users.columns.name')"
+            :disabled="busy"
+            required
+          />
+          <FieldText
+            v-model="details.email"
+            name="email"
+            type="email"
+            :label="t('users.users.columns.email')"
+            :disabled="busy"
+            required
+          />
+          <p class="text-sm text-muted">{{ t('users.user.emailHint') }}</p>
+          <UButton type="submit" :loading="busy" :label="t('users.user.saveDetails')" />
+        </UForm>
+      </UCard>
 
       <UCard>
         <fieldset class="space-y-2">
