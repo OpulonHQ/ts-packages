@@ -122,13 +122,14 @@ export const ShopGroup = HttpApiGroup.make('shop')
 
 A screen calls the endpoint through `useApiClient` and adds nothing. On that answer the admin
 shell opens one password dialog, confirms the session and sends the request once more; the screen
-gets the final answer. When the user cancels the dialog or leaves the screen, nothing is sent
-again and the call fails with `PasswordConfirmationRequired`. A request the admin sends another
-way (its own `fetch`) is not repeated.
+gets the final answer. When the user cancels the dialog or the route changes (path, params or
+query), nothing is sent again and the call fails with `PasswordConfirmationRequired`. A request
+the admin sends another way (its own `fetch`) is not repeated.
 
 `POST <apiPrefix>/users/password-confirmation` with `{ "password": "..." }` confirms the session
 that sent it: 204, 403 `{"_tag":"WrongPassword"}`, or 429 `{"_tag":"TooManyRequests"}` after 5
-attempts a minute from one client address. A wrong password writes the audit event
+attempts a minute from one client address. The address is the one sign-in limits by: an IPv6
+address counts as its /64. A wrong password writes the audit event
 `users.password_confirmation_failed`. A confirmation belongs to that one session: another browser,
 a new sign-in and a password reset start unconfirmed. Signing in is not a confirmation.
 
@@ -142,7 +143,8 @@ const check = await staff.require(request, env, 'shop.orders.refund', { sensitiv
 if (!check.ok) return check.response
 ```
 
-Call such a route through the admin's `useApiClient` to get the dialog, or handle the 403 yourself:
+The admin's dialog does not cover such a route: `useApiClient` only calls groups under the API
+prefix. A host screen that calls a route outside it handles the 403 itself: ask for the password,
 confirm with the endpoint above, then send the request again. `staff.session` also returns
 `passwordConfirmed`.
 

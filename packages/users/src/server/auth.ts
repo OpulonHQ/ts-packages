@@ -1,7 +1,7 @@
 import * as PgClient from '@effect/sql-pg/PgClient'
 import { describeError } from '@opulonjs/core'
 import { betterAuth } from 'better-auth'
-import { isAPIError } from 'better-auth/api'
+import { getIP, isAPIError } from 'better-auth/api'
 import { Config, Context, Duration, Effect, Layer, Option, Redacted } from 'effect'
 import { PostgresDialect } from 'kysely'
 import pg from 'pg'
@@ -37,6 +37,11 @@ export interface AuthResult {
   /** The stored hash a sign-in verified the password against. */
   readonly verifiedHash?: string
 }
+
+const ipAddress = { ipAddressHeaders: ['cf-connecting-ip'] }
+
+export const signInRateLimitKey = (headers: Headers, path: string) =>
+  `${getIP(headers, { advanced: { ipAddress } }) ?? 'no-trusted-ip'}|${path}`
 
 // Better Auth endpoints are reached only through users' own HttpApi endpoints, which build the
 // request; this base path is internal and never mounted.
@@ -195,7 +200,7 @@ export class BetterAuth extends Context.Service<
             // One query per read, and no fallback join: that path prints a failed query's error
             // whole with console.error, past the logger above.
             database: { joins: true },
-            ipAddress: { ipAddressHeaders: ['cf-connecting-ip'] },
+            ipAddress,
             useSecureCookies: origin.startsWith('https:'),
           },
           // Migration 0002's insert trigger creates the session only for an active user whose

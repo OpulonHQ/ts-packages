@@ -162,3 +162,13 @@ test('a host route outside the composed API makes the same check', async () => {
   expect(served.status).toBe(200)
   expect(await served.json()).toEqual({ refundedBy: user.id })
 })
+
+test('addresses in one IPv6 /64 share the confirmation attempts, as they share sign-in attempts', async () => {
+  const user = await signedIn()
+  const subnet = `2001:db8:${randomIp().split('.').slice(1).join(':')}`
+  for (let i = 0; i < 5; i++)
+    expect((await confirm(user.cookie, 'not the password', `${subnet}::${i + 1}`)).status).toBe(403)
+  expect((await confirm(user.cookie, user.password, `${subnet}::a`)).status).toBe(429)
+  expect((await confirm(user.cookie, user.password, `${subnet}:1::a`)).status).toBe(429)
+  expect((await confirm(user.cookie, user.password, '2001:db8:ffff:ffff::1')).status).toBe(204)
+})

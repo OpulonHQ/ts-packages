@@ -194,9 +194,16 @@ export const createAdmin = (options: AdminOptions): App => {
   let writeOrder = 0
   let armedWriteOrder = 0
   const passwordRequest = shallowRef<PasswordRequest>()
+  let passwordClock = 0
+  let confirmedAt = 0
+  let cancelledAt = 0
+  const cancelPasswordWaits = () => {
+    cancelledAt = ++passwordClock
+    passwordRequest.value?.cancel()
+  }
   const showSignedOut = () => {
     session++
-    passwordRequest.value?.cancel()
+    cancelPasswordWaits()
     lastWrite = undefined
     me.value = undefined
     status.value = 'signedOut'
@@ -268,7 +275,7 @@ export const createAdmin = (options: AdminOptions): App => {
         }
         if (me.value && me.value.user.id !== first.user.id) {
           session++
-          passwordRequest.value?.cancel()
+          cancelPasswordWaits()
         }
         lastWrite = undefined
         me.value = first
@@ -393,12 +400,14 @@ export const createAdmin = (options: AdminOptions): App => {
   const providerSetLocale = auth.auth?.setLocale
   const providerConfirmPassword = auth.auth?.confirmPassword
   let confirming: Promise<boolean> | undefined
-  const confirmPassword = () =>
+  const askPassword = () =>
     (confirming ??= new Promise<boolean>((resolve) => {
       const settle = (confirmed: boolean) => {
         if (passwordRequest.value !== request) return
         passwordRequest.value = undefined
         confirming = undefined
+        if (confirmed) confirmedAt = ++passwordClock
+        else cancelledAt = ++passwordClock
         resolve(confirmed)
       }
       const request: PasswordRequest = {
@@ -416,6 +425,14 @@ export const createAdmin = (options: AdminOptions): App => {
       }
       passwordRequest.value = request
     }))
+  const passwordTicket = () => {
+    const sent = ++passwordClock
+    const route = router.currentRoute.value.fullPath
+    return async () => {
+      if (sent < cancelledAt || route !== router.currentRoute.value.fullPath) return false
+      return sent < confirmedAt || askPassword()
+    }
+  }
   const accountRoute = auth.auth?.accountRoute
   let lastLocaleSave: Promise<void> = Promise.resolve()
   const saveLocale = async (locale: string | null, save: (userId: string) => Promise<void>) => {
@@ -592,7 +609,7 @@ export const createAdmin = (options: AdminOptions): App => {
     if (unmounted) return
     if (isNavigationFailure(failure, NavigationFailureType.duplicated)) latest = to
     if (to === latest) failedScreen.value = undefined
-    if (!failure && to.path !== from.path) passwordRequest.value?.cancel()
+    if (!failure && to.fullPath !== from.fullPath) cancelPasswordWaits()
     if (from.matched.length > 0) checkForNewDeploy()
   })
 
@@ -604,13 +621,13 @@ export const createAdmin = (options: AdminOptions): App => {
     .provide(apiContextKey, {
       apiPrefix,
       fetch,
-      ...(providerConfirmPassword ? { confirmPassword } : {}),
+      ...(providerConfirmPassword ? { passwordTicket } : {}),
     })
     .provide(adminStateKey, state)
     .provide(failedScreenKey, failedScreen)
   app.onUnmount(() => {
     unmounted = true
-    passwordRequest.value?.cancel()
+    cancelPasswordWaits()
     router.options.history.destroy()
   })
   return app

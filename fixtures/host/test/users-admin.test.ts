@@ -2,6 +2,7 @@ import { expect, onTestFinished, test, vi } from 'vitest'
 import { useTestDatabase } from '../../../test/postgres/index.ts'
 import { hostMessages } from '../admin/messages.ts'
 import { adminModules } from '../admin/modules.ts'
+import { demoAdmin } from '../modules/demo/admin.ts'
 import { useAdminLifetime } from './admin-lifetime.ts'
 import { makeHost, seedUser, sqlQuery, tokenFrom } from './support/users.ts'
 
@@ -475,4 +476,97 @@ test('leaving the screen closes the password prompt and the action never runs', 
   expect(confirmed.status).toBe(204)
   await lifetime.settled()
   expect(await stamps('Lea')).toEqual([])
+})
+
+const withNoteRoute = adminModules.map((m) =>
+  m.id === 'demo'
+    ? {
+        ...demoAdmin,
+        routes: [
+          ...demoAdmin.routes,
+          { ...demoAdmin.routes[0]!, name: 'demo.note' as const, path: '/demo/notes/:id' as const },
+        ],
+      }
+    : m,
+)
+/** The Notes screen whose stamp requests number `held` get their first answer only at `release`. */
+async function openNotesHolding(name: string, path: string, held: ReadonlyArray<number>) {
+  const user = await seedUser(db.url, { name, permissions: ['demo.notes.view'] })
+  const jar = { cookie: await host.signIn(user.email, user.password) }
+  const send = host.browserFetch(jar)
+  const gate = lifetime.gate()
+  let stampRequests = 0
+  unmountPrevious()
+  const text = lifetime.mount(path, {
+    buildId: 'b1',
+    modules: withNoteRoute,
+    fetch: async (input, init) => {
+      const holds =
+        new Request(input, init).url.endsWith('/api/demo/stamps') && held.includes(++stampRequests)
+      const response = await send(input, init)
+      if (holds) await gate.park()
+      return response
+    },
+  })
+  unmountPrevious = text.unmount
+  await expect.poll(text).toContain('hello from demo')
+  const router = text.app.config.globalProperties.$router
+  return { user, text, router, release: gate.resolve, requests: () => stampRequests }
+}
+
+test('a query-only navigation closes the password prompt and the action never runs', async () => {
+  const { text, router } = await openNotesHolding('Viera', '/admin/demo/notes', [])
+  button('Add a stamped note')!.click()
+  await expect.poll(prompt).toBeDefined()
+  await router.push('/demo/notes?page=2')
+  await expect.poll(prompt).toBeUndefined()
+  await expect.poll(text).toContain('The note could not be stamped.')
+  await lifetime.settled()
+  expect(await stamps('Viera')).toEqual([])
+})
+
+test('a refusal that arrives after a move to another record of the same route asks nothing', async () => {
+  const { text, router, release, requests } = await openNotesHolding(
+    'Zora',
+    '/admin/demo/notes/1',
+    [1],
+  )
+  button('Add a stamped note')!.click()
+  await expect.poll(requests).toBe(1)
+  await lifetime.settled()
+  await router.push('/demo/notes/2')
+  release()
+  await expect.poll(text).toContain('The note could not be stamped.')
+  await lifetime.settled()
+  expect(prompt()).toBeUndefined()
+  expect(requests()).toBe(1)
+})
+
+test('a refusal that arrives after the password was confirmed is repeated without a second prompt', async () => {
+  const { user, release, requests } = await openNotesHolding('Hana', '/admin/demo/notes', [2])
+  button('Add a stamped note')!.click()
+  button('Add a stamped note')!.click()
+  await answerPrompt(user.password)
+  await expect.poll(() => stamps('Hana')).toHaveLength(1)
+  await expect.poll(prompt).toBeUndefined()
+  release()
+  await expect.poll(() => stamps('Hana')).toHaveLength(2)
+  await lifetime.settled()
+  expect(prompt()).toBeUndefined()
+  expect(requests()).toBe(4)
+})
+
+test('a refusal that arrives after the prompt was cancelled is refused without a second prompt', async () => {
+  const { text, release, requests } = await openNotesHolding('Olga', '/admin/demo/notes', [2])
+  button('Add a stamped note')!.click()
+  button('Add a stamped note')!.click()
+  await expect.poll(prompt).toBeDefined()
+  button('Cancel', prompt())!.click()
+  await expect.poll(text).toContain('The note could not be stamped.')
+  await expect.poll(prompt).toBeUndefined()
+  release()
+  await lifetime.settled()
+  expect(prompt()).toBeUndefined()
+  expect(requests()).toBe(2)
+  expect(await stamps('Olga')).toEqual([])
 })

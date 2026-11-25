@@ -16,7 +16,7 @@ import { BadRequest, Conflict, Forbidden, Unauthorized } from 'effect/http-api/H
 import { SqlClient } from 'effect/sql/SqlClient'
 import { InvalidToken, Refused, TooManyRequests, WrongPassword } from '../api.ts'
 import { canGrant, loadAccess, lockAccessWrites } from './access.ts'
-import { type AuthResult, BetterAuth } from './auth.ts'
+import { type AuthResult, BetterAuth, signInRateLimitKey } from './auth.ts'
 import { adminLink, createInvitation, hashToken } from './invitations.ts'
 import { hashPassword, isBcryptHash, verifyPassword } from './password.ts'
 import { authenticate, foreignOrigin } from './session.ts'
@@ -158,8 +158,7 @@ export class Users extends Context.Service<
         const expired = now - rule.window * 1000
         const [row] = yield* sql<{ count: number; since: string }>`
           insert into users.rate_limit as r (id, key, count, last_request)
-          values (${crypto.randomUUID()}, ${`${headers.get('cf-connecting-ip') ?? ''}${path}`},
-            1, ${now})
+          values (${crypto.randomUUID()}, ${signInRateLimitKey(headers, path)}, 1, ${now})
           on conflict (key) do update set
             count = case when r.last_request <= ${expired} then 1 else r.count + 1 end,
             last_request = case when r.last_request <= ${expired} then ${now}

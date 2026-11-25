@@ -35,7 +35,7 @@ const mountReader = (
   app.provide(apiContextKey, {
     apiPrefix: '/api',
     fetch,
-    ...(confirmPassword && { confirmPassword }),
+    ...(confirmPassword && { passwordTicket: () => confirmPassword }),
   })
   const root = document.createElement('div')
   app.mount(root)

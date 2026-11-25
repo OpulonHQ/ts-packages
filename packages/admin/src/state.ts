@@ -15,7 +15,7 @@ export type { Me } from '@opulonjs/core/api'
 export interface ApiContext {
   readonly apiPrefix: string
   readonly fetch: typeof globalThis.fetch
-  readonly confirmPassword?: () => Promise<boolean>
+  readonly passwordTicket?: () => () => Promise<boolean>
 }
 
 export interface PasswordRequest {
