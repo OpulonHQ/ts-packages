@@ -23,7 +23,7 @@ import {
   type RouteRecordSingleView,
 } from 'vue-router'
 import { shellMessages } from './messages.ts'
-import type { Access, AdminModule, Messages } from './module.ts'
+import type { Access, AdminModule, Lazy, Messages } from './module.ts'
 import NotFound from './shell/NotFound.vue'
 import Shell from './shell/Shell.vue'
 import {
@@ -48,11 +48,19 @@ export interface AdminOptions {
   readonly modules: ReadonlyArray<AdminModule>
   /** Host components by route name; the route's path, access and navigation stay intact. */
   readonly overrides?: Readonly<Record<string, RouteComponent | RouteLoader>>
-  /** Host messages by admin locale, merged over the shell's; a new locale key adds a locale. */
+  /** Host messages by admin locale, merged over the shell's. */
   readonly messages?: Readonly<Record<string, Messages>>
+  /**
+   * The admin locales the host offers, in the order of the language menu. Default: `en`, `sk`
+   * and every other locale of `messages`. Texts a locale lacks are shown in English.
+   */
+  readonly locales?: ReadonlyArray<string>
   /** Host nav groups (`admin.groups.<id>` labels) by order; built-ins are 100, 200, 300. */
   readonly navGroups?: Readonly<Record<string, number>>
-  /** For users without an admin locale. Default `en`. */
+  /**
+   * For users without an admin locale, or with one the host does not offer. Default `en` when
+   * offered, else the first of `locales`.
+   */
   readonly defaultLocale?: string
   /** Defaults to what the `opulonAdmin()` Vite preset injected, else `/api`. */
   readonly apiPrefix?: `/${string}`
@@ -159,7 +167,16 @@ export const createAdmin = (options: AdminOptions): App => {
   for (const [locale, m] of Object.entries(options.messages ?? {})) {
     catalogs[locale] = { ...catalogs[locale], ...toI18n(m) }
   }
-  const defaultLocale = options.defaultLocale ?? 'en'
+  const locales = options.locales ?? [
+    ...new Set(['en', 'sk', ...Object.keys(options.messages ?? {})]),
+  ]
+  const defaultLocale =
+    options.defaultLocale ?? (locales.includes('en') ? 'en' : (locales[0] ?? 'en'))
+  if (!locales.includes(defaultLocale)) {
+    throw new Error(
+      `createAdmin: default locale "${defaultLocale}" is not one of the offered locales (${locales.join(', ')})`,
+    )
+  }
   const i18n = createI18n({
     legacy: false,
     locale: defaultLocale,
@@ -220,7 +237,8 @@ export const createAdmin = (options: AdminOptions): App => {
   const loadMessages = (locale: string, modules: ReadonlyArray<AdminModule>, live: () => boolean) =>
     Promise.all(
       modules.map(async (m) => {
-        const load = m.messages[locale as 'en' | 'sk'] ?? m.messages.en
+        const catalogs: Readonly<Record<string, Lazy<Messages> | undefined>> = m.messages
+        const load = catalogs[locale] ?? m.messages.en
         const { default: messages } = await load()
         if (live()) i18n.global.mergeLocaleMessage(locale, toI18n(messages, m.id))
       }),
@@ -232,7 +250,7 @@ export const createAdmin = (options: AdminOptions): App => {
     modules: ReadonlyArray<AdminModule>,
     live: () => boolean,
   ) => {
-    const locale = requested && requested in catalogs ? requested : defaultLocale
+    const locale = requested && locales.includes(requested) ? requested : defaultLocale
     await Promise.all([
       loadMessages(locale, modules, live),
       locale === 'en' ? undefined : loadMessages('en', modules, live),
@@ -249,7 +267,7 @@ export const createAdmin = (options: AdminOptions): App => {
     const loading = getMe().then(
       async (first) => {
         if (first === 'signedOut') {
-          await loadMessages(defaultLocale, [auth], live).catch((error: unknown) =>
+          await applyLocale(i18n.global.locale.value, [auth], live).catch((error: unknown) =>
             console.error(error),
           )
           if (live()) showSignedOut()
@@ -502,6 +520,7 @@ export const createAdmin = (options: AdminOptions): App => {
         }
       : {}),
     ...(accountRoute ? { accountRoute } : {}),
+    locales,
     saveLocale,
     ...(providerSetLocale
       ? {

@@ -6,7 +6,7 @@ import { Schema } from 'effect'
 import { linkProblem, maxSections } from './document-rules.ts'
 import { isRecord, listItems } from './localize.ts'
 
-/** Admin text: one string, or one per admin locale (`{ en: 'Title', sk: 'Nadpis' }`). */
+/** Admin text: one string, or one per admin locale (`{ en: 'Title', sk: 'Nadpis' }`); English when the locale is missing. */
 export type Label = string | Readonly<Record<string, string>>
 
 export type FieldKind =
@@ -271,26 +271,31 @@ export interface SystemPage {
 
 /** The `rich_text` section type cms ships; every host has it. */
 export const richTextSection = {
-  label: { en: 'Rich text', sk: 'Formátovaný text' },
-  fields: { body: fields.richText({ label: { en: 'Text', sk: 'Text' } }) },
+  label: { en: 'Rich text', sk: 'Formátovaný text', it: 'Testo formattato' },
+  fields: { body: fields.richText({ label: { en: 'Text', sk: 'Text', it: 'Testo' } }) },
 } satisfies SectionType
 
 /** The global SEO fields every host's site settings start with (TSPACK-11). */
 export const siteSettingsFields = {
-  siteName: fields.text({ label: { en: 'Site name', sk: 'Názov webu' } }),
+  siteName: fields.text({ label: { en: 'Site name', sk: 'Názov webu', it: 'Nome del sito' } }),
   titleTemplate: fields.text({
-    label: { en: 'Title template', sk: 'Šablóna titulku' },
+    label: { en: 'Title template', sk: 'Šablóna titulku', it: 'Modello del titolo' },
     help: {
       en: '"%s" stands for the page title, e.g. "%s | Example".',
       sk: '"%s" nahradí titulok stránky, napr. "%s | Príklad".',
+      it: '"%s" sta per il titolo della pagina, ad es. "%s | Esempio".',
     },
   }),
   defaultImage: fields.media({
-    label: { en: 'Default social image', sk: 'Predvolený obrázok na zdieľanie' },
+    label: {
+      en: 'Default social image',
+      sk: 'Predvolený obrázok na zdieľanie',
+      it: 'Immagine predefinita per i social',
+    },
     accept: 'image',
   }),
   twitterHandle: fields.text({
-    label: { en: 'X (Twitter) handle', sk: 'Účet na X (Twitter)' },
+    label: { en: 'X (Twitter) handle', sk: 'Účet na X (Twitter)', it: 'Account X (Twitter)' },
     localized: false,
     maxLength: 50,
   }),

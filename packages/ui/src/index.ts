@@ -6,7 +6,7 @@ export const packageName = '@opulonjs/ui'
 
 export { uiPlugin } from './plugin.ts'
 export type { Brand } from './vite.ts'
-export { en as nuxtUiEn, sk as nuxtUiSk } from '@nuxt/ui/locale'
+export { en as nuxtUiEn, it as nuxtUiIt, sk as nuxtUiSk } from '@nuxt/ui/locale'
 export { useOverlay, useToast } from '@nuxt/ui/composables'
 export type {
   BreadcrumbItem,

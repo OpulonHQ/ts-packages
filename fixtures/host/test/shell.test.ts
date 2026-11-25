@@ -1,4 +1,5 @@
 import {
+  type AdminModule,
   type AdminOptions,
   type AdminState,
   createAdmin,
@@ -397,7 +398,7 @@ const heldCatalogs = (holding = true) => {
 }
 
 const mountDisposable = (
-  modules: typeof adminModules,
+  modules: ReadonlyArray<AdminModule>,
   session: string | (() => string),
   {
     overrides = {},

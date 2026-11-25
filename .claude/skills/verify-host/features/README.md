@@ -11,6 +11,7 @@ Maintained source for verifying what a user of a host built from `@opulonjs/*` s
 | CMS pages and Read API | [cms-pages.md](cms-pages.md) | cms | `cms-pages.mjs`, `cms-list-field.mjs`, `cms-seo.mjs`, `cms-collection-filters.mjs`, `cms-draft-conflict.mjs`, `cms-media-pick-during-save.mjs`, `smoke.sh` |
 | Emails: log, templates, outbox | [emails.md](emails.md) | emails, core | `emails.mjs`, `email-attachments.mjs`, `smoke.sh` |
 | Server-side list paging and reference picker | [list-paging.md](list-paging.md) | users, cms, core | `list-paging.mjs` |
+| Admin languages: the host's list, Italian, English fallback | (journey only) | admin, ui, users | `admin-languages.mjs` |
 | UI kit fields, date-range filter and reorder | [kit-fields.md](kit-fields.md) | ui, admin | `kit-fields.mjs` |
 
 All journeys last passed together on 2026-10-13. Not mapped: the fixture-only `Notes` screen of the demo module (`fixtures/host/modules/demo`), cms Collections, Menus, Site settings and Redirects screens beyond their mention in `cms-pages.md`.

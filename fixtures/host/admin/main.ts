@@ -7,5 +7,6 @@ createAdmin({
   brand,
   modules: adminModules,
   messages: hostMessages,
+  locales: ['en', 'sk', 'it'],
   overrides: { dashboard: () => import('./overrides/Dashboard.vue') },
 }).mount('#app')

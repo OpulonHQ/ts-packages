@@ -1,6 +1,10 @@
-// Type-level tests, checked by `pnpm typecheck` (not run by vitest): permission and audit labels
-// must cover the `/api` catalogs in both en and sk, or the admin module does not compile.
-import { defineAdminModule, type ShellPermissionLabels } from '@opulonjs/admin'
+import {
+  defineAdminModule,
+  type AdminModule,
+  type Lazy,
+  type Messages,
+  type ShellPermissionLabels,
+} from '@opulonjs/admin'
 import { corePermissions } from '@opulonjs/core/api'
 import { expectTypeOf } from 'vitest'
 import { demoPermissions } from '../modules/demo/api.ts'
@@ -32,15 +36,22 @@ defineAdminModule({
   messages: { en: async () => ({ default: full }), sk: async () => ({ default: full }) },
 })
 
+defineAdminModule({ ...base, messages: { en: async () => ({ default: full }) } })
+
 defineAdminModule({
   ...base,
   messages: {
     en: async () => ({ default: full }),
-    // @ts-expect-error sk lacks a permission label
-    sk: async () => ({
-      default: { ...full, permissions: { 'shop.orders.view': 'Zobraziť objednávky' } },
+    it: async () => ({
+      default: { permissions: { 'shop.orders.view': 'Visualizzare gli ordini' } },
     }),
   },
+})
+
+defineAdminModule({
+  ...base,
+  // @ts-expect-error English is required
+  messages: { sk: async () => ({ default: full }) },
 })
 
 defineAdminModule({
@@ -56,5 +67,21 @@ defineAdminModule({
 defineAdminModule({
   id: 'plain',
   routes: [],
+  messages: { en: async () => ({ default: {} }) },
+})
+
+interface HostCatalogs {
+  readonly en: Lazy<Messages>
+  readonly sk: Lazy<Messages>
+}
+declare const hostCatalogs: HostCatalogs
+const handWritten: AdminModule = { id: 'typed', routes: [], messages: hostCatalogs }
+const typed = defineAdminModule({ id: 'typed', routes: [], messages: hostCatalogs })
+const both = defineAdminModule({
+  id: 'both',
+  routes: [],
   messages: { en: async () => ({ default: {} }), sk: async () => ({ default: {} }) },
 })
+expectTypeOf(handWritten.messages.en).toEqualTypeOf<Lazy<Messages>>()
+expectTypeOf(typed.messages.sk).toEqualTypeOf<Lazy<Messages>>()
+expectTypeOf(both.messages.sk).toEqualTypeOf<Lazy<Messages>>()

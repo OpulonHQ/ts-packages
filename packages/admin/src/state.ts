@@ -105,6 +105,8 @@ export interface AdminState {
   readonly signOut?: () => Promise<void>
   /** The auth provider's account route, for the user menu. */
   readonly accountRoute?: string
+  /** The admin locales the host offers, in the order of the language menu. */
+  readonly locales: ReadonlyArray<string>
   /** Saves and applies the user's admin locale, when the auth provider supports it. */
   readonly setLocale?: (locale: string | null) => Promise<void>
   /** Saves the user's admin locale through `save` (e.g. a module's own API), then shows what the server holds. */

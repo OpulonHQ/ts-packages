@@ -233,7 +233,12 @@ export const useAdminLifetime = () => {
         ...options,
         modules: modules.map((m) => ({
           ...m,
-          messages: { en: pending(m.messages.en), sk: pending(m.messages.sk) },
+          messages: {
+            ...Object.fromEntries(
+              Object.entries(m.messages).map(([locale, load]) => [locale, load && pending(load)]),
+            ),
+            en: pending(m.messages.en),
+          },
         })),
         fetch: (input, init) => {
           const response = fetch(input, init)
