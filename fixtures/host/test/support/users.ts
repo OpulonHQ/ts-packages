@@ -24,7 +24,10 @@ export interface HostResponse {
 }
 
 /** The fixture Worker over `databaseUrl()`, with a capture mailer and a request helper. */
-export function makeHost(databaseUrl: () => string, options: { buildId?: string } = {}) {
+export function makeHost(
+  databaseUrl: () => string,
+  options: { buildId?: string; env?: Partial<Env> } = {},
+) {
   const mailer = captureMailer()
   const worker = hostWorker(mailer.layer)
   const bucket = memoryBucket()
@@ -34,6 +37,7 @@ export function makeHost(databaseUrl: () => string, options: { buildId?: string 
     ...usersEnv,
     ASSETS: { fetch: async () => new Response('not found', { status: 404 }) },
     MEDIA_BUCKET: bucket,
+    ...options.env,
   })
 
   /** One request through the Worker; resolves after every waitUntil promise settled. */
