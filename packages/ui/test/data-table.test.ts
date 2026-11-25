@@ -98,3 +98,108 @@ test('a search without matches says so and Reset brings the rows back', async ({
   reset.click()
   await expect.poll(table.text).toContain('Home')
 })
+
+type Dated = { title: string; created: string }
+const dated: Dated[] = [
+  { title: 'Alpha', created: '2026-11-01T09:00:00' },
+  { title: 'Bravo', created: '2026-11-10T23:30:00' },
+  { title: 'Charlie', created: '2026-11-20T00:00:00' },
+]
+const datedColumns = [{ key: 'title', label: 'Title' }]
+const titles = () =>
+  [...document.querySelectorAll('tbody tr')].map((tr) =>
+    tr.querySelector('td:last-child')?.textContent?.trim(),
+  )
+const type = (label: string, value: string) => {
+  const input = document.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!
+  input.value = value
+  input.dispatchEvent(new Event('input'))
+}
+
+test('a date-range filter keeps the rows from the first to the last day, both included', async ({
+  onTestFinished,
+}) => {
+  const table = mount(
+    { columns: datedColumns, rows: dated, dateFilters: [{ key: 'created', label: 'Created' }] },
+    onTestFinished,
+  )
+  await expect.poll(titles).toEqual(['Alpha', 'Bravo', 'Charlie'])
+  expect(document.querySelector('input[aria-label="Created from"]')?.getAttribute('type')).toBe(
+    'date',
+  )
+  type('Created from', '2026-11-10')
+  await expect.poll(titles).toEqual(['Bravo', 'Charlie'])
+  type('Created to', '2026-11-10')
+  await expect.poll(titles).toEqual(['Bravo'])
+  table.button('Reset')!.click()
+  await expect.poll(titles).toEqual(['Alpha', 'Bravo', 'Charlie'])
+})
+
+test('server mode gets the chosen days as dateRanges and no entry for an unset filter', async ({
+  onTestFinished,
+}) => {
+  const queries: Array<unknown> = []
+  const load = async (query: { dateRanges?: unknown }): Promise<TablePage<Dated>> => {
+    queries.push(query.dateRanges)
+    return { rows: dated, total: 3 }
+  }
+  mount(
+    { columns: datedColumns, load, dateFilters: [{ key: 'created', label: 'Created' }] },
+    onTestFinished,
+  )
+  await expect.poll(() => queries).toEqual([{}])
+  type('Created to', '2026-11-05')
+  await expect.poll(() => queries.at(-1)).toEqual({ created: { to: '2026-11-05' } })
+})
+
+test('Move up reports the new order, announces the position and keeps focus on the row', async ({
+  onTestFinished,
+}) => {
+  const orders: Array<Array<string>> = []
+  const table = mount(
+    {
+      columns: datedColumns,
+      load: async () => ({ rows: dated, total: 3 }),
+      reorderable: true,
+      onReorder: (rows: Dated[]) => orders.push(rows.map((row) => row.title)),
+    },
+    onTestFinished,
+  )
+  await expect.poll(titles).toEqual(['Alpha', 'Bravo', 'Charlie'])
+  const name = (label: string) =>
+    document.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!
+  expect(name('Move Alpha up').disabled).toBe(true)
+  expect(name('Move Charlie down').disabled).toBe(true)
+  name('Move Charlie up').focus()
+  name('Move Charlie up').click()
+  expect(orders).toEqual([['Alpha', 'Charlie', 'Bravo']])
+  await expect.poll(titles).toEqual(['Alpha', 'Charlie', 'Bravo'])
+  await expect
+    .poll(() => document.querySelector('[aria-live="polite"]')?.textContent?.trim())
+    .toBe('Charlie moved to position 2 of 3')
+  await expect
+    .poll(() => document.activeElement?.getAttribute('aria-label'))
+    .toBe('Move Charlie up')
+  expect(table.text()).toContain('Charlie')
+})
+
+test('dropping a dragged row on another row reports the new order', async ({ onTestFinished }) => {
+  const orders: Array<Array<string>> = []
+  mount(
+    {
+      columns: datedColumns,
+      rows: dated,
+      reorderable: true,
+      onReorder: (rows: Dated[]) => orders.push(rows.map((row) => row.title)),
+    },
+    onTestFinished,
+  )
+  await expect.poll(titles).toEqual(['Alpha', 'Bravo', 'Charlie'])
+  const rows = [...document.querySelectorAll('tbody tr')]
+  rows[2]!
+    .querySelector('[draggable="true"]')!
+    .dispatchEvent(new Event('dragstart', { bubbles: true }))
+  rows[0]!.dispatchEvent(new Event('dragover', { bubbles: true, cancelable: true }))
+  rows[0]!.dispatchEvent(new Event('drop', { bubbles: true, cancelable: true }))
+  expect(orders).toEqual([['Charlie', 'Alpha', 'Bravo']])
+})

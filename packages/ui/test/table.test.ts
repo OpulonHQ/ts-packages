@@ -43,3 +43,17 @@ test('header clicks cycle none, asc, desc, none', () => {
   expect(nextSort({ column: 'title', direction: 'desc' }, 'title')).toBeNull()
   expect(nextSort(asc, 'author')).toEqual({ column: 'author', direction: 'asc' })
 })
+
+test('client mode keeps rows whose local day is inside a date range, ends included', () => {
+  const days = [
+    { id: 1, at: '2026-11-01T09:00:00' },
+    { id: 2, at: new Date(2026, 10, 10, 23, 30) },
+    { id: 3, at: '2026-11-20' },
+    { id: 4, at: null },
+  ]
+  const inRange = (range: { from?: string; to?: string }) =>
+    queryRows(days, ['id'], query({ dateRanges: { at: range } })).rows.map((r) => r.id)
+  expect(inRange({ from: '2026-11-10' })).toEqual([2, 3])
+  expect(inRange({ to: '2026-11-10' })).toEqual([1, 2])
+  expect(inRange({ from: '2026-11-10', to: '2026-11-10' })).toEqual([2])
+})
