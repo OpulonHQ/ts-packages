@@ -34,8 +34,8 @@ const en = {
     decimals === 0
       ? 'Enter a whole amount.'
       : `Enter an amount with up to ${decimals} decimal places.`,
-  chooseFile: 'Choose a file or drop it here',
-  maxFileSize: (size: string) => `Up to ${size}`,
+  clear: (label: string) => `Clear ${label}`,
+  removeFile: (name: string) => `Remove ${name}`,
   fileTooLarge: (size: string) => `The file is larger than ${size}.`,
   fileNotAccepted: 'This type of file is not accepted.',
   link: 'Link',
@@ -89,8 +89,8 @@ const sk: KitText = {
     decimals === 0
       ? 'Zadajte celú sumu.'
       : `Zadajte sumu s najviac ${decimals} desatinnými miestami.`,
-  chooseFile: 'Vyberte súbor alebo ho sem presuňte',
-  maxFileSize: (size) => `Najviac ${size}`,
+  clear: (label) => `Vymazať: ${label}`,
+  removeFile: (name) => `Odstrániť ${name}`,
   fileTooLarge: (size) => `Súbor je väčší ako ${size}.`,
   fileNotAccepted: 'Tento typ súboru nie je povolený.',
   link: 'Odkaz',

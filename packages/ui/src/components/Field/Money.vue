@@ -1,14 +1,17 @@
 <script setup lang="ts">
 /**
  * An amount of one currency. The user types a decimal (`12.50` or `12,50`); the model is the
- * integer number of minor units (1250), with as many decimals as the currency has.
+ * integer number of minor units (1250), with as many decimals as the currency has. While the
+ * text is not such an amount the field says so, the model keeps its last value, and the
+ * `UForm` around the field does not submit.
  *
  * <FieldMoney v-model="state.priceCents" name="priceCents" currency="EUR" :label="..." />
  */
-import { useLocale } from '@nuxt/ui/composables'
+import { formBusInjectionKey, useLocale } from '@nuxt/ui/composables'
+import UForm from '@nuxt/ui/components/Form.vue'
 import UFormField from '@nuxt/ui/components/FormField.vue'
 import UInput from '@nuxt/ui/components/Input.vue'
-import { computed, ref, watch } from 'vue'
+import { computed, inject, ref, watch } from 'vue'
 import { srOnlyHint, type FieldProps } from '../../fields.ts'
 import { formatMinor, minorDigits, parseMoney } from '../../money.ts'
 import { useKitText } from '../../text.ts'
@@ -28,18 +31,18 @@ const shown = () =>
   typeof model.value === 'number' ? formatMinor(model.value, digits.value, separator.value) : ''
 
 const typed = ref(shown())
-const amount = (text: string) => {
-  const parsed = parseMoney(text, digits.value)
-  return parsed === 'invalid' ? null : parsed
-}
 const invalid = computed(() => parseMoney(typed.value, digits.value) === 'invalid')
+const problem = computed(() => (invalid.value ? text.value.invalidAmount(digits.value) : undefined))
 watch([model, digits], () => {
-  if (amount(typed.value) !== (model.value ?? null)) typed.value = shown()
+  if (parseMoney(typed.value, digits.value) !== (model.value ?? null)) typed.value = shown()
 })
 function edit(next: string) {
   typed.value = next
-  model.value = amount(next)
+  const parsed = parseMoney(next, digits.value)
+  if (parsed !== 'invalid') model.value = parsed
 }
+const inForm = inject(formBusInjectionKey, undefined) !== undefined
+const blockSubmit = () => (problem.value ? [{ message: problem.value }] : [])
 </script>
 
 <template>
@@ -52,7 +55,7 @@ function edit(next: string) {
     :ui="hint === undefined && srHint !== undefined ? srOnlyHint : undefined"
     :required="required"
     :size="size"
-    :error="invalid ? text.invalidAmount(digits) : undefined"
+    :error="problem"
   >
     <UInput
       :model-value="typed"
@@ -68,5 +71,6 @@ function edit(next: string) {
         <span class="text-xs text-muted">{{ currency }}</span>
       </template>
     </UInput>
+    <UForm v-if="inForm" nested :validate="blockSubmit" />
   </UFormField>
 </template>

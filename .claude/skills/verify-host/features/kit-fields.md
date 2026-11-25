@@ -1,6 +1,6 @@
 # UI kit fields and table
 
-What it proves: on the demo module's Kit fields screen (`/admin/demo/kit`) the date, date-time, money, file and relation fields edit their values, refuse bad input with a message, raise and clear the Unsaved changes bar, show the form's error and can be disabled; the relation field searches `GET /api/demo/notes/search` by keyboard without a request per keystroke; the table filters by a date range, turns reorder off while it does, and reorders by keyboard and by drag.
+What it proves: on the demo module's Kit fields screen (`/admin/demo/kit`) the date, date-time, money, file and relation fields edit their values, refuse bad input with a message (a malformed amount keeps the last amount and blocks Save), raise and clear the Unsaved changes bar, show the form's error and can be disabled; the relation field searches `GET /api/demo/notes/search` by keyboard without a request per keystroke, offers no option of the previous term, and clears by its Clear button; the table filters by a date range, turns reorder off while it does, and reorders by keyboard and by drag.
 
 ## Run
 

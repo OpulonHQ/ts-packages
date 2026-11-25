@@ -1,16 +1,17 @@
 <script setup lang="ts">
 /**
- * Picks one file, by dialog or by drop. The model is the `File` (name, size, type); sending it
- * anywhere is the screen's job. A file over `maxSize` or outside `accept` is refused with a
- * message and the model stays as it was.
+ * Picks one file in the browser's native file input. The model is the `File` (name, size,
+ * type); sending it anywhere is the screen's job. A file over `maxSize` or outside `accept` is
+ * refused with a message and the model stays as it was.
  *
  * <FieldFile v-model="state.scan" name="scan" accept="application/pdf,image/*"
  *   :max-size="5 * 1024 * 1024" :label="..." />
  */
 import { useLocale } from '@nuxt/ui/composables'
-import UFileUpload from '@nuxt/ui/components/FileUpload.vue'
+import UButton from '@nuxt/ui/components/Button.vue'
 import UFormField from '@nuxt/ui/components/FormField.vue'
-import { computed, ref } from 'vue'
+import UInput from '@nuxt/ui/components/Input.vue'
+import { ref, useTemplateRef, watch } from 'vue'
 import { srOnlyHint, type FieldProps } from '../../fields.ts'
 import { formatBytes } from '../../format.ts'
 import { useKitText } from '../../text.ts'
@@ -27,9 +28,6 @@ const props = defineProps<
 
 const text = useKitText()
 const { code } = useLocale()
-const limit = computed(() =>
-  props.maxSize === undefined ? undefined : formatBytes(props.maxSize, code.value),
-)
 const accepted = (file: File) =>
   !props.accept ||
   props.accept.split(',').some((entry) => {
@@ -40,20 +38,24 @@ const accepted = (file: File) =>
       : file.type.toLowerCase() === type
   })
 
+const control = useTemplateRef('control')
 const refused = ref<string>()
-const value = computed({
-  get: () => model.value ?? null,
-  set: (file: File | null | undefined) => {
-    refused.value = !file
-      ? undefined
-      : props.maxSize !== undefined && file.size > props.maxSize
-        ? text.value.fileTooLarge(limit.value!)
-        : accepted(file)
-          ? undefined
-          : text.value.fileNotAccepted
-    if (refused.value === undefined) model.value = file ?? null
-  },
-})
+const reset = () => {
+  if (control.value?.inputRef) control.value.inputRef.value = ''
+}
+function pick(event: Event) {
+  const file = (event.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  refused.value =
+    props.maxSize !== undefined && file.size > props.maxSize
+      ? text.value.fileTooLarge(formatBytes(props.maxSize, code.value))
+      : accepted(file)
+        ? undefined
+        : text.value.fileNotAccepted
+  if (refused.value === undefined) model.value = file
+  else reset()
+}
+watch(model, (file) => file || reset())
 </script>
 
 <template>
@@ -68,14 +70,25 @@ const value = computed({
     :size="size"
     :error="refused"
   >
-    <UFileUpload
-      v-model="value"
+    <UInput
+      ref="control"
+      type="file"
       :accept="accept"
-      :label="placeholder ?? text.chooseFile"
-      :description="limit && text.maxFileSize(limit)"
       :disabled="disabled"
-      layout="list"
       class="w-full"
+      @change="pick"
     />
+    <p v-if="model" class="mt-1 flex items-center gap-1 text-sm text-muted">
+      <span class="truncate">{{ model.name }}, {{ formatBytes(model.size, code) }}</span>
+      <UButton
+        color="neutral"
+        variant="ghost"
+        size="xs"
+        icon="i-lucide-x"
+        :aria-label="text.removeFile(model.name)"
+        :disabled="disabled"
+        @click="model = null"
+      />
+    </p>
   </UFormField>
 </template>

@@ -254,3 +254,71 @@ test('client mode reports every row in the new order, not only the page that sho
     .poll(() => document.querySelector('[aria-live="polite"]')?.textContent?.trim())
     .toBe('Bravo moved to position 1 of 3')
 })
+
+const serverTable = (onTestFinished: (fn: () => void) => void, extra: Record<string, unknown>) => {
+  const asked: Array<{
+    query: { page: number; dateRanges?: Record<string, unknown> }
+    answer: (page: TablePage<Dated>) => void
+  }> = []
+  const orders: Array<Array<string>> = []
+  mount(
+    {
+      columns: datedColumns,
+      load: (query: { page: number }) =>
+        new Promise<TablePage<Dated>>((answer) => asked.push({ query, answer })),
+      reorderable: true,
+      onReorder: (rows: Dated[]) => orders.push(rows.map((row) => row.title)),
+      ...extra,
+    },
+    onTestFinished,
+  )
+  const move = (label: string) =>
+    document.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)
+  const drag = () => {
+    const rows = [...document.querySelectorAll('tbody tr')]
+    rows[1]?.querySelector('[draggable]')?.dispatchEvent(new Event('dragstart', { bubbles: true }))
+    rows[0]?.dispatchEvent(new Event('drop', { bubbles: true, cancelable: true }))
+  }
+  return { asked, orders, move, drag }
+}
+
+test('reorder stays off after Reset until the unfiltered answer shows', async ({
+  onTestFinished,
+}) => {
+  const table = serverTable(onTestFinished, {
+    dateFilters: [{ key: 'created', label: 'Created' }],
+  })
+  await expect.poll(() => table.asked.length).toBe(1)
+  table.asked[0]!.answer({ rows: dated, total: 3 })
+  await expect.poll(titles).toEqual(['Alpha', 'Bravo', 'Charlie'])
+  type('Created from', '2026-11-10')
+  await expect.poll(() => table.asked.length).toBe(2)
+  table.asked[1]!.answer({ rows: dated.slice(1), total: 2 })
+  await expect.poll(titles).toEqual(['Bravo', 'Charlie'])
+  ;[...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Reset')!.click()
+  await expect.poll(() => table.asked.length).toBe(3)
+  expect(titles()).toEqual(['Bravo', 'Charlie'])
+  expect(table.move('Move Charlie up')!.disabled).toBe(true)
+  table.drag()
+  expect(table.orders).toEqual([])
+  table.asked[2]!.answer({ rows: dated, total: 3 })
+  await expect.poll(() => table.move('Move Charlie up')?.disabled).toBe(false)
+})
+
+test('reorder is off while the next page loads and the previous page still shows', async ({
+  onTestFinished,
+}) => {
+  const table = serverTable(onTestFinished, { perPage: 2 })
+  await expect.poll(() => table.asked.length).toBe(1)
+  table.asked[0]!.answer({ rows: dated.slice(0, 2), total: 3 })
+  await expect.poll(() => table.move('Move Bravo up')?.disabled).toBe(false)
+  const next = [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === '2')!
+  next.click()
+  await expect.poll(() => table.asked.map((a) => a.query.page)).toEqual([1, 2])
+  expect(titles()).toEqual(['Alpha', 'Bravo'])
+  expect(table.move('Move Bravo up')!.disabled).toBe(true)
+  table.drag()
+  expect(table.orders).toEqual([])
+  table.asked[1]!.answer({ rows: dated.slice(2), total: 3 })
+  await expect.poll(titles).toEqual(['Charlie'])
+})

@@ -32,7 +32,7 @@ const blank = (): Values => ({
 const draft = ref(blank())
 const saved = ref(blank())
 const locked = ref(false)
-const done = ref(false)
+const saves = ref(0)
 const form = useTemplateRef('form')
 
 useUnsavedChanges({
@@ -45,7 +45,7 @@ const validate = (values: Partial<Values>) =>
   values.dueOn ? [] : [{ name: 'dueOn', message: t('demo.kit.required') }]
 function save() {
   saved.value = { ...draft.value }
-  done.value = true
+  saves.value++
 }
 const searchNotes = async (term: string) =>
   (await demo((client) => client.searchNotes({ query: { q: term } }))).map((note) => ({
@@ -111,7 +111,7 @@ const tasks = ref([
       />
       <FieldToggle v-model="locked" name="locked" :label="t('demo.kit.locked')" />
     </UForm>
-    <p v-if="done" role="status">{{ t('demo.kit.saved') }}</p>
+    <p v-if="saves" role="status">{{ t('demo.kit.saved') }} {{ saves }}</p>
 
     <dl :aria-label="t('demo.kit.values')" class="grid max-w-xl grid-cols-2 gap-x-4 text-sm">
       <dt>{{ t('demo.kit.dueOn') }}</dt>

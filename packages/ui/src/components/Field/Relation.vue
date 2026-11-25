@@ -10,6 +10,7 @@
  *   :search="(term) => demo((client) => client.authors({ query: { q: term } }))" />
  */
 import UFormField from '@nuxt/ui/components/FormField.vue'
+import UButton from '@nuxt/ui/components/Button.vue'
 import USelectMenu from '@nuxt/ui/components/SelectMenu.vue'
 import { computed, ref, shallowRef, watch } from 'vue'
 import { srOnlyHint, type FieldProps, type SelectItem } from '../../fields.ts'
@@ -28,7 +29,9 @@ const text = useKitText()
 const found = shallowRef<ReadonlyArray<SelectItem>>([])
 const picked = shallowRef<SelectItem>()
 const selected = computed(() =>
-  [picked.value, props.item, ...found.value].find((item) => item?.value === model.value),
+  [picked.value, props.item ?? undefined, ...found.value].find(
+    (item) => item?.value === model.value,
+  ),
 )
 function pick(item: SelectItem | null | undefined) {
   picked.value = item ?? undefined
@@ -66,6 +69,7 @@ watch(term, () => {
   clearTimeout(debounce)
   if (!open.value) return
   searches.next()
+  found.value = []
   pending.value = true
   debounce = setTimeout(load, 250)
 })
@@ -82,27 +86,36 @@ watch(term, () => {
     :required="required"
     :size="size"
   >
-    <USelectMenu
-      v-model:open="open"
-      v-model:search-term="term"
-      :model-value="selected"
-      :items="[...found]"
-      by="value"
-      label-key="label"
-      ignore-filter
-      :clear="!required"
-      :loading="pending"
-      :placeholder="placeholder ?? text.select"
-      :search-input="{ placeholder: text.search }"
-      :disabled="disabled"
-      class="w-full"
-      @update:model-value="pick"
-    >
-      <template #empty>
-        <span :role="failed ? 'alert' : 'status'">
-          {{ failed ? text.loadFailed : pending ? text.loading : text.noRecords }}
-        </span>
-      </template>
-    </USelectMenu>
+    <div class="flex items-center gap-1">
+      <USelectMenu
+        v-model:open="open"
+        v-model:search-term="term"
+        :model-value="selected"
+        :items="[...found]"
+        by="value"
+        label-key="label"
+        ignore-filter
+        :loading="pending"
+        :placeholder="placeholder ?? text.select"
+        :search-input="{ placeholder: text.search }"
+        :disabled="disabled"
+        class="w-full"
+        @update:model-value="pick"
+      >
+        <template #empty>
+          <span :role="failed ? 'alert' : 'status'">
+            {{ failed ? text.loadFailed : pending ? text.loading : text.noRecords }}
+          </span>
+        </template>
+      </USelectMenu>
+      <UButton
+        v-if="selected && !required && !disabled"
+        color="neutral"
+        variant="ghost"
+        icon="i-lucide-x"
+        :aria-label="text.clear(label ?? name)"
+        @click="pick(undefined)"
+      />
+    </div>
   </UFormField>
 </template>

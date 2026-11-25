@@ -65,7 +65,7 @@ const props = withDefaults(
     selectable?: boolean
     /**
      * Rows move by drag handle or by their Move up and Move down buttons, except while a search,
-     * a filter or a sort is active. Each move emits `reorder` with the rows in the new order:
+     * a filter or a sort is active or a load is under way. Each move emits `reorder` with the rows in the new order:
      * all of `rows` in client mode (apply it to `rows`), the current page's rows in server mode
      * (shown at once). Saving the order is the screen's job.
      */
@@ -121,14 +121,20 @@ const query = computed<TableQuery>(() => ({
 }))
 
 const loads = requestTickets()
+const answered = shallowRef<TableQuery>()
 async function refresh() {
   if (!props.load) return
   const ticket = loads.next()
+  const asked = query.value
+  answered.value = undefined
   pending.value = true
   failed.value = false
   try {
-    const result = await props.load(query.value)
-    if (ticket.isLatest()) loaded.value = result
+    const result = await props.load(asked)
+    if (ticket.isLatest()) {
+      loaded.value = result
+      answered.value = asked
+    }
   } catch (error) {
     if (ticket.isLatest()) failed.value = true
     console.error(error)
@@ -210,9 +216,12 @@ const dragged = ref<number>()
 const dropTarget = ref<number>()
 const labelOf = (row: Row) =>
   props.rowLabel?.(row) ?? String(getPath(row, props.columns[0]?.key ?? '') ?? '')
-const reorderOff = computed(() => filtered.value || sortState.value !== null)
+const canReorder = computed(
+  () =>
+    !filtered.value && sortState.value === null && (!props.load || answered.value === query.value),
+)
 function move(from: number, to: number) {
-  if (from === to || reorderOff.value) return
+  if (from === to || !canReorder.value) return
   const before = (page.value - 1) * props.perPage
   const offset = props.load ? 0 : before
   const rows = [...(props.load ? loaded.value.rows : (props.rows ?? []))]
@@ -273,7 +282,7 @@ const moveButton = (row: Row, index: number, direction: 'up' | 'down') =>
     'aria-label': text.value[direction === 'up' ? 'moveUp' : 'moveDown'](labelOf(row)),
     'data-move': direction,
     disabled:
-      reorderOff.value ||
+      !canReorder.value ||
       (direction === 'up' ? index === 0 : index === current.value.rows.length - 1),
     onClick: (event: Event) => {
       event.stopPropagation()
@@ -318,11 +327,11 @@ const tableColumns = computed<TableColumn<Row>[]>(() => [
               h(
                 'span',
                 {
-                  draggable: String(!reorderOff.value),
+                  draggable: String(canReorder.value),
                   'aria-hidden': 'true',
-                  class: reorderOff.value
-                    ? 'flex p-1 text-dimmed opacity-50'
-                    : 'flex cursor-grab p-1 text-dimmed hover:text-default',
+                  class: canReorder.value
+                    ? 'flex cursor-grab p-1 text-dimmed hover:text-default'
+                    : 'flex p-1 text-dimmed opacity-50',
                   onDragstart: (event: DragEvent) => onDragStart(event, row.index),
                   onDragend: onDragEnd,
                 },

@@ -22,8 +22,8 @@ export default async (ctx) => {
   check(true, 'typing an amount raises the Unsaved changes bar')
   await price.fill('1.234')
   await page.getByText('Enter an amount with up to 2 decimal places.').waitFor()
-  await shows('price', 'none')
-  check((await price.getAttribute('aria-invalid')) === 'true', 'a third decimal is refused and the input is marked invalid')
+  await shows('price', '1250')
+  check((await price.getAttribute('aria-invalid')) === 'true', 'a third decimal is refused, the input is marked invalid and the amount stays 1250')
   await shot('money-refused')
   await price.fill('1.15')
   await shows('price', '115')
@@ -38,7 +38,11 @@ export default async (ctx) => {
   await page.keyboard.press('Enter')
   await page.getByRole('option', { name: 'hello from demo' }).waitFor()
   await page.keyboard.type('zzz')
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('Enter')
   await page.getByText('No records found').waitFor()
+  await shows('noteId', 'none')
+  check(true, 'ArrowDown and Enter right after typing a new term pick no option of the previous term')
   await shot('relation-no-match')
   for (let i = 0; i < 3; i++) await page.keyboard.press('Backspace')
   await page.keyboard.type('HEL')
@@ -47,18 +51,39 @@ export default async (ctx) => {
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('Enter')
   await shows('noteId', '1')
+  await page.getByRole('button', { name: 'Clear Note' }).focus()
+  await page.keyboard.press('Enter')
+  await shows('noteId', 'none')
+  check(true, 'the Clear Note button clears the relation by keyboard')
+  await note.focus()
+  await page.keyboard.press('Enter')
+  await page.getByRole('option', { name: 'hello from demo' }).click()
+  await shows('noteId', '1')
   check(
     searches.includes('200 ?q=') && searches.includes('200 ?q=zzz') && searches.includes('200 ?q=HEL'),
     `the relation searched the server by keyboard: ${searches.join(', ')}`,
   )
   check(!searches.some((s) => /q=(z|zz|H|HE)$/.test(s)), 'no request per keystroke')
 
-  const file = page.locator('input[type="file"]')
+  const file = page.getByLabel('Scan', { exact: true })
+  await file.focus()
+  check(
+    await page.evaluate(() => document.activeElement?.getAttribute('type') === 'file' && document.activeElement.tabIndex === 0),
+    'the control a keyboard user focuses is the file input named Scan',
+  )
   await file.setInputFiles({ name: 'big.pdf', mimeType: 'application/pdf', buffer: Buffer.alloc(1024 * 1024 + 1) })
   await page.getByText('The file is larger than 1 MB.').waitFor()
   await shows('scan', 'none')
   await file.setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('hi') })
   await page.getByText('This type of file is not accepted.').waitFor()
+  check(
+    await file.evaluate(
+      (input) =>
+        input.getAttribute('aria-invalid') === 'true' &&
+        (input.getAttribute('aria-describedby') ?? '').split(' ').some((id) => document.getElementById(id)?.textContent.includes('not accepted')),
+    ),
+    'the file input is invalid and described by the refusal',
+  )
   await shot('file-refused')
   await file.setInputFiles({ name: 'scan.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4') })
   await shows('scan', 'scan.pdf, 8 B, application/pdf')
@@ -71,9 +96,18 @@ export default async (ctx) => {
   await shows('dueOn', '2026-12-24')
   await shot('filled')
   await bar.getByRole('button', { name: 'Save' }).click()
-  await page.getByRole('status').filter({ hasText: 'Saved.' }).waitFor()
+  await page.getByRole('status').filter({ hasText: 'Saved. 1' }).waitFor()
   await bar.waitFor({ state: 'detached' })
   check(true, 'Save clears the Unsaved changes bar')
+
+  await page.getByLabel('Due on').fill('2026-12-25')
+  await price.fill('9.999')
+  await bar.getByRole('button', { name: 'Save' }).click()
+  await price.fill('9.99')
+  await shows('price', '999')
+  await bar.getByRole('button', { name: 'Save' }).click()
+  await page.getByRole('status').filter({ hasText: 'Saved. 2' }).waitFor()
+  check(true, 'Save with a malformed amount saved nothing: the next valid Save is the second')
 
   await page.getByRole('switch', { name: 'Lock the fields' }).click()
   for (const field of [page.getByLabel('Due on'), page.getByLabel('Publish at'), price, note, file])
@@ -96,6 +130,7 @@ export default async (ctx) => {
   await shot('date-range')
   await page.getByRole('button', { name: 'Reset' }).click()
   await order('Draft the contract', 'Collect signatures', 'File the deed', 'Send the invoice')
+  check(await page.getByRole('button', { name: 'Move File the deed up' }).isEnabled(), 'reorder is on again once the unfiltered rows show')
 
   await page.getByRole('button', { name: 'Move File the deed up' }).focus()
   await page.keyboard.press('Enter')

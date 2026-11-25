@@ -18,18 +18,22 @@ const mount = <Value>(
 ) => {
   const model = ref(value ?? null) as Ref<Value | null>
   const errors = ref<Array<{ name: string; message: string }>>([])
+  const submitted = ref(0)
   const fieldProps = ref(props)
   const root = defineComponent(
     () => () =>
       h(UApp, { locale }, () =>
-        h(UForm, { state: {}, validate: () => errors.value }, () =>
-          h(field, {
-            name: 'value',
-            label: 'Label',
-            ...fieldProps.value,
-            modelValue: model.value,
-            'onUpdate:modelValue': (next: Value | null) => (model.value = next),
-          }),
+        h(
+          UForm,
+          { state: {}, validate: () => errors.value, onSubmit: () => void submitted.value++ },
+          () =>
+            h(field, {
+              name: 'value',
+              label: 'Label',
+              ...fieldProps.value,
+              modelValue: model.value,
+              'onUpdate:modelValue': (next: Value | null) => (model.value = next),
+            }),
         ),
       ),
   )
@@ -51,6 +55,11 @@ const mount = <Value>(
       input.value = text
       input.dispatchEvent(new Event('input'))
     },
+    submitted,
+    submit: () =>
+      document
+        .querySelector('form')!
+        .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })),
     fail: (message: string) => {
       errors.value = [{ name: 'value', message }]
       document
@@ -81,9 +90,15 @@ for (const [name, component, props] of [
     expect(label.textContent).toBe('Label')
     expect(label.htmlFor).toBe(control().id)
     expect(control().disabled).toBe(false)
+    expect(control().tabIndex).toBe(0)
+    expect(control().closest('[aria-hidden="true"]')).toBeNull()
     field.fail('Required')
     await expect.poll(field.text).toContain('Required')
     await expect.poll(() => control().getAttribute('aria-invalid')).toBe('true')
+    const described = (control().getAttribute('aria-describedby') ?? '')
+      .split(' ')
+      .map((id) => document.getElementById(id)?.textContent?.trim())
+    expect(described).toContain('Required')
     field.fieldProps.value = { ...props, disabled: true }
     await expect.poll(() => control().disabled).toBe(true)
   })
@@ -145,7 +160,7 @@ test('Field/Money takes the number of decimals from the currency', async ({ onTe
   await expect.poll(() => field.model.value).toBe(1500)
 })
 
-test('Field/Money refuses text that is not an amount of the currency and says why', async ({
+test('Field/Money keeps the last amount and blocks saving while the text is not an amount', async ({
   onTestFinished,
 }) => {
   const field = mount<number>(FieldMoney, { currency: 'EUR' }, onTestFinished, { value: 100 })
@@ -153,12 +168,19 @@ test('Field/Money refuses text that is not an amount of the currency and says wh
     field.type('5')
     await expect.poll(() => field.model.value).toBe(500)
     field.type(typed)
-    await expect.poll(() => field.model.value).toBeNull()
     await expect.poll(field.text).toContain('Enter an amount with up to 2 decimal places.')
+    expect(field.model.value).toBe(500)
     expect(field.input().value).toBe(typed)
   }
+  field.submit()
+  await expect.poll(() => field.input().getAttribute('aria-invalid')).toBe('true')
+  await nextTick()
+  expect(field.submitted.value).toBe(0)
   field.type('2')
   await expect.poll(field.text).not.toContain('Enter an amount')
+  field.submit()
+  await expect.poll(() => field.submitted.value).toBe(1)
+  expect(field.model.value).toBe(200)
 })
 
 test('Field/Money shows the decimal separator of the admin locale', async ({ onTestFinished }) => {
@@ -189,6 +211,8 @@ test('Field/File reports the picked file and shows its name', async ({ onTestFin
   await expect.poll(() => field.model.value).toBe(file)
   expect(field.model.value).toMatchObject({ name: 'notes.TXT', size: 5, type: 'text/plain' })
   await expect.poll(field.text).toContain('notes.TXT')
+  document.querySelector<HTMLButtonElement>('button[aria-label="Remove notes.TXT"]')!.click()
+  await expect.poll(() => field.model.value).toBeNull()
 })
 
 test('Field/File refuses a file over the size limit or of another type and says why', async ({
@@ -296,6 +320,48 @@ test('Field/Relation drops an answer that lands after the user typed a newer ter
   expect(options()).toEqual([])
   answers.get('new')!([{ label: 'Newer', value: 2 }])
   await expect.poll(options).toEqual(['Newer'])
+})
+
+test('Field/Relation offers no option of the previous term once a new term is typed', async ({
+  onTestFinished,
+}) => {
+  const answers = new Map<string, (items: ReadonlyArray<SelectItem>) => void>()
+  mount<number>(
+    FieldRelation,
+    {
+      search: (term: string) =>
+        new Promise<ReadonlyArray<SelectItem>>((resolve) => answers.set(term, resolve)),
+    },
+    onTestFinished,
+  )
+  open()
+  await expect.poll(() => [...answers.keys()]).toEqual([''])
+  answers.get('')!([{ label: 'Ann', value: 1 }])
+  await expect.poll(options).toEqual(['Ann'])
+  search('zzz')
+  await nextTick()
+  await nextTick()
+  expect(options()).toEqual([])
+})
+
+test('Field/Relation has a named button that clears an optional value', async ({
+  onTestFinished,
+}) => {
+  const field = mount<number>(
+    FieldRelation,
+    { search: noItems, item: { label: 'Cid', value: 3 } },
+    onTestFinished,
+    { value: 3 },
+  )
+  const clear = () => document.querySelector<HTMLButtonElement>('button[aria-label="Clear Label"]')
+  expect(clear()!.tabIndex).toBe(0)
+  field.fieldProps.value = { ...field.fieldProps.value, required: true }
+  await expect.poll(clear).toBeNull()
+  field.fieldProps.value = { ...field.fieldProps.value, required: false }
+  await expect.poll(clear).not.toBeNull()
+  clear()!.click()
+  await expect.poll(() => field.model.value).toBeNull()
+  await expect.poll(clear).toBeNull()
 })
 
 test('Field/Relation says when the search failed', async ({ onTestFinished }) => {
