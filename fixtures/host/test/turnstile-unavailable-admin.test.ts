@@ -17,36 +17,37 @@ const modules = [
 const button = (label: string) =>
   [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === label)
 
-test.each([
-  ['sign-in', '/admin/sign-in', 'sign-in'],
-  ['forgotten-password', '/admin/forgot-password', 'request-password-reset'],
-])(
-  'the %s screen says the check did not load and loads it on Try again',
-  async (_screen, path, action) => {
-    const rendered: Array<string> = []
-    Reflect.deleteProperty(window, 'turnstile')
-    const text = lifetime.mount(path, { modules, fetch: host.browserFetch({ cookie: '' }) })
-    await expect
-      .poll(text)
-      .toContain(
-        'The check that you are human did not load. Check your connection or content blocker.',
-      )
-    expect(document.querySelector('[role="alert"]')).not.toBeNull()
-    expect(document.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(true)
+const didNotLoad =
+  'The check that you are human did not load. Check your connection or content blocker.'
+const submit = () => document.querySelector<HTMLButtonElement>('button[type="submit"]')!
 
-    Object.defineProperty(window, 'turnstile', {
-      configurable: true,
-      value: {
-        render: (_container: HTMLElement, options: { action: string }) => {
-          rendered.push(options.action)
-          return '1'
-        },
-        reset: () => {},
-        remove: () => {},
+test('both screens say the check did not load, and Try again loads it', async () => {
+  const fetch = host.browserFetch({ cookie: '' })
+  const signIn = lifetime.mount('/admin/sign-in', { modules, fetch })
+  await expect.poll(signIn).toContain(didNotLoad)
+  expect(document.querySelector('[role="alert"]')!.textContent).toContain(didNotLoad)
+  expect(submit().disabled).toBe(true)
+  signIn.unmount()
+
+  const forgot = lifetime.mount('/admin/forgot-password', { modules, fetch })
+  await expect.poll(forgot).toContain(didNotLoad)
+  expect(submit().disabled).toBe(true)
+  button('Try again')!.click()
+  await expect.poll(forgot).toContain(didNotLoad)
+
+  const rendered: Array<string> = []
+  Object.defineProperty(window, 'turnstile', {
+    configurable: true,
+    value: {
+      render: (_container: HTMLElement, options: { action: string }) => {
+        rendered.push(options.action)
+        return String(rendered.length)
       },
-    })
-    button('Try again')!.click()
-    await expect.poll(() => rendered).toEqual([action])
-    expect(text()).not.toContain('did not load')
-  },
-)
+      reset: () => {},
+      remove: () => {},
+    },
+  })
+  button('Try again')!.click()
+  await expect.poll(() => rendered).toEqual(['request-password-reset'])
+  expect(forgot()).not.toContain(didNotLoad)
+})

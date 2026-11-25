@@ -1,12 +1,10 @@
 import { verifyTurnstile } from '@opulonjs/core/turnstile'
 import { Config, Effect, Option, Redacted } from 'effect'
-import { TurnstileFailed } from '../api.ts'
+import { TurnstileFailed, TurnstileNotConfigured } from '../api.ts'
 
-/** The sign-in guard's Config keys, read from the Worker env. Off unless `USERS_TURNSTILE` is true. */
-export const turnstileConfig = Config.all({
+const turnstileConfig = Config.all({
   enabled: Config.Boolean('USERS_TURNSTILE').pipe(Config.withDefault(false)),
   secret: Config.option(Config.Redacted('USERS_TURNSTILE_SECRET')),
-  /** Comma-separated hostnames the admin is served from, e.g. `example.com,www.example.com`. */
   hostnames: Config.String('USERS_TURNSTILE_HOSTNAMES').pipe(Config.withDefault('')),
 })
 
@@ -16,7 +14,11 @@ export const requireTurnstile = Effect.fn('Users.requireTurnstile')(function* (
   token: string | undefined,
 ) {
   const config = yield* Effect.orDie(turnstileConfig)
-  if (!config.enabled) return
+  if (!config.enabled) {
+    if (token === undefined) return
+    yield* Effect.logError(`turnstile ${action}: a token arrived but USERS_TURNSTILE is off`)
+    return yield* new TurnstileNotConfigured()
+  }
   const result = yield* Effect.promise(() =>
     verifyTurnstile({
       secret: Option.getOrUndefined(Option.map(config.secret, Redacted.value)),
@@ -27,7 +29,12 @@ export const requireTurnstile = Effect.fn('Users.requireTurnstile')(function* (
     }),
   )
   if (result.ok) return
-  if (result.reason === 'not-configured' || result.reason === 'unavailable')
-    yield* Effect.logError(`turnstile ${action}: ${result.reason}`)
+  if (result.reason === 'not-configured') {
+    yield* Effect.logError(
+      `turnstile ${action}: USERS_TURNSTILE is on without a secret or hostnames`,
+    )
+    return yield* new TurnstileNotConfigured()
+  }
+  if (result.reason === 'unavailable') yield* Effect.logError(`turnstile ${action}: unavailable`)
   return yield* new TurnstileFailed()
 })

@@ -86,13 +86,22 @@ export interface ScheduledEvent {
 }
 
 /**
- * Effect Config read from an env's string values (vars and secrets) only. Bindings are objects
- * and reach modules solely through the host's infra(env, ctx).
+ * Effect Config read from an env's vars and secrets: strings, and the booleans and numbers a
+ * Wrangler `vars` entry may hold, as their text. Bindings are objects and reach modules solely
+ * through the host's infra(env, ctx).
  */
 export const envConfig = (env: object) =>
   ConfigProvider.layer(
     ConfigProvider.fromEnvRecord(
-      Object.fromEntries(Object.entries(env).filter(([, v]) => typeof v === 'string')),
+      Object.fromEntries(
+        Object.entries(env).flatMap(([key, value]) =>
+          typeof value === 'string'
+            ? [[key, value]]
+            : typeof value === 'boolean' || typeof value === 'number'
+              ? [[key, String(value)]]
+              : [],
+        ),
+      ),
     ),
   )
 

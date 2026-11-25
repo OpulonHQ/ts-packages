@@ -252,9 +252,23 @@ The sign-in and forgotten-password screens then show the widget, and the server 
 or password-reset request with 403 `{"_tag":"TurnstileFailed"}` unless its `turnstileToken` passes
 siteverify for the action (`sign-in`, `request-password-reset`) and one of the hostnames. The check
 runs before the user is looked up, so a refused request costs no password hash and no sign-in
-attempt. With `USERS_TURNSTILE` on, a missing secret or hostname list, or a siteverify that fails
-or does not answer within 5 seconds, refuses every request: nobody signs in until it is fixed.
+attempt. A siteverify that fails or does not answer within 5 seconds refuses the request.
 Invitation acceptance and the reset link itself are not guarded.
+
+The Worker switch and the admin's site key are set separately, and both sides must agree. Each
+of these answers 403 `{"_tag":"TurnstileNotConfigured"}` or shows "The check that you are human is
+not set up correctly", and the Worker logs the first two:
+
+- `USERS_TURNSTILE` on without a secret or hostname list: every request is refused.
+- A site key in the admin with `USERS_TURNSTILE` off: a request that carries a token is refused. A
+  request without a token works as it does with no Turnstile at all.
+- `USERS_TURNSTILE` on and no site key in the admin: the screens have no widget and every sign-in
+  is refused.
+
+`USERS_TURNSTILE` reads `true`/`false` (a Wrangler boolean or the text; `yes`, `on` and `1` also
+turn it on). Any other value fails every sign-in with 500 instead of turning the check off. When
+Cloudflare's script does not load, for example behind a content blocker, the screens say so and
+offer "Try again".
 
 For local development use Cloudflare's dummy keys: site key `1x00000000000000000000AA` with secret
 `1x0000000000000000000000000000000AA` always passes, secret `2x0000000000000000000000000000000AA`
@@ -294,4 +308,14 @@ const widget = useTemplateRef('widget')
 ```
 
 `token` is undefined until the visitor passes and again when the token expires. A token passes
-the server once: call `widget.reset()` after every post that used it.
+the server once: call `widget.reset()` after every post that used it. When Cloudflare's script
+does not load, the component renders its `unavailable` slot; the slot's `retry` loads it again:
+
+```vue
+<Turnstile v-model="token" site-key="..." action="contact">
+  <template #unavailable="{ retry }">
+    <p role="alert">The check did not load.</p>
+    <button type="button" @click="retry">Try again</button>
+  </template>
+</Turnstile>
+```

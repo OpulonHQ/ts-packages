@@ -59,6 +59,7 @@ export const verifyTurnstile = async (check: TurnstileCheck): Promise<TurnstileR
       body: form,
       signal: AbortSignal.timeout(check.timeoutMs ?? 5000),
     })
+    if (!response.ok) return refused('unavailable')
     answer = await response.json()
   } catch {
     return refused('unavailable')

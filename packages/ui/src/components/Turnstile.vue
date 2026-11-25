@@ -30,7 +30,10 @@ const load = () =>
       if (loaded) resolve(loaded)
       else reject(new Error('Turnstile did not load'))
     }
-    script.onerror = () => reject(new Error('Turnstile did not load'))
+    script.onerror = () => {
+      script.remove()
+      reject(new Error('Turnstile did not load'))
+    }
     document.head.append(script)
   }).catch((error: unknown) => {
     loading = undefined
@@ -42,7 +45,8 @@ const load = () =>
 /**
  * Cloudflare Turnstile, for the admin and for host forms. The model is the token to post with
  * the form: undefined until the visitor passes, and again when the token expires. A token
- * passes the server check once, so call `reset()` after every post that used it.
+ * passes the server check once, so call `reset()` after every post that used it. When
+ * Cloudflare's script does not load, the `unavailable` slot is shown; its `retry` loads it again.
  *
  * <Turnstile ref="check" v-model="token" site-key="1x00000000000000000000AA" action="contact" />
  */
@@ -53,11 +57,17 @@ const token = defineModel<string | undefined>()
 const container = ref<HTMLElement>()
 let turnstile: TurnstileApi | undefined
 let widget: string | undefined
+const unavailable = ref(false)
 let unmounted = false
 
-onMounted(async () => {
+const start = async () => {
+  unavailable.value = false
   const loaded = await load().catch(() => undefined)
-  if (!loaded || unmounted || !container.value) return
+  if (unmounted || !container.value) return
+  if (!loaded) {
+    unavailable.value = true
+    return
+  }
   turnstile = loaded
   const clear = () => {
     token.value = undefined
@@ -71,7 +81,9 @@ onMounted(async () => {
     'expired-callback': clear,
     'error-callback': clear,
   })
-})
+}
+
+onMounted(start)
 
 onBeforeUnmount(() => {
   unmounted = true
@@ -88,5 +100,8 @@ defineExpose({
 </script>
 
 <template>
-  <div ref="container" />
+  <div>
+    <div ref="container" />
+    <slot v-if="unavailable" name="unavailable" :retry="start" />
+  </div>
 </template>

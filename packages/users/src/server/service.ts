@@ -19,6 +19,7 @@ import {
   Refused,
   TooManyRequests,
   type TurnstileFailed,
+  type TurnstileNotConfigured,
   WrongPassword,
 } from '../api.ts'
 import { canGrant, loadAccess, lockAccessWrites } from './access.ts'
@@ -94,13 +95,14 @@ export class Users extends Context.Service<
       },
     ) => Effect.Effect<
       AuthResult & { readonly userId: string },
-      Unauthorized | TooManyRequests | TurnstileFailed
+      Unauthorized | TooManyRequests | TurnstileFailed | TurnstileNotConfigured
     >
     readonly signOut: (headers: Headers) => Effect.Effect<AuthResult>
     readonly requestPasswordReset: (
       headers: Headers,
-      input: { readonly email: string; readonly turnstileToken?: string | undefined },
-    ) => Effect.Effect<void, TooManyRequests | TurnstileFailed>
+      email: string,
+      turnstileToken?: string,
+    ) => Effect.Effect<void, TooManyRequests | TurnstileFailed | TurnstileNotConfigured>
     readonly resetPassword: (
       headers: Headers,
       input: { readonly token: string; readonly password: string },
@@ -269,10 +271,14 @@ export class Users extends Context.Service<
           return result
         }, withSql),
 
-        requestPasswordReset: Effect.fn('Users.requestPasswordReset')(function* (headers, input) {
-          yield* requireTurnstile(headers, 'request-password-reset', input.turnstileToken)
+        requestPasswordReset: Effect.fn('Users.requestPasswordReset')(function* (
+          headers,
+          email,
+          turnstileToken,
+        ) {
+          yield* requireTurnstile(headers, 'request-password-reset', turnstileToken)
           const result = yield* auth.post('/request-password-reset', headers, {
-            email: normalizeEmail(input.email),
+            email: normalizeEmail(email),
           })
           yield* failOnServerError(result)
           if (result.status === 429) return yield* tooMany(result)

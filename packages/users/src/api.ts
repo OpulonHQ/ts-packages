@@ -82,6 +82,16 @@ export class TurnstileFailed extends Schema.TaggedError<TurnstileFailed>()(
   { httpApiStatus: 403 },
 ) {}
 
+/**
+ * The Turnstile check is not set up the same on both sides: the request carries a token and the
+ * check is off, or the check is on without a secret or hostnames.
+ */
+export class TurnstileNotConfigured extends Schema.TaggedError<TurnstileNotConfigured>()(
+  'TurnstileNotConfigured',
+  {},
+  { httpApiStatus: 403 },
+) {}
+
 /** An email address as the API takes it: at most 254 characters. */
 export const Email = Schema.String.check(Schema.isMaxLength(254))
 /** Better Auth's limits: 8 to 128 characters. */
@@ -99,14 +109,14 @@ export const UsersAuthGroup = HttpApiGroup.make('users.auth')
         turnstileToken: OptionalTurnstileToken,
       }),
       success: Schema.Struct({ id: Schema.String }),
-      error: [Unauthorized, TooManyRequests, TurnstileFailed],
+      error: [Unauthorized, TooManyRequests, TurnstileFailed, TurnstileNotConfigured],
     }),
   )
   .add(HttpApiEndpoint.post('signOut', '/auth/sign-out'))
   .add(
     HttpApiEndpoint.post('requestPasswordReset', '/auth/request-password-reset', {
       payload: Schema.Struct({ email: Email, turnstileToken: OptionalTurnstileToken }),
-      error: [TooManyRequests, TurnstileFailed],
+      error: [TooManyRequests, TurnstileFailed, TurnstileNotConfigured],
     }),
   )
   .add(

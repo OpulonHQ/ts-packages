@@ -8,6 +8,9 @@ With the guard on, staff sign-in and password-reset requests need a Cloudflare T
 - `refuse` a sign-in or reset request without a token answers 403 `TurnstileFailed`, even with the right password.
 - `pass` the widget's token signs in (200) and requests a reset (204).
 - `fail` with Cloudflare's always-fail secret the same sign-in answers 403 and shows `The check that you are human did not pass. Try again.`
+- `no-site-key` guard on, admin built without the site key: both screens answer 403 and show `The check that you are human is not set up correctly. Contact an administrator.`
+- `guard-off` admin built with the site key, guard off: a request with the widget's token answers 403 `TurnstileNotConfigured` and shows the same message; a request without a token works as with no Turnstile at all.
+- `blocked` Cloudflare's script does not load: both screens show `The check that you are human did not load. Check your connection or content blocker.` and `Try again` loads it.
 
 ## Launch with the guard on
 
@@ -22,13 +25,18 @@ cd fixtures/host && VERIFY_TURNSTILE=1x0000000000000000000000000000000AA wtdev
 
 ## Driving it with ui.sh
 
-Preconditions: Doctor ok; an account. `$V/smoke.sh` signs in without a token and fails while the guard is on: create the owner with the guard off (same database), then restart with it on.
+Preconditions: Doctor ok; an account. `$V/smoke.sh` signs in without a token and fails while the guard is on: create the owner with the guard off (same database), then restart with it on. Every run is `$V/ui.sh .claude/skills/verify-host/journeys/turnstile.mjs email=<owner> 'password=smoke password <run>' mode=<mode>`.
 
-- **Pass.** `$V/ui.sh .claude/skills/verify-host/journeys/turnstile.mjs email=<owner> 'password=smoke password <run>'`. Proves `widget`, `refuse` and `pass`. Second view: a `users.password_reset` row in `GET /api/emails/log`.
-- **Fail.** The same with `secret=fail` on a server started with the always-fail secret. Proves `fail`.
+| `mode` | Admin build | Server | Proves |
+| --- | --- | --- | --- |
+| `pass` (default) | site key | always-pass secret | `widget`, `refuse`, `pass`; second view: a `users.password_reset` row in `GET /api/emails/log` |
+| `fail` | site key | always-fail secret | `fail` |
+| `blocked` | site key | always-pass secret | `blocked` (the journey aborts requests to `challenges.cloudflare.com`, then lets them through) |
+| `guard-off` | site key | no `VERIFY_TURNSTILE` | `guard-off` |
+| `no-site-key` | default | always-pass secret | `no-site-key` |
 
 ## Gotchas
 
-- Without `VITE_USERS_TURNSTILE_SITE_KEY` at build time the screens show no widget and, with the server guard on, nobody can sign in. That is the fail-closed side, not a bug.
+- The admin build and the server are switched separately. A mismatch in either direction refuses the request and says the check is not set up; it never signs in.
 - A dummy secret answers hostname `example.com` and no action, so this setup does not prove the action and hostname comparison; `fixtures/host/test/turnstile.test.ts` does, against a stubbed siteverify.
 - Rebuild without the variable and restart without `VERIFY_TURNSTILE` before running other journeys.

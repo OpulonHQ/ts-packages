@@ -2,12 +2,12 @@
 import { useI18n } from '@opulonjs/admin'
 import { UButton, UForm, ULink } from '@opulonjs/ui'
 import FieldText from '@opulonjs/ui/components/Field/Text'
-import Turnstile from '@opulonjs/ui/components/Turnstile'
 import { ref, useTemplateRef } from 'vue'
 import AuthCard from './AuthCard.vue'
 import { useAuthClient } from './client.ts'
+import TurnstileField from './TurnstileField.vue'
 
-defineProps<{ turnstileSiteKey?: string | undefined }>()
+const props = defineProps<{ turnstileSiteKey?: string | undefined }>()
 const { t } = useI18n()
 const call = useAuthClient()
 const state = ref({ email: null as string | null })
@@ -19,7 +19,10 @@ const turnstile = useTemplateRef('turnstile')
 
 const errors: Record<string, string> = {
   TooManyRequests: 'users.errors.tooMany',
-  TurnstileFailed: 'users.errors.turnstile',
+  TurnstileFailed: props.turnstileSiteKey
+    ? 'users.errors.turnstile'
+    : 'users.errors.turnstileSetup',
+  TurnstileNotConfigured: 'users.errors.turnstileSetup',
 }
 
 async function submit() {
@@ -58,7 +61,7 @@ async function submit() {
         :label="t('users.fields.email')"
         required
       />
-      <Turnstile
+      <TurnstileField
         v-if="turnstileSiteKey"
         ref="turnstile"
         v-model="turnstileToken"
