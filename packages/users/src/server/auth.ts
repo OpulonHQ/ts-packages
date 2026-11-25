@@ -51,7 +51,7 @@ export class BetterAuth extends Context.Service<
   {
     /** POSTs `body` to a Better Auth endpoint (`/sign-in/email`, ...) with the client's headers. */
     readonly post: (path: string, headers: Headers, body: unknown) => Effect.Effect<AuthResult>
-    /** The session and its user id (cookie cache off: always a database read), and refreshed cookies. */
+    /** The session's user id (cookie cache off: always a database read), and refreshed cookies. */
     readonly session: (headers: Headers) => Effect.Effect<
       | {
           readonly id: string
@@ -260,11 +260,10 @@ export class BetterAuth extends Context.Service<
               }),
           )
           if (!result?.response) return undefined
-          const confirmedAt = result.response.session.passwordConfirmedAt
           return {
             id: result.response.session.id,
             userId: result.response.user.id,
-            passwordConfirmedAt: confirmedAt ? new Date(confirmedAt) : undefined,
+            passwordConfirmedAt: result.response.session.passwordConfirmedAt ?? undefined,
             setCookies: result.headers.getSetCookie(),
           }
         }),

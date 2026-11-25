@@ -31,7 +31,6 @@ export interface Env {
   /** Signs session cookies (a secret: `wrangler secret put`). */
   readonly USERS_AUTH_SECRET: string
   readonly DEMO_RESEND_STUB?: string
-  /** How long a password confirmation lasts (users; default 5 minutes). */
   readonly USERS_PASSWORD_CONFIRM_WINDOW?: string
 }
 

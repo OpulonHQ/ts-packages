@@ -7,7 +7,7 @@ import { authenticate } from './session.ts'
 /** A signed-in staff user, as a host route outside the composed API sees it. */
 export interface StaffSession {
   readonly user: User
-  /** The session confirmed its password within `USERS_PASSWORD_CONFIRM_WINDOW` (5 minutes). */
+  /** The session confirmed its password within `USERS_PASSWORD_CONFIRM_WINDOW`. */
   readonly passwordConfirmed: boolean
   /**
    * Set-Cookie values to append to the route's response: the refreshed session cookie when the

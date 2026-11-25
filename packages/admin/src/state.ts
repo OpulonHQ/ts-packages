@@ -15,11 +15,9 @@ export type { Me } from '@opulonjs/core/api'
 export interface ApiContext {
   readonly apiPrefix: string
   readonly fetch: typeof globalThis.fetch
-  /** Asks the user for their password; resolves true once the session is confirmed. */
   readonly confirmPassword?: () => Promise<boolean>
 }
 
-/** The open password prompt, for the shell's dialog. */
 export interface PasswordRequest {
   readonly submit: (password: string) => Promise<'confirmed' | 'wrong' | 'tooMany' | 'failed'>
   readonly cancel: () => void
