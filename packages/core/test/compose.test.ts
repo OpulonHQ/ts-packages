@@ -11,6 +11,7 @@ import {
   type Module,
   Policy,
   Public,
+  Sensitive,
 } from '../src/index.ts'
 
 const ping = HttpApiEndpoint.get('ping', '/ping', { success: Schema.String })
@@ -169,6 +170,18 @@ describe('composeServer fails at startup on', () => {
         }),
       ],
       /demo.ping: public endpoint with a Policy/,
+    ))
+
+  test('a public group with a Sensitive endpoint', () =>
+    fails(
+      [
+        module('demo', {
+          group: HttpApiGroup.make('demo')
+            .add(ping.annotate(Sensitive, true))
+            .annotate(Public, true),
+        }),
+      ],
+      /demo.ping: public endpoint marked Sensitive/,
     ))
 
   test.each([

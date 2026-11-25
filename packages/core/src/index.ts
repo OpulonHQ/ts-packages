@@ -6,12 +6,14 @@ export {
   CurrentActor,
   CurrentUser,
   holdsPolicy,
+  PasswordConfirmationRequired,
   Policy,
   Public,
   requirePermission,
+  Sensitive,
   systemActor,
 } from './authz.ts'
-export type { Actor, User } from './authz.ts'
+export type { Actor, Authenticated, User } from './authz.ts'
 export { Audit, diffFields } from './audit.ts'
 export type { AuditChange, AuditInput } from './audit.ts'
 export { Background, withTransaction } from './background.ts'

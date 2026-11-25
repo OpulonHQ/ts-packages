@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Option } from 'effect'
+import { Context, Effect, Layer, Option, Schema } from 'effect'
 import { HttpServerRequest } from 'effect/http/HttpServerRequest'
 import { Forbidden, Unauthorized } from 'effect/http-api/HttpApiError'
 import * as HttpApiMiddleware from 'effect/http-api/HttpApiMiddleware'
@@ -57,16 +57,35 @@ export const requirePermission = (key: string): Effect.Effect<void, Forbidden> =
   })
 
 /**
+ * A sensitive endpoint was called by a session that has not confirmed its password within the
+ * host's window. The admin answers it with a password prompt and repeats the request.
+ */
+export class PasswordConfirmationRequired extends Schema.TaggedError<PasswordConfirmationRequired>()(
+  'PasswordConfirmationRequired',
+  {},
+  { httpApiStatus: 403 },
+) {}
+
+/**
  * The auth middleware every non-public group carries. users implements it; until then a host
  * (or a test) provides it with `authorization(authenticate)`.
  */
 export class Authorization extends HttpApiMiddleware.Service<
   Authorization,
   { provides: CurrentUser }
->()('@opulonjs/core/Authorization', { error: [Unauthorized, Forbidden] }) {}
+>()('@opulonjs/core/Authorization', {
+  error: [Unauthorized, Forbidden, PasswordConfirmationRequired],
+}) {}
 
 /** Endpoint annotation: the one policy guarding it, a permission key or `signedIn`. */
 export class Policy extends Context.Service<Policy, string>()('@opulonjs/core/Policy') {}
+
+/**
+ * Endpoint annotation: the action is sensitive, so the session must have confirmed its password
+ * within the host's window (`.annotate(Sensitive, true)`, next to the Policy). Without a recent
+ * confirmation the endpoint answers `PasswordConfirmationRequired`.
+ */
+export class Sensitive extends Context.Service<Sensitive, true>()('@opulonjs/core/Sensitive') {}
 
 /**
  * Group annotation: the group is public on purpose and carries no auth; composition refuses
@@ -78,13 +97,22 @@ export class Public extends Context.Service<Public, true>()('@opulonjs/core/Publ
 export const holdsPolicy = (user: User, policy: string) =>
   policy === 'signedIn' || user.permissions.includes(policy)
 
+/** A request's user and whether its session confirmed its password within the host's window. */
+export interface Authenticated {
+  readonly user: User
+  readonly passwordConfirmed: boolean
+}
+
 /**
  * Builds the Authorization middleware from a session lookup. A request without a user gets 401;
- * a user without the endpoint's policy permission gets 403. A missing policy fails closed. The
- * handler runs with the user as CurrentUser and as CurrentActor.
+ * a user without the endpoint's policy permission gets 403. A missing policy fails closed. A
+ * `Sensitive` endpoint also needs `passwordConfirmed`; a lookup that returns a bare user never
+ * passes one. The handler runs with the user as CurrentUser and as CurrentActor.
  */
 export const authorization = <R>(
-  authenticate: (request: HttpServerRequest) => Effect.Effect<User | undefined, never, R>,
+  authenticate: (
+    request: HttpServerRequest,
+  ) => Effect.Effect<User | Authenticated | undefined, never, R>,
 ) =>
   Layer.effect(
     Authorization,
@@ -92,11 +120,18 @@ export const authorization = <R>(
       Authorization.of((httpEffect, { endpoint }) =>
         Effect.gen(function* () {
           const request = yield* HttpServerRequest
-          const user = yield* authenticate(request).pipe(Effect.provideContext(context))
-          if (!user) return yield* new Unauthorized()
+          const found = yield* authenticate(request).pipe(Effect.provideContext(context))
+          if (!found) return yield* new Unauthorized()
+          const { user, passwordConfirmed } =
+            'user' in found ? found : { user: found, passwordConfirmed: false }
           const policy = Context.getOption(endpoint.annotations, Policy)
           if (Option.isNone(policy)) return yield* new Forbidden()
           if (!holdsPolicy(user, policy.value)) return yield* new Forbidden()
+          if (
+            Option.isSome(Context.getOption(endpoint.annotations, Sensitive)) &&
+            !passwordConfirmed
+          )
+            return yield* new PasswordConfirmationRequired()
           const actor: Actor = {
             kind: 'user',
             id: user.id,
