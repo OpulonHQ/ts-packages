@@ -22,6 +22,7 @@ export class Notes extends Context.Service<
   {
     readonly list: () => Effect.Effect<ReadonlyArray<typeof Note.Type>>
     readonly ticks: () => Effect.Effect<ReadonlyArray<typeof Tick.Type>>
+    readonly stamp: (by: string) => Effect.Effect<typeof Note.Type>
   }
 >()('demo/Notes') {
   static readonly layer = Layer.effect(
@@ -36,6 +37,11 @@ export class Notes extends Context.Service<
         ticks: Effect.fn('Notes.ticks')(function* () {
           const rows = yield* sql`select actor, confirmed from demo.tick order by id`
           return yield* Schema.decodeUnknownEffect(Schema.Array(Tick))(rows)
+        }, Effect.orDie),
+        stamp: Effect.fn('Notes.stamp')(function* (by: string) {
+          const [row] = yield* sql`
+            insert into demo.note (body) values (${`Stamped by ${by}`}) returning id, body`
+          return yield* Schema.decodeUnknownEffect(Note)(row)
         }, Effect.orDie),
       }
     }),
@@ -89,6 +95,7 @@ export const demo = defineModule({
         return h
           .handle('notes', () => notes.list())
           .handle('ticks', () => notes.ticks())
+          .handle('stamp', () => Effect.flatMap(CurrentUser, (user) => notes.stamp(user.name)))
           .handle('ping', () =>
             Effect.gen(function* () {
               const user = yield* CurrentUser

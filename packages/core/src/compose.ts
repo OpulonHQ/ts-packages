@@ -3,7 +3,7 @@ import type * as HttpRouter from 'effect/http/HttpRouter'
 import * as HttpApi from 'effect/http-api/HttpApi'
 import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import type * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
-import { Authorization, Policy, Public } from './authz.ts'
+import { Authorization, Policy, Public, Sensitive } from './authz.ts'
 import { apiId, type Contribution, type Module } from './module.ts'
 
 export class CompositionError extends Error {
@@ -206,6 +206,8 @@ export const composeServer = <const Ms extends ReadonlyArray<Module>>(options: {
           errors.push(`${where}: public endpoint with the Authorization middleware`)
         if (Option.isSome(Context.getOption(endpoint.annotations, Policy)))
           errors.push(`${where}: public endpoint with a Policy`)
+        if (Option.isSome(Context.getOption(endpoint.annotations, Sensitive)))
+          errors.push(`${where}: public endpoint marked Sensitive`)
         continue
       }
       if (!endpoint.middlewares.has(Authorization))

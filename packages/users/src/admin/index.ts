@@ -20,6 +20,21 @@ export const usersAdmin = () =>
         })
         if (!response.ok) throw new Error(`sign-out answered ${response.status}`)
       },
+      confirmPassword: async ({ apiPrefix, fetch, password }) => {
+        const response = await fetch(
+          new URL(`${apiPrefix}/users/password-confirmation`, location.origin),
+          {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ password }),
+          },
+        )
+        if (response.ok) return 'confirmed'
+        if (response.status === 403) return 'wrong'
+        if (response.status === 429) return 'tooMany'
+        throw new Error(`confirming the password answered ${response.status}`)
+      },
       accountRoute: 'users.account',
       setLocale: async ({ apiPrefix, fetch, userId, locale }) => {
         const url = `${apiPrefix}/users/users/${encodeURIComponent(userId)}/locale`

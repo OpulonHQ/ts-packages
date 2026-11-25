@@ -7,6 +7,8 @@ import { authenticate } from './session.ts'
 /** A signed-in staff user, as a host route outside the composed API sees it. */
 export interface StaffSession {
   readonly user: User
+  /** The session confirmed its password within `USERS_PASSWORD_CONFIRM_WINDOW`. */
+  readonly passwordConfirmed: boolean
   /**
    * Set-Cookie values to append to the route's response: the refreshed session cookie when the
    * session was extended, else empty.
@@ -18,10 +20,16 @@ export interface StaffSession {
 export type StaffCheck =
   ({ readonly ok: true } & StaffSession) | { readonly ok: false; readonly response: Response }
 
-const refusal = (status: 401 | 403, setCookies: ReadonlyArray<string> = []) => {
+const refusal = (
+  tag: 'Unauthorized' | 'Forbidden' | 'PasswordConfirmationRequired',
+  setCookies: ReadonlyArray<string> = [],
+) => {
   const response = Response.json(
-    { _tag: status === 401 ? 'Unauthorized' : 'Forbidden' },
-    { status, headers: { 'cache-control': 'private, no-store' } },
+    { _tag: tag },
+    {
+      status: tag === 'Unauthorized' ? 401 : 403,
+      headers: { 'cache-control': 'private, no-store' },
+    },
   )
   for (const cookie of setCookies) response.headers.append('set-cookie', cookie)
   return response
@@ -43,6 +51,14 @@ export const staffAccess = <Env extends object>(
   const session = (request: Request, env: Env): Promise<StaffSession | undefined> =>
     Effect.runPromise(
       authenticate(new Headers(request.headers), request.method).pipe(
+        Effect.map(
+          (found) =>
+            found && {
+              user: found.user,
+              passwordConfirmed: found.passwordConfirmed,
+              setCookies: found.setCookies,
+            },
+        ),
         Effect.provide(
           Layer.mergeAll(
             BetterAuth.layer.pipe(Layer.provideMerge(PgFromHyperdrive(options.database(env)))),
@@ -56,14 +72,26 @@ export const staffAccess = <Env extends object>(
     /** The signed-in staff user of `request` with their permissions, or undefined. */
     session,
     /**
-     * Requires `permission` (a catalog key, or `signedIn`). A refusal carries the composed
-     * API's answer: 401 without a session, 403 without the permission.
+     * Requires `permission` (a catalog key, or `signedIn`) and, with `sensitive`, a password
+     * confirmation within the window. A refusal carries the composed API's answer: 401 without
+     * a session, 403 without the permission, 403 `PasswordConfirmationRequired` without a
+     * recent confirmation.
      */
-    async require(request: Request, env: Env, permission: string): Promise<StaffCheck> {
+    async require(
+      request: Request,
+      env: Env,
+      permission: string,
+      { sensitive = false }: { readonly sensitive?: boolean } = {},
+    ): Promise<StaffCheck> {
       const staff = await session(request, env)
-      if (!staff) return { ok: false, response: refusal(401) }
+      if (!staff) return { ok: false, response: refusal('Unauthorized') }
       if (!holdsPolicy(staff.user, permission))
-        return { ok: false, response: refusal(403, staff.setCookies) }
+        return { ok: false, response: refusal('Forbidden', staff.setCookies) }
+      if (sensitive && !staff.passwordConfirmed)
+        return {
+          ok: false,
+          response: refusal('PasswordConfirmationRequired', staff.setCookies),
+        }
       return { ok: true, ...staff }
     },
   }

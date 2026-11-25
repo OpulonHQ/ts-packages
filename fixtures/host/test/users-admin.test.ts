@@ -1,9 +1,11 @@
+import type { Router } from 'vue-router'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import { useTestDatabase } from '../../../test/postgres/index.ts'
 import { hostMessages } from '../admin/messages.ts'
 import { adminModules } from '../admin/modules.ts'
+import { demoAdmin } from '../modules/demo/admin.ts'
 import { useAdminLifetime } from './admin-lifetime.ts'
-import { makeHost, seedUser, tokenFrom } from './support/users.ts'
+import { makeHost, seedUser, sqlQuery, tokenFrom } from './support/users.ts'
 
 // Runs in the `admin` vitest project: the users screens in happy-dom, against the real Worker.
 const lifetime = useAdminLifetime()
@@ -403,4 +405,234 @@ test('Cmd/Ctrl+S sends the invitation from inside its slideover', async () => {
   await expect.poll(admin.text).toContain('The invitation to shortcut@example.test is on its way.')
   expect(field('email')).toBeNull()
   await expect.poll(() => host.mailer.sent.length).toBe(sent + 1)
+})
+
+const prompt = () =>
+  [...document.querySelectorAll<HTMLElement>('[role="dialog"]')].find((dialog) =>
+    dialog.textContent?.includes('Confirm your password'),
+  )
+const stamps = (by: string) =>
+  sqlQuery(db.url, 'select body from demo.note where body = $1', [`Stamped by ${by}`])
+async function openNotes(name: string) {
+  const user = await seedUser(db.url, { name, permissions: ['demo.notes.view'] })
+  const jar = { cookie: await host.signIn(user.email, user.password) }
+  const admin = mountAdmin('/admin/demo/notes', jar)
+  await expect.poll(admin.text).toContain('hello from demo')
+  return { user, admin }
+}
+async function answerPrompt(password: string) {
+  await expect.poll(prompt).toBeDefined()
+  type('password', password)
+  button('Confirm', prompt())!.click()
+}
+
+test('a sensitive action asks for the password, runs once it is right, and does not ask again', async () => {
+  const { user, admin } = await openNotes('Petra')
+  button('Add a stamped note')!.click()
+  await answerPrompt('not the password')
+  await expect.poll(admin.text).toContain('The password is wrong.')
+  expect(await stamps('Petra')).toEqual([])
+
+  await answerPrompt(user.password)
+  await expect.poll(admin.text).toContain('Stamped by Petra')
+  await expect.poll(prompt).toBeUndefined()
+  expect(admin.text()).not.toContain('The note could not be stamped.')
+
+  button('Add a stamped note')!.click()
+  await expect.poll(() => stamps('Petra')).toHaveLength(2)
+  expect(prompt()).toBeUndefined()
+})
+
+test('two sensitive actions waiting at once share one password prompt', async () => {
+  const { user } = await openNotes('Dana')
+  button('Add a stamped note')!.click()
+  button('Add a stamped note')!.click()
+  await lifetime.settled()
+  expect(document.querySelectorAll('input[name="password"]')).toHaveLength(1)
+  await answerPrompt(user.password)
+  await expect.poll(() => stamps('Dana')).toHaveLength(2)
+  await expect.poll(prompt).toBeUndefined()
+})
+
+test('cancelling the password prompt runs nothing and the screen gets the refusal', async () => {
+  const { admin } = await openNotes('Cyril')
+  button('Add a stamped note')!.click()
+  await expect.poll(prompt).toBeDefined()
+  button('Cancel', prompt())!.click()
+  await expect.poll(admin.text).toContain('The note could not be stamped.')
+  await expect.poll(prompt).toBeUndefined()
+  expect(await stamps('Cyril')).toEqual([])
+})
+
+test('leaving the screen closes the password prompt and the action never runs', async () => {
+  const { user, admin } = await openNotes('Lea')
+  button('Add a stamped note')!.click()
+  await expect.poll(prompt).toBeDefined()
+  await admin.text.app.config.globalProperties.$router.push('/')
+  await expect.poll(prompt).toBeUndefined()
+  const confirmed = await host.request('POST', '/users/password-confirmation', {
+    cookie: admin.jar.cookie,
+    body: { password: user.password },
+  })
+  expect(confirmed.status).toBe(204)
+  await lifetime.settled()
+  expect(await stamps('Lea')).toEqual([])
+})
+
+const withNoteRoute = adminModules.map((m) =>
+  m.id === 'demo'
+    ? {
+        ...demoAdmin,
+        routes: [
+          ...demoAdmin.routes,
+          { ...demoAdmin.routes[0]!, name: 'demo.note' as const, path: '/demo/notes/:id' as const },
+        ],
+      }
+    : m,
+)
+/** The Notes screen whose stamp requests number `held` get their first answer only at `release`. */
+async function openNotesHolding(name: string, path: string, held: ReadonlyArray<number>) {
+  const user = await seedUser(db.url, { name, permissions: ['demo.notes.view'] })
+  const jar = { cookie: await host.signIn(user.email, user.password) }
+  const send = host.browserFetch(jar)
+  const gate = lifetime.gate()
+  let stampRequests = 0
+  unmountPrevious()
+  const text = lifetime.mount(path, {
+    buildId: 'b1',
+    modules: withNoteRoute,
+    fetch: async (input, init) => {
+      const holds =
+        new Request(input, init).url.endsWith('/api/demo/stamps') && held.includes(++stampRequests)
+      const response = await send(input, init)
+      if (holds) await gate.park()
+      return response
+    },
+  })
+  unmountPrevious = text.unmount
+  await expect.poll(text).toContain('hello from demo')
+  const router = text.app.config.globalProperties.$router
+  return { user, text, router, release: gate.resolve, requests: () => stampRequests }
+}
+
+test('a query-only navigation closes the password prompt and the action never runs', async () => {
+  const { text, router } = await openNotesHolding('Viera', '/admin/demo/notes', [])
+  button('Add a stamped note')!.click()
+  await expect.poll(prompt).toBeDefined()
+  await router.push('/demo/notes?page=2')
+  await expect.poll(prompt).toBeUndefined()
+  await expect.poll(text).toContain('The note could not be stamped.')
+  await lifetime.settled()
+  expect(await stamps('Viera')).toEqual([])
+})
+
+test('a refusal that arrives after a move to another record of the same route asks nothing', async () => {
+  const { text, router, release, requests } = await openNotesHolding(
+    'Zora',
+    '/admin/demo/notes/1',
+    [1],
+  )
+  button('Add a stamped note')!.click()
+  await expect.poll(requests).toBe(1)
+  await lifetime.settled()
+  await router.push('/demo/notes/2')
+  release()
+  await expect.poll(text).toContain('The note could not be stamped.')
+  await lifetime.settled()
+  expect(prompt()).toBeUndefined()
+  expect(requests()).toBe(1)
+})
+
+test('a refusal that arrives after the password was confirmed is repeated without a second prompt', async () => {
+  const { user, release, requests } = await openNotesHolding('Hana', '/admin/demo/notes', [2])
+  button('Add a stamped note')!.click()
+  button('Add a stamped note')!.click()
+  await answerPrompt(user.password)
+  await expect.poll(() => stamps('Hana')).toHaveLength(1)
+  await expect.poll(prompt).toBeUndefined()
+  release()
+  await expect.poll(() => stamps('Hana')).toHaveLength(2)
+  await lifetime.settled()
+  expect(prompt()).toBeUndefined()
+  expect(requests()).toBe(4)
+})
+
+test('a refusal that arrives after the prompt was cancelled is refused without a second prompt', async () => {
+  const { text, release, requests } = await openNotesHolding('Olga', '/admin/demo/notes', [2])
+  button('Add a stamped note')!.click()
+  button('Add a stamped note')!.click()
+  await expect.poll(prompt).toBeDefined()
+  button('Cancel', prompt())!.click()
+  await expect.poll(text).toContain('The note could not be stamped.')
+  await expect.poll(prompt).toBeUndefined()
+  release()
+  await lifetime.settled()
+  expect(prompt()).toBeUndefined()
+  expect(requests()).toBe(2)
+  expect(await stamps('Olga')).toEqual([])
+})
+
+/**
+ * The Notes screen for a password prompt whose confirmation is answered only once a navigation
+ * `leave` started is pending (held before it resolves, as while a lazy screen loads).
+ */
+async function openNotesLeavingWhileConfirming(name: string, leave: (router: Router) => unknown) {
+  const user = await seedUser(db.url, { name, permissions: ['demo.notes.view'] })
+  const jar = { cookie: await host.signIn(user.email, user.password) }
+  const send = host.browserFetch(jar)
+  const loading = lifetime.gate()
+  const pending = Promise.withResolvers<void>()
+  let stampRequests = 0
+  unmountPrevious()
+  const text = lifetime.mount('/admin/', {
+    buildId: 'b1',
+    fetch: async (input, init) => {
+      const { url } = new Request(input, init)
+      if (url.endsWith('/api/demo/stamps')) stampRequests++
+      const response = await send(input, init)
+      if (url.endsWith('/api/users/password-confirmation') && response.ok) {
+        leave(router)
+        await pending.promise
+      }
+      return response
+    },
+  })
+  unmountPrevious = text.unmount
+  const router: Router = text.app.config.globalProperties.$router
+  await router.push('/demo/notes')
+  await expect.poll(text).toContain('hello from demo')
+  router.beforeResolve(async () => {
+    pending.resolve()
+    await loading.park()
+  })
+  button('Add a stamped note')!.click()
+  await answerPrompt(user.password)
+  await pending.promise
+  await lifetime.settled()
+  return { text, arrive: loading.resolve, requests: () => stampRequests }
+}
+
+test('a query navigation under way when the password is accepted stops the repeat', async () => {
+  const { text, arrive, requests } = await openNotesLeavingWhileConfirming('Ema', (router) =>
+    router.push('/demo/notes?page=2'),
+  )
+  await expect.poll(text).toContain('The note could not be stamped.')
+  arrive()
+  await lifetime.settled()
+  expect(requests()).toBe(1)
+  expect(await stamps('Ema')).toEqual([])
+  expect(prompt()).toBeUndefined()
+})
+
+test('leaving for a screen that is still loading while the password is checked stops the repeat', async () => {
+  const { arrive, requests } = await openNotesLeavingWhileConfirming('Ida', (router) =>
+    router.push('/'),
+  )
+  expect(requests()).toBe(1)
+  arrive()
+  await expect.poll(() => location.pathname).toBe('/admin/')
+  await lifetime.settled()
+  expect(requests()).toBe(1)
+  expect(await stamps('Ida')).toEqual([])
+  expect(prompt()).toBeUndefined()
 })

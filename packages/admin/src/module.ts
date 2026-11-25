@@ -91,6 +91,15 @@ export interface AuthProvider {
     readonly apiPrefix: string
     readonly fetch: typeof globalThis.fetch
   }) => Promise<void>
+  /**
+   * Confirms the session with the user's password, for sensitive actions. Rejects when the
+   * answer is none of the three.
+   */
+  readonly confirmPassword?: (api: {
+    readonly apiPrefix: string
+    readonly fetch: typeof globalThis.fetch
+    readonly password: string
+  }) => Promise<'confirmed' | 'wrong' | 'tooMany'>
   /** Name of a `signedIn` route of the same module: the user's own settings, in the user menu. */
   readonly accountRoute?: string
   /** Saves the user's admin locale (null: the admin default); the shell then reads /me again. */

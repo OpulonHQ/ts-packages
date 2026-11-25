@@ -31,6 +31,7 @@ export interface Env {
   /** Signs session cookies (a secret: `wrangler secret put`). */
   readonly USERS_AUTH_SECRET: string
   readonly DEMO_RESEND_STUB?: string
+  readonly USERS_PASSWORD_CONFIRM_WINDOW?: string
 }
 
 const StubbedEmail = Schema.Struct({
@@ -110,6 +111,10 @@ const serveShop = async (request: Request, env: Env) => {
     return check.ok
       ? privateJson({ viewer: check.user.id, orders: [] }, check.setCookies)
       : check.response
+  }
+  if (pathname === '/shop/refunds' && request.method === 'POST') {
+    const check = await staff.require(request, env, 'shop.orders.view', { sensitive: true })
+    return check.ok ? privateJson({ refundedBy: check.user.id }, check.setCookies) : check.response
   }
   return undefined
 }

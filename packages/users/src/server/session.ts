@@ -1,4 +1,4 @@
-import { Effect } from 'effect'
+import { Duration, Effect } from 'effect'
 import { loadAccess } from './access.ts'
 import { BetterAuth, usersConfig } from './auth.ts'
 
@@ -18,5 +18,15 @@ export const authenticate = Effect.fn('Users.authenticate')(function* (
   const session = yield* (yield* BetterAuth).session(headers)
   if (!session) return undefined
   const access = yield* loadAccess(session.userId)
-  return access?.active ? { user: access.user, setCookies: session.setCookies } : undefined
+  if (!access?.active) return undefined
+  const { passwordConfirmWindow } = yield* Effect.orDie(usersConfig)
+  const confirmedAt = session.passwordConfirmedAt?.getTime()
+  return {
+    user: access.user,
+    sessionId: session.id,
+    passwordConfirmed:
+      confirmedAt !== undefined &&
+      Date.now() - confirmedAt < Duration.toMillis(passwordConfirmWindow),
+    setCookies: session.setCookies,
+  }
 })

@@ -7,6 +7,8 @@ export default {
     empty: 'Zatiaľ žiadne poznámky.',
     failed: 'Poznámky sa nepodarilo načítať.',
     count: 'Poznámky',
+    stamp: 'Pridať opečiatkovanú poznámku',
+    stampFailed: 'Poznámku sa nepodarilo opečiatkovať.',
   },
   permissions: { 'demo.notes.view': 'Zobraziť poznámky' },
 }

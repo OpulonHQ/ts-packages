@@ -36,7 +36,14 @@ export const CachePurgeStatus = Schema.Struct({
 })
 export type CachePurgeStatus = typeof CachePurgeStatus.Type
 
-export { Authorization, CurrentUser, Policy, Public } from './authz.ts'
+export {
+  Authorization,
+  CurrentUser,
+  PasswordConfirmationRequired,
+  Policy,
+  Public,
+  Sensitive,
+} from './authz.ts'
 
 export const corePermissions = ['core.audit.view'] as const
 

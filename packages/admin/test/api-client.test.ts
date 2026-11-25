@@ -18,6 +18,7 @@ const mountReader = (
   fetch: typeof globalThis.fetch,
   seen: Array<string>,
   options?: { detached: boolean },
+  confirmPassword?: () => Promise<boolean>,
 ) => {
   let read = () => {}
   const app = createApp(
@@ -31,7 +32,19 @@ const mountReader = (
       return () => h('p')
     }),
   )
-  app.provide(apiContextKey, { apiPrefix: '/api', fetch })
+  app.provide(apiContextKey, {
+    apiPrefix: '/api',
+    fetch,
+    ...(confirmPassword && {
+      passwordTicket: () => {
+        let confirmed = false
+        return {
+          answered: async () => void (confirmed = await confirmPassword()),
+          maySendAgain: () => confirmed,
+        }
+      },
+    }),
+  })
   const root = document.createElement('div')
   app.mount(root)
   onTestFinished(() => app.unmount())
@@ -68,4 +81,46 @@ test('a detached runner settles after the component unmounted', async () => {
   app.unmount()
   release()
   await expect.poll(() => seen).toEqual(['failure'])
+})
+
+const refusingOnce = () => {
+  const answers = [
+    Response.json({ _tag: 'PasswordConfirmationRequired' }, { status: 403 }),
+    new Response('{}', { status: 500, headers: { 'content-type': 'application/json' } }),
+  ]
+  return vi.fn(async () => answers.shift()!)
+}
+
+test('a request refused for a password confirmation is sent again once the user confirmed', async () => {
+  const fetch = refusingOnce()
+  const seen: Array<string> = []
+  const { read } = mountReader(fetch, seen, undefined, async () => true)
+  read()
+  await expect.poll(() => seen).toEqual(['failure'])
+  expect(fetch).toHaveBeenCalledTimes(2)
+})
+
+test('a request is not sent again when the user declines to confirm', async () => {
+  const fetch = refusingOnce()
+  const seen: Array<string> = []
+  const { read } = mountReader(fetch, seen, undefined, async () => false)
+  read()
+  await expect.poll(() => seen).toEqual(['failure'])
+  expect(fetch).toHaveBeenCalledTimes(1)
+})
+
+test('a request is not sent again when its component unmounted before the user confirmed', async () => {
+  const fetch = refusingOnce()
+  const seen: Array<string> = []
+  const confirmed = Promise.withResolvers<boolean>()
+  const confirmPassword = vi.fn(() => confirmed.promise)
+  const { app, read } = mountReader(fetch, seen, undefined, confirmPassword)
+  read()
+  await expect.poll(() => confirmPassword.mock.calls.length).toBe(1)
+  app.unmount()
+  confirmed.resolve(true)
+  // eslint-disable-next-line tests/no-sleep -- proves the request is never repeated
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  expect(fetch).toHaveBeenCalledTimes(1)
+  expect(seen).toEqual([])
 })

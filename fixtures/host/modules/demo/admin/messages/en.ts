@@ -7,6 +7,8 @@ export default {
     empty: 'No notes yet.',
     failed: 'Notes could not be loaded.',
     count: 'Notes',
+    stamp: 'Add a stamped note',
+    stampFailed: 'The note could not be stamped.',
   },
   permissions: { 'demo.notes.view': 'View notes' },
 }
