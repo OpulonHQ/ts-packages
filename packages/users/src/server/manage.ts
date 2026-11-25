@@ -13,6 +13,7 @@ import { BadRequest, Conflict, Forbidden, NotFound } from 'effect/http-api/HttpA
 import { SqlClient } from 'effect/sql/SqlClient'
 import { Refused, type RoleInfo, superAdminRole, UserList, type UserQuery } from '../api.ts'
 import { type Access, canGrant, loadAccess, lockAccessWrites, outranks } from './access.ts'
+import { isSignInEmail, normalizeEmail } from './invitations.ts'
 
 /** Permissions nobody may take from themselves (no self-lockout). */
 const lockoutKeys = ['users.manage', 'users.roles.manage'] as const
@@ -38,6 +39,18 @@ export class UserManagement extends Context.Service<
     readonly updateRole: (
       id: string,
       input: { readonly name: string; readonly permissions: ReadonlyArray<string> },
+    ) => Effect.Effect<void, BadRequest | Conflict | NotFound | Forbidden | Refused, CurrentUser>
+    /** Deletes a role nobody holds, deactivated users included; `Conflict` while one does. */
+    readonly deleteRole: (
+      id: string,
+    ) => Effect.Effect<void, Conflict | NotFound | Forbidden | Refused, CurrentUser>
+    /**
+     * Sets a user's name and email. A changed email ends that user's sessions and cancels the
+     * password reset links already sent to the old address.
+     */
+    readonly updateUser: (
+      userId: string,
+      input: { readonly name: string; readonly email: string },
     ) => Effect.Effect<void, BadRequest | Conflict | NotFound | Forbidden | Refused, CurrentUser>
     readonly assignRoles: (
       userId: string,
@@ -249,6 +262,60 @@ export class UserManagement extends Context.Service<
                   subject: { type: 'role', id, label: input.name },
                   changes,
                 })
+            }),
+          )
+        }),
+
+        deleteRole: Effect.fn('UserManagement.deleteRole')(function* (id) {
+          return yield* guarded('users.roles.manage', (actor, catalog) =>
+            Effect.gen(function* () {
+              const [role] = yield* rolesById([id])
+              if (!role) return yield* new NotFound()
+              if (role.built_in) return yield* new Refused({ reason: 'built_in' })
+              if (!canGrant(actor, role, catalog))
+                return yield* new Refused({ reason: 'escalation' })
+              const held = yield* sql`select 1 from users.user_role where role_id = ${id} limit 1`
+              if (held.length > 0) return yield* new Conflict()
+              yield* sql`delete from users.role where id = ${id}`
+              yield* Audit.record({
+                action: 'users.role_deleted',
+                subject: { type: 'role', id, label: role.name },
+                changes: [
+                  { field: 'name', from: role.name, to: null },
+                  { field: 'permissions', from: permissionList(role.permissions), to: null },
+                ],
+              })
+            }),
+          )
+        }),
+
+        updateUser: Effect.fn('UserManagement.updateUser')(function* (userId, input) {
+          const email = normalizeEmail(input.email)
+          if (!isSignInEmail(email)) return yield* new BadRequest()
+          return yield* guarded('users.manage', (actor) =>
+            Effect.gen(function* () {
+              const subject = yield* target(actor, userId)
+              const changes = diffFields(
+                { name: subject.user.name, email: subject.user.email },
+                { name: input.name, email },
+                ['name', 'email'],
+              )
+              if (changes.length === 0) return
+              const taken = yield* sql`select 1 from users."user"
+                where email = ${email} and id <> ${userId}`
+              if (taken.length > 0) return yield* new Conflict()
+              yield* sql`update users."user"
+                set name = ${input.name}, email = ${email}, updated_at = now()
+                where id = ${userId}`
+              if (email !== subject.user.email) {
+                yield* sql`delete from users.session where user_id = ${userId}`
+                yield* sql`delete from users.verification where value = ${userId}`
+              }
+              yield* Audit.record({
+                action: 'users.updated',
+                subject: { type: 'user', id: userId, label: email },
+                changes,
+              })
             }),
           )
         }),

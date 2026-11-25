@@ -15,7 +15,7 @@ import {
 } from '../api.ts'
 import { lockAccessWrites } from './access.ts'
 import { BetterAuth } from './auth.ts'
-import { createInvitation } from './invitations.ts'
+import { createInvitation, isEmailAddress, normalizeEmail } from './invitations.ts'
 import createUsers from './migrations/0001_create_users.ts'
 import guardSessionInsert from './migrations/0002_guard_session_insert.ts'
 import onePendingInvitation from './migrations/0003_one_pending_invitation.ts'
@@ -54,8 +54,8 @@ const noStore = HttpEffect.appendPreResponseHandler((_request, response) =>
 const inviteSuperAdmin = (email: string) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient
-    const address = email.trim().toLowerCase()
-    if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(address))
+    const address = normalizeEmail(email)
+    if (!isEmailAddress(address))
       return yield* Effect.fail(new Error(`not an email address: ${email}`))
     const invitation = yield* withTransaction(
       Effect.gen(function* () {
@@ -137,7 +137,16 @@ export const users = () =>
                   users.confirmPassword(headers, payload.password),
                 ),
               )
+              .handle('changePassword', ({ payload }) =>
+                Effect.flatMap(requestHeaders, ({ headers }) =>
+                  users.changePassword(headers, payload),
+                ),
+              )
               .handle('invite', ({ payload }) => users.invite(payload))
+              .handle('invitations', () => users.invitations())
+              .handle('revokeInvitation', ({ params }) => users.revokeInvitation(params.id))
+              .handle('resendInvitation', ({ params }) => users.resendInvitation(params.id))
+              .handle('updateUser', ({ params, payload }) => manage.updateUser(params.id, payload))
               .handle('users', ({ query }) => manage.users(query))
               .handle('assignRoles', ({ params, payload }) =>
                 manage.assignRoles(params.id, payload.roleIds),
@@ -150,6 +159,7 @@ export const users = () =>
               .handle('roles', () => manage.roles())
               .handle('createRole', ({ payload }) => manage.createRole(payload))
               .handle('updateRole', ({ params, payload }) => manage.updateRole(params.id, payload))
+              .handle('deleteRole', ({ params }) => manage.deleteRole(params.id))
           }),
         ),
       ),

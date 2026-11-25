@@ -7,7 +7,9 @@ A Super admin creates roles from permissions, invites users with roles, edits a 
 - `roles` New role -> Name + permission checkboxes -> Save -> `The role is saved.`
 - `invite` Invite (toggles an inline form) -> Email + role checkboxes -> Send the invitation -> `The invitation to <email> is on its way.` and a `users.invitation` email.
 - `invite-taken` inviting an existing user's email -> `A user with this email already exists.`
-- `user-roles` on `/admin/users/:id`, Save roles -> `The roles are saved.`; deactivation there too.
+- `user-roles` on `/admin/users/:id`, Save roles -> `The roles are saved.`; deactivation there too; `Save the name and email` -> `The name and email are saved.`
+- `invitations` under the users table: `Open invitations` with `Send again` and `Revoke` per row.
+- `role-delete` a role row -> `Delete` -> `Delete the role` -> `The role is deleted.`
 - `account` `/admin/account` (page title My account): name, password, admin language.
 
 ## How to get to it (user POV)
@@ -23,10 +25,13 @@ Preconditions: a Super admin session (smoke owner).
 - **Role + invite + taken + email.** `$V/ui.sh .claude/skills/verify-host/journeys/users-and-roles.mjs email=<owner> 'password=smoke password <run>'`. Proves: `POST /api/users/roles` 200 and `role=status` `The role is saved.`; invite with that role `POST /api/users/invitations` 200 and the status text; inviting the owner's email shows the `role=alert` taken message; the Email log screen lists the invitee and `/api/emails/log` has a `users.invitation` row, status `sent`.
 - **Host permission.** `$V/ui.sh .claude/skills/verify-host/journeys/host-permissions.mjs email=<owner> 'password=smoke password <run>'`. Proves: the New role form lists the fixture's own key `shop.orders.view` as `View orders` in the `Shop` group; a role saved with it stores that key (`GET /api/users/roles`); the host routes outside the composed API answer the signed-in owner (`GET /shop/orders` 200, `GET /shop/staff` with the permission) and answer `GET /shop/orders` 401 `{"_tag":"Unauthorized"}` without a cookie.
 - **Password confirmation.** `$V/ui.sh .claude/skills/verify-host/journeys/password-confirmation.mjs email=<owner> 'password=smoke password <run>'` (the `password` argument is required: the journey types it into the dialog). Needs a session that has not confirmed in the last 5 minutes. Proves: `POST /shop/refunds` and `POST /api/demo/stamps` answer 403 `PasswordConfirmationRequired`; Notes -> `Add a stamped note` opens the `Confirm your password` dialog; a wrong password shows `The password is wrong.` (403); the right one closes the dialog and the note appears; a second stamp runs with no dialog; `POST /shop/refunds` then answers 200.
+- **Staff management.** `$V/ui.sh .claude/skills/verify-host/journeys/staff-management.mjs email=<owner> 'password=smoke password <run>'` (both arguments required). Proves: an invitation appears under `Open invitations`, `Send again` answers 200 and `Revoke` 204 and the row leaves; a role is deleted from its editor (`DELETE /api/users/roles/:id` 204); on My account a wrong current password shows `The current password is wrong.` (403), the right one changes the password (204) and a second browser context signed in before loses its session; the user screen saves a new name (204), and a new email signs the owner out, who signs in with the new address. The journey puts the password and the email back, and `/api/audit` lists the five new events. It ends signed out.
 - **Restricted role.** Needs a second signed-in account, which needs an accept link (see sign-in Gotchas): not drivable on a host with a Super admin unless the invitation is bootstrapped from the CLI on a fresh database.
 
 ## Gotchas
 
+- `PUT /api/users/password` shares 5 attempts a minute per client address with the password confirmation. The staff-management journey uses three, so leave a minute between two runs, and a minute after the password-confirmation journey.
+- After a manager changes their own email the shell lands on sign-in with no redirect back; the journey opens the user screen again itself.
 - Messages are inline `role=status` / `role=alert` paragraphs, not toasts.
 - `getByLabel('Name')` / `getByLabel('Email')` also match the table's `Sort by Name` / `Sort by Email` buttons; use `getByRole('textbox', { name: ... })`.
 - `Invite` toggles the inline form and it stays open after sending; clicking `Invite` again closes it.

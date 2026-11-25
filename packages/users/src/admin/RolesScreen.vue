@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useAdmin, useCloseGuard, useI18n, useUnsavedChanges } from '@opulonjs/admin'
 import { humanize, UButton, UCheckbox, UForm, USlideover } from '@opulonjs/ui'
+import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
 import DataTable from '@opulonjs/ui/components/DataTable'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
 import FieldText from '@opulonjs/ui/components/Field/Text'
@@ -23,6 +24,7 @@ const editing = ref<RoleForm>()
 const opened = shallowRef<RoleForm>()
 const notice = ref<{ error: boolean; text: string }>()
 const busy = ref(false)
+const deleting = ref(false)
 const formId = useId()
 
 const comparable = (form: RoleForm | undefined) =>
@@ -112,12 +114,29 @@ async function save() {
     notice.value = { error: false, text: t('users.roles.saved') }
     await load()
   } catch (error) {
-    const tag = (error as { _tag?: string } | undefined)?._tag
     notice.value = {
       error: true,
-      text: t(tag === 'Conflict' ? 'users.roles.nameTaken' : failureKey(error)),
+      text: t(failureKey(error, { Conflict: 'users.roles.nameTaken' })),
     }
   } finally {
+    busy.value = false
+  }
+}
+
+async function remove() {
+  const id = editing.value?.id
+  if (!id) return
+  busy.value = true
+  notice.value = undefined
+  try {
+    await users((c) => c.deleteRole({ params: { id } }))
+    show(undefined)
+    notice.value = { error: false, text: t('users.roles.deleted') }
+    await load()
+  } catch (error) {
+    notice.value = { error: true, text: t(failureKey(error, { Conflict: 'users.roles.held' })) }
+  } finally {
+    deleting.value = false
     busy.value = false
   }
 }
@@ -199,6 +218,15 @@ async function save() {
       <template #footer>
         <div class="flex w-full justify-end gap-2">
           <UButton
+            v-if="editing?.id"
+            class="mr-auto"
+            color="error"
+            variant="soft"
+            :label="t('users.roles.delete')"
+            :disabled="busy"
+            @click="deleting = true"
+          />
+          <UButton
             color="neutral"
             variant="ghost"
             :label="t('users.roles.cancel')"
@@ -209,5 +237,14 @@ async function save() {
         </div>
       </template>
     </USlideover>
+    <ConfirmDialog
+      v-model:open="deleting"
+      :title="t('users.roles.confirmTitle')"
+      :description="t('users.roles.confirmText', { name: opened?.name ?? '' })"
+      :confirm-label="t('users.roles.confirm')"
+      :loading="busy"
+      danger
+      @confirm="remove"
+    />
   </section>
 </template>
