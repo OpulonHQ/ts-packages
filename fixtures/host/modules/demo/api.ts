@@ -25,6 +25,12 @@ export const DemoGroup = HttpApiGroup.make('demo')
     ),
   )
   .add(
+    HttpApiEndpoint.get('searchNotes', '/notes/search', {
+      query: Schema.Struct({ q: Schema.String }),
+      success: Schema.Array(Note),
+    }).annotate(Policy, 'demo.notes.view'),
+  )
+  .add(
     HttpApiEndpoint.get('ticks', '/ticks', { success: Schema.Array(Tick) }).annotate(
       Policy,
       'demo.notes.view',
