@@ -1,6 +1,3 @@
-// Type-level tests, checked by `pnpm typecheck` (not run by vitest): the English permission and
-// audit labels must cover the `/api` catalogs, or the admin module does not compile. Other
-// languages are optional and may be partial.
 import { defineAdminModule, type ShellPermissionLabels } from '@opulonjs/admin'
 import { corePermissions } from '@opulonjs/core/api'
 import { expectTypeOf } from 'vitest'

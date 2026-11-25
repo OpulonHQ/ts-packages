@@ -1,5 +1,4 @@
 <script setup lang="ts">
-/** Picks an admin locale (or the admin default) from the locales the host offers. */
 import { useAdmin, useI18n } from '@opulonjs/admin'
 import { languageName, UButton } from '@opulonjs/ui'
 import { computed } from 'vue'
