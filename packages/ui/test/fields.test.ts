@@ -6,7 +6,7 @@ import FieldRelation from '@opulonjs/ui/components/Field/Relation'
 import { expect, test } from 'vitest'
 import { createApp, defineComponent, h, nextTick, ref, type Component, type Ref } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
-import { type SelectItem, UApp, UForm, uiPlugin } from '../src/index.ts'
+import { nuxtUiSk, type SelectItem, UApp, UForm, uiPlugin } from '../src/index.ts'
 
 type Finished = (fn: () => void) => void
 
@@ -14,7 +14,7 @@ const mount = <Value>(
   field: Component,
   props: Record<string, unknown>,
   onTestFinished: Finished,
-  { locale, value }: { locale?: unknown; value?: Value } = {},
+  { locale, value }: { locale?: typeof nuxtUiSk; value?: Value } = {},
 ) => {
   const model = ref(value ?? null) as Ref<Value | null>
   const errors = ref<Array<{ name: string; message: string }>>([])
@@ -162,7 +162,6 @@ test('Field/Money refuses text that is not an amount of the currency and says wh
 })
 
 test('Field/Money shows the decimal separator of the admin locale', async ({ onTestFinished }) => {
-  const { nuxtUiSk } = await import('../src/index.ts')
   const field = mount<number>(FieldMoney, { currency: 'EUR' }, onTestFinished, {
     value: 1250,
     locale: nuxtUiSk,

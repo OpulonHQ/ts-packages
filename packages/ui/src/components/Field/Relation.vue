@@ -30,8 +30,8 @@ const picked = shallowRef<SelectItem>()
 const selected = computed(() =>
   [picked.value, props.item, ...found.value].find((item) => item?.value === model.value),
 )
-function pick(item: SelectItem | undefined) {
-  picked.value = item
+function pick(item: SelectItem | null | undefined) {
+  picked.value = item ?? undefined
   model.value = item?.value ?? null
 }
 

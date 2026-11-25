@@ -167,10 +167,11 @@ function setFilter(key: string, value: string | number | undefined) {
   page.value = 1
 }
 function setDate(key: string, end: keyof DateRange, value: string) {
-  const { [key]: range, ...rest } = dateRanges.value
-  const { [end]: _, ...other } = range ?? {}
-  const next = value === '' ? other : { ...other, [end]: value }
-  dateRanges.value = Object.keys(next).length > 0 ? { ...rest, [key]: next } : rest
+  const { from, to }: DateRange = { ...dateRanges.value[key], [end]: value }
+  const next = { ...dateRanges.value }
+  if (from || to) next[key] = { ...(from && { from }), ...(to && { to }) }
+  else delete next[key]
+  dateRanges.value = next
   page.value = 1
 }
 const filtered = computed(
