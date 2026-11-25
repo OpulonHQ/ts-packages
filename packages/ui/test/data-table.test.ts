@@ -322,3 +322,26 @@ test('reorder is off while the next page loads and the previous page still shows
   table.asked[1]!.answer({ rows: dated.slice(2), total: 3 })
   await expect.poll(titles).toEqual(['Charlie'])
 })
+
+test('a drag that spans a page change moves nothing: its row no longer shows', async ({
+  onTestFinished,
+}) => {
+  const delta = { title: 'Delta', created: '2026-11-25T00:00:00' }
+  const table = serverTable(onTestFinished, { perPage: 2 })
+  await expect.poll(() => table.asked.length).toBe(1)
+  table.asked[0]!.answer({ rows: dated.slice(0, 2), total: 4 })
+  await expect.poll(titles).toEqual(['Alpha', 'Bravo'])
+  document
+    .querySelectorAll('tbody tr')[1]!
+    .querySelector('[draggable]')!
+    .dispatchEvent(new Event('dragstart', { bubbles: true }))
+  ;[...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === '2')!.click()
+  await expect.poll(() => table.asked.length).toBe(2)
+  table.asked[1]!.answer({ rows: [dated[2]!, delta], total: 4 })
+  await expect.poll(titles).toEqual(['Charlie', 'Delta'])
+  document
+    .querySelectorAll('tbody tr')[0]!
+    .dispatchEvent(new Event('drop', { bubbles: true, cancelable: true }))
+  expect(table.orders).toEqual([])
+  expect(titles()).toEqual(['Charlie', 'Delta'])
+})

@@ -31,6 +31,7 @@ import {
   onMounted,
   ref,
   shallowRef,
+  toRaw,
   useSlots,
   useTemplateRef,
   watch,
@@ -212,7 +213,7 @@ const clearSelection = () => (rowSelection.value = {})
 
 const root = useTemplateRef<HTMLElement>('root')
 const announcement = ref('')
-const dragged = ref<number>()
+const dragged = shallowRef<Row>()
 const dropTarget = ref<number>()
 const labelOf = (row: Row) =>
   props.rowLabel?.(row) ?? String(getPath(row, props.columns[0]?.key ?? '') ?? '')
@@ -220,21 +221,25 @@ const canReorder = computed(
   () =>
     !filtered.value && sortState.value === null && (!props.load || answered.value === query.value),
 )
-function move(from: number, to: number) {
-  if (from === to || !canReorder.value) return
-  const before = (page.value - 1) * props.perPage
-  const offset = props.load ? 0 : before
+const indexIn = (rows: ReadonlyArray<Row>, row: Row) =>
+  rows.findIndex((other) => toRaw(other) === toRaw(row))
+function move(row: Row, target: Row | undefined) {
+  const shown = current.value.rows
+  if (!canReorder.value || !target || toRaw(row) === toRaw(target)) return
+  if (indexIn(shown, row) < 0 || indexIn(shown, target) < 0) return
   const rows = [...(props.load ? loaded.value.rows : (props.rows ?? []))]
-  const [row] = rows.splice(offset + from, 1)
-  if (!row) return
-  rows.splice(offset + to, 0, row)
+  const to = indexIn(rows, target)
+  const [moved] = rows.splice(indexIn(rows, row), 1)
+  rows.splice(to, 0, moved!)
   if (props.load) loaded.value = { ...loaded.value, rows }
   emit('reorder', rows)
-  announcement.value = text.value.movedTo(labelOf(row), before + to + 1, current.value.total)
+  const position = (props.load ? (page.value - 1) * props.perPage : 0) + to + 1
+  announcement.value = text.value.movedTo(labelOf(row), position, current.value.total)
 }
-async function step(index: number, direction: 'up' | 'down') {
-  const to = direction === 'up' ? index - 1 : index + 1
-  move(index, to)
+async function step(row: Row, direction: 'up' | 'down') {
+  const shown = current.value.rows
+  const to = indexIn(shown, row) + (direction === 'up' ? -1 : 1)
+  move(row, shown[to])
   await nextTick()
   const buttons = [
     ...(root.value?.querySelectorAll<HTMLButtonElement>(
@@ -248,12 +253,12 @@ const rowIndex = (event: Event) => {
   const row = (event.target as Element).closest('tbody tr')
   return row?.parentElement ? [...row.parentElement.children].indexOf(row) : undefined
 }
-function onDragStart(event: DragEvent, index: number) {
-  dragged.value = index
+function onDragStart(event: DragEvent, row: Row) {
+  dragged.value = row
   if (!event.dataTransfer) return
   event.dataTransfer.effectAllowed = 'move'
-  const row = (event.target as Element).closest('tr')
-  if (row) event.dataTransfer.setDragImage(row, 0, 0)
+  const element = (event.target as Element).closest('tr')
+  if (element) event.dataTransfer.setDragImage(element, 0, 0)
 }
 function onDragOver(event: DragEvent) {
   const index = rowIndex(event)
@@ -265,7 +270,7 @@ function onDrop(event: DragEvent) {
   const index = rowIndex(event)
   if (dragged.value !== undefined && index !== undefined) {
     event.preventDefault()
-    move(dragged.value, index)
+    move(dragged.value, current.value.rows[index])
   }
   onDragEnd()
 }
@@ -286,7 +291,7 @@ const moveButton = (row: Row, index: number, direction: 'up' | 'down') =>
       (direction === 'up' ? index === 0 : index === current.value.rows.length - 1),
     onClick: (event: Event) => {
       event.stopPropagation()
-      void step(index, direction)
+      void step(row, direction)
     },
   })
 
@@ -332,7 +337,7 @@ const tableColumns = computed<TableColumn<Row>[]>(() => [
                   class: canReorder.value
                     ? 'flex cursor-grab p-1 text-dimmed hover:text-default'
                     : 'flex p-1 text-dimmed opacity-50',
-                  onDragstart: (event: DragEvent) => onDragStart(event, row.index),
+                  onDragstart: (event: DragEvent) => onDragStart(event, row.original),
                   onDragend: onDragEnd,
                 },
                 h(UIcon, { name: 'i-lucide-grip-vertical', class: 'size-4' }),

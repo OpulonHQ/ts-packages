@@ -36,6 +36,7 @@ export const formatBytes = (bytes: number, locale: string): string => {
   return new Intl.NumberFormat(locale, {
     style: 'unit',
     unit: units[power],
+    unitDisplay: power === 0 ? 'long' : 'short',
     maximumFractionDigits: 1,
   }).format(bytes / 1024 ** power)
 }

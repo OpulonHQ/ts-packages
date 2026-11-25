@@ -14,18 +14,31 @@ const mount = <Value>(
   field: Component,
   props: Record<string, unknown>,
   onTestFinished: Finished,
-  { locale, value }: { locale?: typeof nuxtUiSk; value?: Value } = {},
+  {
+    locale,
+    value,
+    form = {},
+  }: { locale?: typeof nuxtUiSk; value?: Value; form?: Record<string, unknown> } = {},
 ) => {
   const model = ref(value ?? null) as Ref<Value | null>
   const errors = ref<Array<{ name: string; message: string }>>([])
   const submitted = ref(0)
+  const data = ref<unknown>()
   const fieldProps = ref(props)
   const root = defineComponent(
     () => () =>
       h(UApp, { locale }, () =>
         h(
           UForm,
-          { state: {}, validate: () => errors.value, onSubmit: () => void submitted.value++ },
+          {
+            state: {},
+            validate: () => errors.value,
+            onSubmit: (event: { data: unknown }) => {
+              submitted.value++
+              data.value = event.data
+            },
+            ...form,
+          },
           () =>
             h(field, {
               name: 'value',
@@ -56,6 +69,7 @@ const mount = <Value>(
       input.dispatchEvent(new Event('input'))
     },
     submitted,
+    data,
     submit: () =>
       document
         .querySelector('form')!
@@ -160,27 +174,59 @@ test('Field/Money takes the number of decimals from the currency', async ({ onTe
   await expect.poll(() => field.model.value).toBe(1500)
 })
 
-test('Field/Money keeps the last amount and blocks saving while the text is not an amount', async ({
+test('Field/Money refuses an edit that is not an amount, so the text always is the model', async ({
   onTestFinished,
 }) => {
   const field = mount<number>(FieldMoney, { currency: 'EUR' }, onTestFinished, { value: 100 })
-  for (const typed of ['1.234', '1 000', '1e3', 'abc', '90071992547409.92']) {
-    field.type('5')
-    await expect.poll(() => field.model.value).toBe(500)
+  field.type('5')
+  await expect.poll(() => field.model.value).toBe(500)
+  for (const typed of ['1.234', '1 000', '1e3', 'abc', '90071992547409.92', '.5']) {
     field.type(typed)
-    await expect.poll(field.text).toContain('Enter an amount with up to 2 decimal places.')
+    await expect.poll(() => field.input().value).toBe('5')
     expect(field.model.value).toBe(500)
-    expect(field.input().value).toBe(typed)
+    expect(field.input().getAttribute('aria-invalid')).not.toBe('true')
   }
-  field.submit()
-  await expect.poll(() => field.input().getAttribute('aria-invalid')).toBe('true')
+  field.type('-')
+  await expect.poll(() => field.model.value).toBeNull()
+  expect(field.input().value).toBe('-')
+  field.type('-2')
+  await expect.poll(() => field.model.value).toBe(-200)
+})
+
+test('Field/Money shows the saved amount after Discard, whatever was typed before', async ({
+  onTestFinished,
+}) => {
+  const field = mount<number>(FieldMoney, { currency: 'EUR' }, onTestFinished, { value: 100 })
+  field.type('1.234')
   await nextTick()
-  expect(field.submitted.value).toBe(0)
-  field.type('2')
-  await expect.poll(field.text).not.toContain('Enter an amount')
+  field.model.value = 100
+  await expect.poll(() => field.input().value).toBe('1.00')
+  expect(field.input().getAttribute('aria-invalid')).not.toBe('true')
+  field.type('7')
+  await expect.poll(() => field.model.value).toBe(700)
+  field.model.value = 100
+  await expect.poll(() => field.input().value).toBe('1.00')
+})
+
+test('Field/Money leaves the submit data of a schema-backed form to the schema', async ({
+  onTestFinished,
+}) => {
+  const schema = {
+    '~standard': {
+      version: 1,
+      vendor: 'test',
+      validate: (value: { note: string }) => ({ value: { note: value.note.trim() } }),
+    },
+  }
+  const field = mount<number>(FieldMoney, { currency: 'EUR' }, onTestFinished, {
+    value: 100,
+    form: { state: { note: ' kept ' }, schema },
+  })
+  await nextTick()
+  await nextTick()
   field.submit()
   await expect.poll(() => field.submitted.value).toBe(1)
-  expect(field.model.value).toBe(200)
+  expect(field.data.value).toEqual({ note: 'kept' })
 })
 
 test('Field/Money shows the decimal separator of the admin locale', async ({ onTestFinished }) => {
@@ -214,6 +260,67 @@ test('Field/File reports the picked file and shows its name', async ({ onTestFin
   document.querySelector<HTMLButtonElement>('button[aria-label="Remove notes.TXT"]')!.click()
   await expect.poll(() => field.model.value).toBeNull()
 })
+
+test('Field/File empties the native input after a pick, so only the model says which file shows', async ({
+  onTestFinished,
+}) => {
+  const field = mount<File>(FieldFile, {}, onTestFinished)
+  const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
+  const emptied: Array<string> = []
+  Object.defineProperty(input, 'value', { get: () => '', set: (next) => emptied.push(next) })
+  const saved = new File(['a'], 'saved.pdf', { type: 'application/pdf' })
+  pick(saved)
+  await expect.poll(() => field.model.value).toBe(saved)
+  expect(emptied).toEqual([''])
+  pick(new File(['b'], 'replacement.pdf', { type: 'application/pdf' }))
+  await expect.poll(field.text).toContain('replacement.pdf')
+  expect(emptied).toEqual(['', ''])
+  field.model.value = saved
+  await expect.poll(field.text).toContain('saved.pdf')
+  expect(field.text()).not.toContain('replacement.pdf')
+})
+
+test('Field/File ends a refusal when the file is removed or another one is picked', async ({
+  onTestFinished,
+}) => {
+  const field = mount<File>(FieldFile, { maxSize: 4 }, onTestFinished)
+  const input = () => document.querySelector<HTMLInputElement>('input[type="file"]')!
+  const small = new File(['ok'], 'small.txt', { type: 'text/plain' })
+  pick(small)
+  await expect.poll(() => field.model.value).toBe(small)
+  pick(new File(['too large'], 'large.txt', { type: 'text/plain' }))
+  await expect.poll(() => input().getAttribute('aria-invalid')).toBe('true')
+  expect(field.model.value).toBe(small)
+  document.querySelector<HTMLButtonElement>('button[aria-label="Remove small.txt"]')!.click()
+  await expect.poll(() => field.model.value).toBeNull()
+  await expect.poll(() => input().getAttribute('aria-invalid')).toBe('false')
+  expect(field.text()).not.toContain('larger than')
+  pick(new File(['too large'], 'large.txt', { type: 'text/plain' }))
+  await expect.poll(() => input().getAttribute('aria-invalid')).toBe('true')
+  pick(small)
+  await expect.poll(() => input().getAttribute('aria-invalid')).toBe('false')
+})
+
+for (const [how, fieldProps, form] of [
+  ['the field', { disabled: true }, {}],
+  ['the form', {}, { disabled: true }],
+] as const)
+  test(`Remove and Clear are disabled with ${how}`, async ({ onTestFinished }) => {
+    const file = new File(['a'], 'a.txt', { type: 'text/plain' })
+    mount<File>(FieldFile, fieldProps, onTestFinished, { value: file, form })
+    expect(
+      document.querySelector<HTMLButtonElement>('button[aria-label="Remove a.txt"]')!.disabled,
+    ).toBe(true)
+    mount<number>(
+      FieldRelation,
+      { search: noItems, item: { label: 'Cid', value: 3 }, ...fieldProps },
+      onTestFinished,
+      { value: 3, form },
+    )
+    expect(
+      document.querySelector<HTMLButtonElement>('button[aria-label="Clear Label"]')!.disabled,
+    ).toBe(true)
+  })
 
 test('Field/File refuses a file over the size limit or of another type and says why', async ({
   onTestFinished,
@@ -362,6 +469,39 @@ test('Field/Relation has a named button that clears an optional value', async ({
   clear()!.click()
   await expect.poll(() => field.model.value).toBeNull()
   await expect.poll(clear).toBeNull()
+})
+
+test('Field/Relation offers nothing on reopening until the new request answers', async ({
+  onTestFinished,
+}) => {
+  const asked: Array<{ term: string; answer: (items: ReadonlyArray<SelectItem>) => void }> = []
+  mount<number>(
+    FieldRelation,
+    {
+      search: (term: string) =>
+        new Promise<ReadonlyArray<SelectItem>>((answer) => asked.push({ term, answer })),
+    },
+    onTestFinished,
+  )
+  open()
+  await expect.poll(() => asked.length).toBe(1)
+  asked[0]!.answer([{ label: 'Ann', value: 1 }])
+  await expect.poll(options).toEqual(['Ann'])
+  search('be')
+  await expect.poll(() => asked.length).toBe(2)
+  asked[1]!.answer([{ label: 'Bea', value: 2 }])
+  await expect.poll(options).toEqual(['Bea'])
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  document.activeElement?.dispatchEvent(
+    new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+  )
+  await expect.poll(() => document.querySelector('[role="option"]')).toBeNull()
+  open()
+  await expect.poll(() => asked.length).toBe(3)
+  await nextTick()
+  expect(options()).toEqual([])
+  asked[2]!.answer([{ label: 'Ann', value: 1 }])
+  await expect.poll(options).toEqual(['Ann'])
 })
 
 test('Field/Relation says when the search failed', async ({ onTestFinished }) => {

@@ -30,10 +30,6 @@ const en = {
   moveDown: (label: string) => `Move ${label} down`,
   movedTo: (label: string, position: number, total: number) =>
     `${label} moved to position ${position} of ${total}`,
-  invalidAmount: (decimals: number) =>
-    decimals === 0
-      ? 'Enter a whole amount.'
-      : `Enter an amount with up to ${decimals} decimal places.`,
   clear: (label: string) => `Clear ${label}`,
   removeFile: (name: string) => `Remove ${name}`,
   fileTooLarge: (size: string) => `The file is larger than ${size}.`,
@@ -85,10 +81,6 @@ const sk: KitText = {
   moveUp: (label) => `Posunúť vyššie: ${label}`,
   moveDown: (label) => `Posunúť nižšie: ${label}`,
   movedTo: (label, position, total) => `${label}: presunuté na pozíciu ${position} z ${total}`,
-  invalidAmount: (decimals) =>
-    decimals === 0
-      ? 'Zadajte celú sumu.'
-      : `Zadajte sumu s najviac ${decimals} desatinnými miestami.`,
   clear: (label) => `Vymazať: ${label}`,
   removeFile: (name) => `Odstrániť ${name}`,
   fileTooLarge: (size) => `Súbor je väčší ako ${size}.`,

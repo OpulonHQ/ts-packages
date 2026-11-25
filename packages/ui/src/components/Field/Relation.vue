@@ -13,6 +13,7 @@ import UFormField from '@nuxt/ui/components/FormField.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
 import USelectMenu from '@nuxt/ui/components/SelectMenu.vue'
 import { computed, ref, shallowRef, watch } from 'vue'
+import { useFieldDisabled } from '../../disabled.ts'
 import { srOnlyHint, type FieldProps, type SelectItem } from '../../fields.ts'
 import { requestTickets } from '../../latest.ts'
 import { useKitText } from '../../text.ts'
@@ -25,6 +26,7 @@ const props = defineProps<
   }
 >()
 const text = useKitText()
+const off = useFieldDisabled(props)
 
 const found = shallowRef<ReadonlyArray<SelectItem>>([])
 const picked = shallowRef<SelectItem>()
@@ -43,18 +45,19 @@ const term = ref('')
 const pending = ref(false)
 const failed = ref(false)
 const searches = requestTickets()
-async function load() {
-  const ticket = searches.next()
-  pending.value = true
+function supersede() {
+  found.value = []
   failed.value = false
+  pending.value = true
+  return searches.next()
+}
+async function load() {
+  const ticket = supersede()
   try {
     const items = await props.search(term.value.trim())
     if (ticket.isLatest()) found.value = items
   } catch (error) {
-    if (ticket.isLatest()) {
-      found.value = []
-      failed.value = true
-    }
+    if (ticket.isLatest()) failed.value = true
     console.error(error)
   } finally {
     if (ticket.isLatest()) pending.value = false
@@ -68,9 +71,7 @@ watch(open, (isOpen) => {
 watch(term, () => {
   clearTimeout(debounce)
   if (!open.value) return
-  searches.next()
-  found.value = []
-  pending.value = true
+  supersede()
   debounce = setTimeout(load, 250)
 })
 </script>
@@ -109,7 +110,8 @@ watch(term, () => {
         </template>
       </USelectMenu>
       <UButton
-        v-if="selected && !required && !disabled"
+        v-if="selected && !required"
+        :disabled="off"
         color="neutral"
         variant="ghost"
         icon="i-lucide-x"
