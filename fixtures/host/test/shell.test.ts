@@ -1,4 +1,5 @@
 import {
+  type AdminModule,
   type AdminOptions,
   type AdminState,
   createAdmin,
@@ -380,7 +381,7 @@ const heldCatalogs = (holding = true) => {
   return {
     modules: adminModules.map((m) => ({
       ...m,
-      messages: { en: hold(m.messages.en), sk: hold(m.messages.sk!) },
+      messages: { en: hold(m.messages.en), sk: hold(m.messages.sk) },
     })),
     hold: () => {
       holding = true
@@ -397,7 +398,7 @@ const heldCatalogs = (holding = true) => {
 }
 
 const mountDisposable = (
-  modules: typeof adminModules,
+  modules: ReadonlyArray<AdminModule>,
   session: string | (() => string),
   {
     overrides = {},
@@ -1983,7 +1984,7 @@ test('a saved language whose fallback catalog fails to load logs the failure', a
             ...m.messages,
             sk: async () => {
               if (failing) throw new Error('users catalog unavailable')
-              return m.messages.sk!()
+              return m.messages.sk()
             },
           },
         }

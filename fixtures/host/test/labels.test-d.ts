@@ -1,4 +1,10 @@
-import { defineAdminModule, type ShellPermissionLabels } from '@opulonjs/admin'
+import {
+  defineAdminModule,
+  type AdminModule,
+  type Lazy,
+  type Messages,
+  type ShellPermissionLabels,
+} from '@opulonjs/admin'
 import { corePermissions } from '@opulonjs/core/api'
 import { expectTypeOf } from 'vitest'
 import { demoPermissions } from '../modules/demo/api.ts'
@@ -63,3 +69,19 @@ defineAdminModule({
   routes: [],
   messages: { en: async () => ({ default: {} }) },
 })
+
+interface HostCatalogs {
+  readonly en: Lazy<Messages>
+  readonly sk: Lazy<Messages>
+}
+declare const hostCatalogs: HostCatalogs
+const handWritten: AdminModule = { id: 'typed', routes: [], messages: hostCatalogs }
+const typed = defineAdminModule({ id: 'typed', routes: [], messages: hostCatalogs })
+const both = defineAdminModule({
+  id: 'both',
+  routes: [],
+  messages: { en: async () => ({ default: {} }), sk: async () => ({ default: {} }) },
+})
+expectTypeOf(handWritten.messages.en).toEqualTypeOf<Lazy<Messages>>()
+expectTypeOf(typed.messages.sk).toEqualTypeOf<Lazy<Messages>>()
+expectTypeOf(both.messages.sk).toEqualTypeOf<Lazy<Messages>>()

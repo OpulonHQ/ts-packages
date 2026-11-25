@@ -110,3 +110,36 @@ test('a host offering Italian alone shows it without a language menu', async () 
   await expect.poll(() => menuItem('Esci')).toBeDefined()
   expect(menuItem('Lingua')).toBeUndefined()
 })
+
+test('a signed-out visitor of an Italian-default host gets the sign-in page marked as Italian', async () => {
+  document.documentElement.lang = 'en'
+  const text = lifetime.mount('/admin/', {
+    ...italianHost,
+    modules,
+    fetch: host.browserFetch({ cookie: '' }),
+  })
+  await expect.poll(text).toContain('Hai dimenticato la password?')
+  expect(document.documentElement.lang).toBe('it')
+})
+
+test('an auth module with a partial Italian catalog shows English before sign-in, never the key', async () => {
+  const partial = modules.map((m) =>
+    m.auth
+      ? {
+          ...m,
+          messages: {
+            en: m.messages.en,
+            it: async () => ({ default: { signIn: { title: 'Accesso parziale' } } }),
+          },
+        }
+      : m,
+  )
+  const text = lifetime.mount('/admin/', {
+    ...italianHost,
+    modules: partial,
+    fetch: host.browserFetch({ cookie: '' }),
+  })
+  await expect.poll(text).toContain('Accesso parziale')
+  await expect.poll(text).toContain('Forgot your password?')
+  expect(text()).not.toContain('users.signIn.forgot')
+})

@@ -111,9 +111,10 @@ export interface AuthProvider {
   }) => Promise<void>
 }
 
-export type ModuleCatalogs<En extends Messages = Messages> = {
-  readonly en: Lazy<En>
-} & { readonly [locale: string]: Lazy<Messages> | undefined }
+/** A module's lazy catalogs by admin locale: English, and any other language it has. */
+export type ModuleCatalogs<En extends Messages = Messages> =
+  | { readonly en: Lazy<En> }
+  | ({ readonly en: Lazy<En> } & { readonly [locale: string]: Lazy<Messages> | undefined })
 
 export interface AdminModule<Id extends string = string> {
   readonly id: Id
@@ -138,10 +139,13 @@ export const defineAdminModule = <
   const Id extends string,
   const P extends string = never,
   const A extends string = never,
+  C extends { readonly en: Lazy<ModuleMessages<NoInfer<P>, NoInfer<A>>> } & {
+    readonly [K in keyof C]: Lazy<Messages>
+  } = { readonly en: Lazy<ModuleMessages<NoInfer<P>, NoInfer<A>>> },
 >(
   m: Omit<AdminModule<Id>, 'messages'> & {
     readonly permissions?: ReadonlyArray<P>
     readonly auditActions?: ReadonlyArray<{ readonly key: A }>
-    readonly messages: ModuleCatalogs<ModuleMessages<NoInfer<P>, NoInfer<A>>>
+    readonly messages: C
   },
-): AdminModule<Id> => m
+): AdminModule<Id> & { readonly messages: { readonly [K in keyof C]: Lazy<Messages> } } => m

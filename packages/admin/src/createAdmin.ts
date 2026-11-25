@@ -23,7 +23,7 @@ import {
   type RouteRecordSingleView,
 } from 'vue-router'
 import { shellMessages } from './messages.ts'
-import type { Access, AdminModule, Messages } from './module.ts'
+import type { Access, AdminModule, Lazy, Messages } from './module.ts'
 import NotFound from './shell/NotFound.vue'
 import Shell from './shell/Shell.vue'
 import {
@@ -172,6 +172,11 @@ export const createAdmin = (options: AdminOptions): App => {
   ]
   const defaultLocale =
     options.defaultLocale ?? (locales.includes('en') ? 'en' : (locales[0] ?? 'en'))
+  if (!locales.includes(defaultLocale)) {
+    throw new Error(
+      `createAdmin: default locale "${defaultLocale}" is not one of the offered locales (${locales.join(', ')})`,
+    )
+  }
   const i18n = createI18n({
     legacy: false,
     locale: defaultLocale,
@@ -232,7 +237,8 @@ export const createAdmin = (options: AdminOptions): App => {
   const loadMessages = (locale: string, modules: ReadonlyArray<AdminModule>, live: () => boolean) =>
     Promise.all(
       modules.map(async (m) => {
-        const load = m.messages[locale] ?? m.messages.en
+        const catalogs: Readonly<Record<string, Lazy<Messages> | undefined>> = m.messages
+        const load = catalogs[locale] ?? m.messages.en
         const { default: messages } = await load()
         if (live()) i18n.global.mergeLocaleMessage(locale, toI18n(messages, m.id))
       }),
@@ -261,7 +267,7 @@ export const createAdmin = (options: AdminOptions): App => {
     const loading = getMe().then(
       async (first) => {
         if (first === 'signedOut') {
-          await loadMessages(defaultLocale, [auth], live).catch((error: unknown) =>
+          await applyLocale(i18n.global.locale.value, [auth], live).catch((error: unknown) =>
             console.error(error),
           )
           if (live()) showSignedOut()

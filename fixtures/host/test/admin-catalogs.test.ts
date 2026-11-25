@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest'
 import { shellMessages } from '../../../packages/admin/src/messages.ts'
+import { richTextSection, siteSettingsFields } from '../../../packages/cms/src/definitions.ts'
 import { kitTexts } from '../../../packages/ui/src/text.ts'
 
 type Catalog = { readonly [key: string]: unknown }
@@ -43,3 +44,16 @@ test.for(Object.entries(catalogs))(
     expect([...keys(locales.it!)].sort()).toEqual(english)
   },
 )
+
+const labels = (value: unknown): ReadonlyArray<Catalog> =>
+  value === null || typeof value !== 'object'
+    ? []
+    : typeof (value as Catalog).en === 'string'
+      ? [value as Catalog]
+      : Object.values(value).flatMap(labels)
+
+test('every built-in cms label has English, Slovak and Italian', () => {
+  const builtIn = labels({ richTextSection, siteSettingsFields })
+  expect(builtIn.length).toBeGreaterThan(0)
+  for (const label of builtIn) expect(Object.keys(label).sort()).toEqual(['en', 'it', 'sk'])
+})
