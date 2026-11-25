@@ -42,7 +42,6 @@ test('with the check on, a sign-in without a token is refused before the passwor
   expect(right).toMatchObject({ status: 403, body: { _tag: 'TurnstileFailed' } })
   expect(right.headers.getSetCookie()).toEqual([])
 
-  // A wrong password answers the same, is not audited as a failed sign-in and uses no attempt.
   for (let i = 0; i < 6; i++)
     expect(
       (await signIn(host, { email: user.email, password: 'not the password' }, ip)).status,
