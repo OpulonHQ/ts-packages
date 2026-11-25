@@ -30,6 +30,8 @@ Preconditions: a Super admin session (smoke owner).
 
 ## Gotchas
 
+- `PUT /api/users/password` shares 5 attempts a minute per client address with the password confirmation. The staff-management journey uses three, so leave a minute between two runs, and a minute after the password-confirmation journey.
+- After a manager changes their own email the shell lands on sign-in with no redirect back; the journey opens the user screen again itself.
 - Messages are inline `role=status` / `role=alert` paragraphs, not toasts.
 - `getByLabel('Name')` / `getByLabel('Email')` also match the table's `Sort by Name` / `Sort by Email` buttons; use `getByRole('textbox', { name: ... })`.
 - `Invite` toggles the inline form and it stays open after sending; clicking `Invite` again closes it.
