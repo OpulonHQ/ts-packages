@@ -1,4 +1,4 @@
-import { Authorization, Policy } from '@opulonjs/core/api'
+import { Authorization, Policy, Sensitive } from '@opulonjs/core/api'
 import { AttachmentsTooLarge } from '@opulonjs/emails/api'
 import { Schema } from 'effect'
 import * as HttpApiEndpoint from 'effect/http-api/HttpApiEndpoint'
@@ -50,5 +50,10 @@ export const DemoGroup = HttpApiGroup.make('demo')
       success: Schema.Struct({ id: Schema.String }),
       error: AttachmentsTooLarge,
     }).annotate(Policy, 'demo.notes.view'),
+  )
+  .add(
+    HttpApiEndpoint.post('stamp', '/stamps', { success: Note })
+      .annotate(Policy, 'demo.notes.view')
+      .annotate(Sensitive, true),
   )
   .middleware(Authorization)

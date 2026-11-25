@@ -8,6 +8,7 @@ import {
   Policy,
   Public,
   requirePermission,
+  Sensitive,
 } from '@opulonjs/core'
 import { createWorker, PgFromHyperdrive } from '@opulonjs/core/workers'
 import { Effect, Layer, Redacted, Schema } from 'effect'
@@ -29,6 +30,11 @@ const VaultGroup = HttpApiGroup.make('vault')
       'signedIn',
     ),
   )
+  .add(
+    HttpApiEndpoint.get('sealed', '/sealed', { success: Schema.String })
+      .annotate(Policy, 'signedIn')
+      .annotate(Sensitive, true),
+  )
   .middleware(Authorization)
 
 // A public group whose handler (wrongly) calls the privileged service.
@@ -44,7 +50,9 @@ const vault = defineModule({
   handlers: (api) =>
     Layer.mergeAll(
       HttpApiBuilder.group(api, 'vault', (h) =>
-        Effect.succeed(h.handle('secret', () => readSecret)),
+        Effect.succeed(
+          h.handle('secret', () => readSecret).handle('sealed', () => Effect.succeed('sealed')),
+        ),
       ),
       HttpApiBuilder.group(api, 'vault.public', (h) =>
         Effect.succeed(h.handle('secret', () => readSecret)),
@@ -119,6 +127,13 @@ test('a signed-in user holding the permission passes the service check', async (
 
 test('a signed-in user without the permission is refused by the service itself', async () => {
   expect((await get('/secret', 'nobody')).status).toBe(403)
+})
+
+test('a sensitive endpoint refuses an auth provider that reports no password confirmation', async () => {
+  expect(await get('/sealed', 'reader')).toEqual({
+    status: 403,
+    body: '{"_tag":"PasswordConfirmationRequired"}',
+  })
 })
 
 test('a privileged service called from a public handler is refused', async () => {

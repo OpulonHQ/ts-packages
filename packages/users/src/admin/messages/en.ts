@@ -106,6 +106,7 @@ export default {
     'users.signed_in': 'Signed in',
     'users.sign_in_failed': 'Failed sign-in',
     'users.signed_out': 'Signed out',
+    'users.password_confirmation_failed': 'Failed password confirmation',
     'users.invited': 'Invited a user',
     'users.invitation_accepted': 'Accepted an invitation',
     'users.imported': 'Imported a user',

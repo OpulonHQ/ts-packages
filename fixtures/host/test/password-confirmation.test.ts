@@ -33,7 +33,9 @@ test('a sensitive endpoint is refused until the session confirms its password, t
   const refused = await stamp(user.cookie)
   expect(refused.status).toBe(403)
   expect(refused.body).toEqual(required)
-  expect(await sqlQuery(db.url, 'select body from demo.note')).toEqual([])
+  expect(await sqlQuery(db.url, 'select body from demo.note')).toEqual([
+    { body: 'hello from demo' },
+  ])
 
   expect((await confirm(user.cookie, user.password)).status).toBe(204)
   const served = await stamp(user.cookie)

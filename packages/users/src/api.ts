@@ -17,6 +17,7 @@ export const usersAuditActions = [
   { key: 'users.signed_in', subject: 'user' },
   { key: 'users.sign_in_failed', subject: 'user' },
   { key: 'users.signed_out', subject: 'user' },
+  { key: 'users.password_confirmation_failed', subject: 'user' },
   { key: 'users.invited', subject: 'invitation' },
   { key: 'users.invitation_accepted', subject: 'user' },
   { key: 'users.imported', subject: 'user' },
@@ -65,6 +66,13 @@ export class InvalidToken extends Schema.TaggedError<InvalidToken>()(
   'InvalidToken',
   {},
   { httpApiStatus: 400 },
+) {}
+
+/** The password given to confirm a session is not the user's. */
+export class WrongPassword extends Schema.TaggedError<WrongPassword>()(
+  'WrongPassword',
+  {},
+  { httpApiStatus: 403 },
 ) {}
 
 /** An email address as the API takes it: at most 254 characters. */
@@ -171,6 +179,12 @@ const RoleInput = Schema.Struct({
 
 /** Staff-only users endpoints. */
 export const UsersGroup = HttpApiGroup.make('users')
+  .add(
+    HttpApiEndpoint.post('confirmPassword', '/password-confirmation', {
+      payload: Schema.Struct({ password: Schema.String.check(Schema.isMaxLength(128)) }),
+      error: [WrongPassword, TooManyRequests],
+    }).annotate(Policy, 'signedIn'),
+  )
   .add(
     HttpApiEndpoint.post('invite', '/invitations', {
       payload: Schema.Struct({ email: Email, roleIds: Schema.Array(Schema.String) }),

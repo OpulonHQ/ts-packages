@@ -110,6 +110,7 @@ export default {
     'users.signed_in': 'Prihlásenie',
     'users.sign_in_failed': 'Neúspešné prihlásenie',
     'users.signed_out': 'Odhlásenie',
+    'users.password_confirmation_failed': 'Neúspešné potvrdenie hesla',
     'users.invited': 'Pozvanie používateľa',
     'users.invitation_accepted': 'Prijatie pozvánky',
     'users.imported': 'Import používateľa',

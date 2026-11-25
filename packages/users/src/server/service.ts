@@ -14,11 +14,11 @@ import { EmailService } from '@opulonjs/emails/server'
 import { Context, Data, Effect, Layer } from 'effect'
 import { BadRequest, Conflict, Forbidden, Unauthorized } from 'effect/http-api/HttpApiError'
 import { SqlClient } from 'effect/sql/SqlClient'
-import { InvalidToken, Refused, TooManyRequests } from '../api.ts'
+import { InvalidToken, Refused, TooManyRequests, WrongPassword } from '../api.ts'
 import { canGrant, loadAccess, lockAccessWrites } from './access.ts'
 import { type AuthResult, BetterAuth } from './auth.ts'
 import { adminLink, createInvitation, hashToken } from './invitations.ts'
-import { hashPassword, isBcryptHash } from './password.ts'
+import { hashPassword, isBcryptHash, verifyPassword } from './password.ts'
 import { authenticate, foreignOrigin } from './session.ts'
 import { invitationEmail, passwordResetEmail } from './templates.ts'
 
@@ -60,8 +60,24 @@ export class Users extends Context.Service<
       headers: Headers,
       method: string,
     ) => Effect.Effect<
-      { readonly user: User; readonly setCookies: ReadonlyArray<string> } | undefined
+      | {
+          readonly user: User
+          readonly sessionId: string
+          /** The session confirmed its password within `USERS_PASSWORD_CONFIRM_WINDOW`. */
+          readonly passwordConfirmed: boolean
+          readonly setCookies: ReadonlyArray<string>
+        }
+      | undefined
     >
+    /**
+     * Confirms the request's session with its user's password, so the session passes sensitive
+     * endpoints for the configured window. Rate limited per client address like sign-in; a
+     * wrong password is audited.
+     */
+    readonly confirmPassword: (
+      headers: Headers,
+      password: string,
+    ) => Effect.Effect<void, Unauthorized | WrongPassword | TooManyRequests>
     readonly signIn: (
       headers: Headers,
       input: { readonly email: string; readonly password: string },
@@ -165,6 +181,32 @@ export class Users extends Context.Service<
       return Users.of({
         authenticate: (headers, method) =>
           authenticate(headers, method).pipe(Effect.provideService(BetterAuth, auth), withSql),
+
+        confirmPassword: Effect.fn('Users.confirmPassword')(function* (headers, password) {
+          const signedIn = yield* authenticate(headers, 'POST').pipe(
+            Effect.provideService(BetterAuth, auth),
+          )
+          if (!signedIn) return yield* new Unauthorized()
+          yield* throttle(headers, '/password-confirmation', { window: 60, max: 5 })
+          const { user } = signedIn
+          const [account] = yield* sql<{ password: string | null }>`
+            select password from users.account
+            where user_id = ${user.id} and provider_id = 'credential'`.pipe(Effect.orDie)
+          const hash = account?.password
+          if (!hash || !(yield* Effect.promise(() => verifyPassword({ hash, password })))) {
+            yield* auditBestEffort(
+              {
+                action: 'users.password_confirmation_failed',
+                subject: { type: 'user', id: user.id, label: user.email },
+              },
+              userActor(user),
+            )
+            return yield* new WrongPassword()
+          }
+          yield* sql`update users.session
+            set password_confirmed_at = to_timestamp(${Date.now()}::double precision / 1000)
+            where id = ${signedIn.sessionId}`.pipe(Effect.orDie)
+        }, withSql),
 
         signIn: Effect.fn('Users.signIn')(function* (headers, input) {
           // Login CSRF: another site must not sign a visitor in to an account it controls.

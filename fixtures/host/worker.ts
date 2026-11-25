@@ -113,6 +113,10 @@ const serveShop = async (request: Request, env: Env) => {
       ? privateJson({ viewer: check.user.id, orders: [] }, check.setCookies)
       : check.response
   }
+  if (pathname === '/shop/refunds' && request.method === 'POST') {
+    const check = await staff.require(request, env, 'shop.orders.view', { sensitive: true })
+    return check.ok ? privateJson({ refundedBy: check.user.id }, check.setCookies) : check.response
+  }
   return undefined
 }
 

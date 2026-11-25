@@ -20,6 +20,7 @@ import createUsers from './migrations/0001_create_users.ts'
 import guardSessionInsert from './migrations/0002_guard_session_insert.ts'
 import onePendingInvitation from './migrations/0003_one_pending_invitation.ts'
 import listOrder from './migrations/0004_list_order.ts'
+import sessionPasswordConfirmedAt from './migrations/0005_session_password_confirmed_at.ts'
 import { UserManagement } from './manage.ts'
 import { Users } from './service.ts'
 import { invitationEmail, passwordResetEmail } from './templates.ts'
@@ -131,6 +132,11 @@ export const users = () =>
             const users = yield* Users
             const manage = yield* UserManagement
             return h
+              .handle('confirmPassword', ({ payload }) =>
+                Effect.flatMap(requestHeaders, ({ headers }) =>
+                  users.confirmPassword(headers, payload.password),
+                ),
+              )
               .handle('invite', ({ payload }) => users.invite(payload))
               .handle('users', ({ query }) => manage.users(query))
               .handle('assignRoles', ({ params, payload }) =>
@@ -157,7 +163,7 @@ export const users = () =>
               HttpServerResponse.mergeCookies(response, Cookies.fromSetCookie(signedIn.setCookies)),
             ),
           )
-        return signedIn?.user
+        return signedIn && { user: signedIn.user, passwordConfirmed: signedIn.passwordConfirmed }
       }),
     ).pipe(
       Layer.provideMerge(Layer.merge(Users.layer, UserManagement.layer)),
@@ -168,6 +174,7 @@ export const users = () =>
       '0002_guard_session_insert': guardSessionInsert,
       '0003_one_pending_invitation': onePendingInvitation,
       '0004_list_order': listOrder,
+      '0005_session_password_confirmed_at': sessionPasswordConfirmedAt,
     },
     permissions: usersPermissions,
     auditActions: usersAuditActions,

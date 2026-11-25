@@ -2,7 +2,7 @@ import * as PgClient from '@effect/sql-pg/PgClient'
 import { describeError } from '@opulonjs/core'
 import { betterAuth } from 'better-auth'
 import { isAPIError } from 'better-auth/api'
-import { Config, Context, Effect, Layer, Option, Redacted } from 'effect'
+import { Config, Context, Duration, Effect, Layer, Option, Redacted } from 'effect'
 import { PostgresDialect } from 'kysely'
 import pg from 'pg'
 import { hashPassword, sha256Hex, verifyPassword } from './password.ts'
@@ -16,6 +16,10 @@ export const usersConfig = Config.all({
   baseUrl: usersBaseUrl,
   /** Signs session cookies; at least 32 random characters. */
   secret: Config.Redacted('USERS_AUTH_SECRET'),
+  /** How long a password confirmation lets a session run sensitive actions, e.g. `10 minutes`. */
+  passwordConfirmWindow: Config.Duration('USERS_PASSWORD_CONFIRM_WINDOW').pipe(
+    Config.withDefault(Duration.minutes(5)),
+  ),
 })
 
 /** What one Better Auth call produced, besides its response. */
@@ -47,11 +51,15 @@ export class BetterAuth extends Context.Service<
   {
     /** POSTs `body` to a Better Auth endpoint (`/sign-in/email`, ...) with the client's headers. */
     readonly post: (path: string, headers: Headers, body: unknown) => Effect.Effect<AuthResult>
-    /** The session's user id (cookie cache off: always a database read), and refreshed cookies. */
-    readonly session: (
-      headers: Headers,
-    ) => Effect.Effect<
-      { readonly userId: string; readonly setCookies: ReadonlyArray<string> } | undefined
+    /** The session and its user id (cookie cache off: always a database read), and refreshed cookies. */
+    readonly session: (headers: Headers) => Effect.Effect<
+      | {
+          readonly id: string
+          readonly userId: string
+          readonly passwordConfirmedAt: Date | undefined
+          readonly setCookies: ReadonlyArray<string>
+        }
+      | undefined
     >
   }
 >()('@opulonjs/users/BetterAuth') {
@@ -163,6 +171,12 @@ export class BetterAuth extends Context.Service<
                 input: false,
                 returned: false,
               },
+              passwordConfirmedAt: {
+                type: 'date',
+                fieldName: 'password_confirmed_at',
+                required: false,
+                input: false,
+              },
             },
           },
           verification: { ...tables.verification, storeIdentifier: 'hashed' },
@@ -246,8 +260,11 @@ export class BetterAuth extends Context.Service<
               }),
           )
           if (!result?.response) return undefined
+          const confirmedAt = result.response.session.passwordConfirmedAt
           return {
+            id: result.response.session.id,
             userId: result.response.user.id,
+            passwordConfirmedAt: confirmedAt ? new Date(confirmedAt) : undefined,
             setCookies: result.headers.getSetCookie(),
           }
         }),
