@@ -21,6 +21,7 @@ A Super admin creates roles from permissions, invites users with roles, edits a 
 Preconditions: a Super admin session (smoke owner).
 
 - **Role + invite + taken + email.** `$V/ui.sh .claude/skills/verify-host/journeys/users-and-roles.mjs email=<owner> 'password=smoke password <run>'`. Proves: `POST /api/users/roles` 200 and `role=status` `The role is saved.`; invite with that role `POST /api/users/invitations` 200 and the status text; inviting the owner's email shows the `role=alert` taken message; the Email log screen lists the invitee and `/api/emails/log` has a `users.invitation` row, status `sent`.
+- **Host permission.** `$V/ui.sh .claude/skills/verify-host/journeys/host-permissions.mjs email=<owner> 'password=smoke password <run>'`. Proves: the New role form lists the fixture's own key `shop.orders.view` as `View orders` in the `Shop` group; a role saved with it stores that key (`GET /api/users/roles`); the host routes outside the composed API answer the signed-in owner (`GET /shop/orders` 200, `GET /shop/staff` with the permission) and answer `GET /shop/orders` 401 `{"_tag":"Unauthorized"}` without a cookie.
 - **Restricted role.** Needs a second signed-in account, which needs an accept link (see sign-in Gotchas): not drivable on a host with a Super admin unless the invitation is bootstrapped from the CLI on a fresh database.
 
 ## Gotchas
