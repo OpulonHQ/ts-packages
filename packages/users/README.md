@@ -265,10 +265,20 @@ not set up correctly", and the Worker logs the first two:
 - `USERS_TURNSTILE` on and no site key in the admin: the screens have no widget and every sign-in
   is refused.
 
-`USERS_TURNSTILE` reads `true`/`false` (a Wrangler boolean or the text; `yes`, `on` and `1` also
-turn it on). Any other value fails every sign-in with 500 instead of turning the check off. When
-Cloudflare's script does not load, for example behind a content blocker, the screens say so and
-offer "Try again".
+How `USERS_TURNSTILE` is read (text is lowercase, exactly as written here):
+
+| Value                                                                           | The check                                   |
+| ------------------------------------------------------------------------------- | ------------------------------------------- |
+| boolean `true`, `true`, `yes`, `on`, `1`                                        | on                                          |
+| not set, an empty value, boolean `false`, `false`, `no`, `off`, `0`             | off                                         |
+| any other text or number (`TRUE`, `enabled`, `2`)                               | every sign-in and reset request answers 500 |
+| a JSON object, array or `null` (ignored like a binding, so it reads as not set) | off                                         |
+
+An admin built with a site key against a Worker whose switch is off refuses every sign-in with
+the "not set up correctly" message. That is how a switch left empty by mistake shows up.
+
+When Cloudflare's script does not load, for example behind a content blocker, the screens say so
+and offer "Try again".
 
 For local development use Cloudflare's dummy keys: site key `1x00000000000000000000AA` with secret
 `1x0000000000000000000000000000000AA` always passes, secret `2x0000000000000000000000000000000AA`
