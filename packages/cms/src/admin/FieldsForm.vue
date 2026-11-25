@@ -11,6 +11,7 @@ import { useI18n } from '@opulonjs/admin'
 import { computed } from 'vue'
 import { type FieldGroup, labelText } from '../api.ts'
 import FieldControl from './FieldControl.vue'
+import ListControl from './ListControl.vue'
 import { shownLocale, useLocaleHints } from './use-cms.ts'
 
 const data = defineModel<Record<string, unknown>>('data', { required: true })
@@ -38,7 +39,17 @@ const localized = (data: Record<string, unknown>, field: string) => {
 <template>
   <div class="space-y-4">
     <div v-for="(field, key) in group.fields" :key="key" :data-field="key">
-      <template v-if="field.localized">
+      <ListControl
+        v-if="field.kind === 'list'"
+        v-model="data[key]"
+        :field="field"
+        :locales="locales"
+        :locale="locale"
+        :name="`${name}.${key}`"
+        :label="labelText(field.label, adminLocale)"
+        :disabled="disabled"
+      />
+      <template v-else-if="field.localized">
         <div v-for="code in locales" v-show="code === shown" :key="code">
           <FieldControl
             v-model="localized(data, String(key))[code]"

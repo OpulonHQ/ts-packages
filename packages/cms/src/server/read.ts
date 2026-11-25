@@ -23,7 +23,7 @@ import {
 } from '../api.ts'
 import { cacheTags } from './cache.ts'
 import { uuid } from '../document-rules.ts'
-import { localizeData } from '../localize.ts'
+import { localizeData, mapFields } from '../localize.ts'
 import { maxPathLength } from './document.ts'
 import { canonicalPath, Redirects } from './redirects.ts'
 import { allLinks, resolveLinks, resolveMenuItems } from './site.ts'
@@ -83,11 +83,10 @@ export const makeReader = (definitions: CmsDefinitions) =>
         const mediaIds = [...(extra.media ?? [])]
         const links = [...(extra.links ?? [])]
         for (const { group, data } of localized)
-          for (const [name, field] of Object.entries(group.fields)) {
-            const value = data[name]
+          mapFields(group, data, (field, value) => {
             if (field.kind === 'media' && typeof value === 'string') mediaIds.push(value)
             if (field.kind === 'link' && isLink(value)) links.push(value)
-          }
+          })
         const [resolved, linked] = yield* Effect.all(
           [
             media.resolve(mediaIds, locale),
@@ -99,14 +98,12 @@ export const makeReader = (definitions: CmsDefinitions) =>
           id === null ? null : (resolved.get(id) ?? null)
         return {
           data: localized.map(({ group, data }) =>
-            Object.fromEntries(
-              Object.entries(data).map(([name, value]) => {
-                const kind = group.fields[name]?.kind
-                if (kind === 'media' && typeof value === 'string') return [name, mediaOf(value)]
-                if (kind === 'link' && isLink(value))
-                  return [name, { ...value, href: linked.href(value) }]
-                return [name, value]
-              }),
+            mapFields(group, data, (field, value) =>
+              field.kind === 'media' && typeof value === 'string'
+                ? mediaOf(value)
+                : field.kind === 'link' && isLink(value)
+                  ? { ...value, href: linked.href(value) }
+                  : value,
             ),
           ),
           media: mediaOf,

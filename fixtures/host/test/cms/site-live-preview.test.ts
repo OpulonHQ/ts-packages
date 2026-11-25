@@ -26,7 +26,7 @@ const Hero: FunctionalComponent<SectionProps> = (props) =>
 Hero.props = ['data']
 const Stats: FunctionalComponent<SectionProps> = (props) => h('p', String(props.data['note']))
 Stats.props = ['data']
-const components = sectionComponents<typeof definitions>({ hero: Hero, stats: Stats })
+const components = sectionComponents<typeof definitions>({ hero: Hero, stats: Stats, cards: Stats })
 
 const initial: PagePreview = {
   id: 'page-1',

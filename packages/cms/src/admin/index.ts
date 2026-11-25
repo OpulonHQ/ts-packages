@@ -11,6 +11,7 @@ import {
   ref,
 } from 'vue'
 import {
+  allFields,
   cmsAuditActions,
   type CmsDefinitions,
   cmsPermissions,
@@ -34,6 +35,7 @@ export const builtInWidgets = [
   'media',
   'link',
   'reference',
+  'list',
 ] as const
 
 export interface CmsAdminOptions {
@@ -66,7 +68,7 @@ export const cmsAdmin = (options: CmsAdminOptions) => {
     ['site settings', definitions.settings],
   ]
   for (const [owner, group] of groups)
-    for (const [name, field] of Object.entries(group.fields))
+    for (const [name, field] of allFields(group))
       if (!known.has(field.widget))
         throw new Error(
           `cmsAdmin: field "${name}" of ${owner} uses the widget ` +

@@ -30,6 +30,7 @@ const adminTests = [
   'fixtures/host/test/cms/page-editor.test.ts',
   'fixtures/host/test/cms/unsaved-changes.test.ts',
   'fixtures/host/test/cms/language-switch.test.ts',
+  'fixtures/host/test/cms/list-field-admin.test.ts',
 ]
 
 export default defineConfig({

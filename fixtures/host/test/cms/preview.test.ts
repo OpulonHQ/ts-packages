@@ -36,6 +36,27 @@ test('preview shows the draft in one locale, falling back to the default, never 
   expect(fallback.body.locale).toBe('en')
 })
 
+test('preview leaves media ids and links as stored, at the top level and inside list items', async () => {
+  const image = crypto.randomUUID()
+  const link = { type: 'system', key: 'contact' }
+  const created = (
+    await host.create(
+      page({ en: '/preview-stored' }, [
+        section('hero', { title: { en: 'Stored' }, image }),
+        section('cards', {
+          more: link,
+          cards: [{ id: crypto.randomUUID(), data: { image, link } }],
+        }),
+      ]),
+    )
+  ).body
+  const { body } = await host.call<PagePreview>('GET', `/pages/${created.id}/preview`)
+  expect(body.sections.map((s) => s.data)).toEqual([
+    { title: 'Stored', image },
+    { more: link, cards: [{ id: expect.any(String), data: { image, link } }] },
+  ])
+})
+
 test('preview needs a signed-in user with cms.pages.view', async () => {
   const created = (await host.create(page({ en: '/secret' }))).body
   const path = `/pages/${created.id}/preview`

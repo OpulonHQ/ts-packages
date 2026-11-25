@@ -1,7 +1,7 @@
 import sanitizeHtml from 'sanitize-html'
 import type { FieldGroup, Link, PageLocale } from './api.ts'
-import { urlPattern } from './document-rules.ts'
-import { isRecord } from './localize.ts'
+import { urlPattern, uuid } from './document-rules.ts'
+import { isRecord, listItems } from './localize.ts'
 
 // The restricted rich text format (TSPACK-11): what RichTextControl's toolbar produces, nothing
 // else. sanitize-html parses with htmlparser2 (no DOM), so it runs on Workers.
@@ -83,7 +83,15 @@ export const cleanFields = (
   for (const [name, field] of Object.entries(group.fields)) {
     const value = data[name]
     if (!present(value)) continue
-    if (field.localized) {
+    if (field.kind === 'list') {
+      const ids = new Set<string>()
+      const items = listItems(value).map((item) => {
+        const id = uuid.test(item.id) && !ids.has(item.id) ? item.id : crypto.randomUUID()
+        ids.add(id)
+        return { id, data: cleanFields({ fields: field.item ?? {} }, item.data, locales) }
+      })
+      if (items.length > 0) out[name] = items
+    } else if (field.localized) {
       const values = Object.fromEntries(
         Object.entries(isRecord(value) ? value : {})
           .filter(([locale]) => locales.includes(locale))

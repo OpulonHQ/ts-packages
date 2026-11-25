@@ -35,6 +35,27 @@ export const definitions = defineCms({
         note: fields.textarea({ label: 'Note', localized: false }),
       },
     },
+    cards: {
+      label: { en: 'Cards', sk: 'Karty' },
+      fields: {
+        heading: fields.text({ label: { en: 'Heading', sk: 'Nadpis' } }),
+        more: fields.link({ label: { en: 'More link', sk: 'Odkaz na viac' } }),
+        cards: fields.list({
+          label: { en: 'Cards', sk: 'Karty' },
+          min: 1,
+          max: 4,
+          item: {
+            title: fields.text({ label: { en: 'Title', sk: 'Nadpis' }, required: true }),
+            image: fields.media({ label: { en: 'Image', sk: 'Obrázok' }, accept: 'image' }),
+            link: fields.link({ label: { en: 'Link', sk: 'Odkaz' } }),
+            category: fields.reference({
+              label: { en: 'Category', sk: 'Kategória' },
+              collection: 'categories',
+            }),
+          },
+        }),
+      },
+    },
   },
   systemPages: {
     home: { label: { en: 'Homepage', sk: 'Domovská stránka' }, paths: { en: '/', it: '/' } },
@@ -60,6 +81,13 @@ export const definitions = defineCms({
             { value: 'news', label: { en: 'News', sk: 'Novinky' } },
             { value: 'guide', label: { en: 'Guide', sk: 'Návod' } },
           ],
+        }),
+        faq: fields.list({
+          label: { en: 'Questions', sk: 'Otázky' },
+          item: {
+            question: fields.text({ label: { en: 'Question', sk: 'Otázka' }, required: true }),
+            answer: fields.richText({ label: { en: 'Answer', sk: 'Odpoveď' } }),
+          },
         }),
       },
     },
@@ -87,6 +115,13 @@ export const definitions = defineCms({
   settings: {
     phone: fields.text({ label: { en: 'Phone', sk: 'Telefón' }, localized: false }),
     cta: fields.link({ label: { en: 'Call to action', sk: 'Výzva k akcii' } }),
+    offices: fields.list({
+      label: { en: 'Offices', sk: 'Pobočky' },
+      item: {
+        city: fields.text({ label: { en: 'City', sk: 'Mesto' }, localized: false, required: true }),
+        map: fields.link({ label: { en: 'Map', sk: 'Mapa' }, localized: true }),
+      },
+    }),
   },
   menus: {
     main: { label: { en: 'Main menu', sk: 'Hlavné menu' } },

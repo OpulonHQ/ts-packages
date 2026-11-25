@@ -151,6 +151,15 @@ export default {
     remove: 'Odstrániť položku',
   },
   fields: { allLanguages: 'Všetky jazyky' },
+  list: {
+    item: 'Položka {n}',
+    add: 'Pridať položku',
+    moveUp: 'Posunúť položku {n} vyššie',
+    moveDown: 'Posunúť položku {n} nižšie',
+    remove: 'Odstrániť položku {n}',
+    drag: 'Presunúť ťahaním',
+    full: 'Najviac položiek: {max}.',
+  },
   reference: {
     missing: 'Chýbajúca alebo vymazaná položka ({id})',
     selected: 'Vybrané položky',

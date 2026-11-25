@@ -9,9 +9,10 @@ import {
   type Section,
   type SectionType,
   sectionDataSchema,
+  storedValues,
 } from '../api.ts'
 import { linkProblem, maxSections, uuid } from '../document-rules.ts'
-import { availableLocales, emptyLocale, isRecord } from '../localize.ts'
+import { availableLocales, emptyLocale, isRecord, listItems } from '../localize.ts'
 import { cleanFields, cleanLocaleText, isLink, maxJsonLdLength, present } from '../sanitize.ts'
 
 /** Locale-relative path: `/` or lowercase segments of letters, digits and dashes. */
@@ -97,14 +98,10 @@ export const cleanData = (
     const decoded: Readonly<Record<string, unknown>> = yield* Schema.decodeUnknownEffect(
       sectionDataSchema(type),
     )(data).pipe(Effect.mapError((error) => invalid(error.message)))
-    for (const [name, field] of Object.entries(type.fields)) {
-      if (field.kind !== 'link') continue
-      const value = decoded[name]
-      const links = field.localized && isRecord(value) ? Object.values(value) : [value]
-      for (const link of links) {
-        const problem = isLink(link) ? linkProblem(definitions, link) : undefined
-        if (problem) return yield* invalid(`"${labelText(field.label, 'en')}": ${problem}`)
-      }
+    for (const { field, value, where } of storedValues(type, decoded)) {
+      const problem =
+        field.kind === 'link' && isLink(value) ? linkProblem(definitions, value) : undefined
+      if (problem) return yield* invalid(`${where}"${labelText(field.label, 'en')}": ${problem}`)
     }
     return cleanFields(type, decoded, locales)
   })
@@ -168,9 +165,22 @@ export const checkFields = (
 ): Effect.Effect<void, CmsInvalid> =>
   Effect.gen(function* () {
     for (const [name, field] of Object.entries(group.fields)) {
-      if (!field.required) continue
       const label = labelText(field.label, 'en')
       const value = data[name]
+      if (field.kind === 'list') {
+        const items = listItems(value)
+        const least = field.min ?? 0
+        if (items.length < least)
+          return yield* invalid(
+            `"${label}" needs at least ${least} ${least === 1 ? 'item' : 'items'}.`,
+          )
+        for (const [index, item] of items.entries())
+          yield* checkFields({ fields: field.item ?? {} }, defaultLocale, locales, item.data).pipe(
+            Effect.mapError((error) => invalid(`"${label}", item ${index + 1}: ${error.message}`)),
+          )
+        continue
+      }
+      if (!field.required) continue
       if (!field.localized) {
         if (Array.isArray(value) ? value.length === 0 : !present(value))
           return yield* invalid(`"${label}" is required.`)

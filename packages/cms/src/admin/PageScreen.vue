@@ -16,6 +16,7 @@ import PreviewPane from './PreviewPane.vue'
 import PublishActions from './PublishActions.vue'
 import ActionStatus from './ActionStatus.vue'
 import {
+  firstControl,
   type PageSelection,
   pageTitle,
   useAction,
@@ -77,13 +78,6 @@ const selectedIndex = computed(() => {
     : -1
 })
 
-const usable = (el: HTMLElement) =>
-  !el.matches(':disabled, [tabindex="-1"], [aria-hidden="true"], [hidden] *') &&
-  el.checkVisibility?.() !== false
-const firstControl = (root: Element) =>
-  [...root.querySelectorAll<HTMLElement>('input, textarea, select, [contenteditable="true"]')].find(
-    usable,
-  ) ?? [...root.querySelectorAll<HTMLElement>('button:not([role="tab"])')].find(usable)
 async function focusField(sectionId: string, field: string | undefined, locale: string) {
   const panel = document.getElementById(`${panels}-${sectionId}`)
   if (!panel) return
@@ -91,7 +85,7 @@ async function focusField(sectionId: string, field: string | undefined, locale: 
   contentLocale.value = locale
   await nextTick()
   const wrapper = [...panel.querySelectorAll<HTMLElement>('[data-field]')].find(
-    (el) => el.dataset.field === field,
+    (el) => el.dataset.field === field && !el.parentElement?.closest('[data-field]'),
   )
   const control = (wrapper && firstControl(wrapper)) ?? firstControl(panel) ?? panel
   control.focus()

@@ -1,0 +1,5 @@
+---
+'@opulonjs/cms': minor
+---
+
+Add a list field: `fields.list({ label, item, min, max })` holds repeated items in a section type, a collection or the site settings. An item is made of any field kind except a list, each localized or not. A list is stored as `[{ id, data }]`, and the server keeps item ids across saves, reorders and revisions. Editors add, remove and reorder items in the admin with buttons or by dragging, and the live preview follows. A save refuses more than `max` items (100 when unset); publishing needs at least `min` items and every item's required fields in each available locale or the default one. The Read API returns the items in one locale with media and links resolved like top-level fields. A page preview has the same items with media ids and links as stored, as for top-level fields. `SectionData<typeof definitions, 'cards'>` and `PublicDataOf<Group>` from `@opulonjs/cms/site` type a component's `data` from the definitions, list items included. `Field` has a second type parameter, its kind, and `FieldKind` has a new member `list`: a host widget or helper that switches over every kind needs a `list` case.

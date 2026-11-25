@@ -16,6 +16,7 @@ const Hero = defineComponent({
 const components = sectionComponents<typeof definitions>({
   hero: Hero,
   stats: defineComponent(() => () => h('p', 'stats')),
+  cards: defineComponent(() => () => h('p', 'cards')),
 })
 
 const render = (

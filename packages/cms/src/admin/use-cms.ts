@@ -132,6 +132,14 @@ export const useContent = () => {
   }
 }
 
+const usable = (el: HTMLElement) =>
+  !el.matches(':disabled, [tabindex="-1"], [aria-hidden="true"], [hidden] *') &&
+  el.checkVisibility?.() !== false
+export const firstControl = (root: Element) =>
+  [...root.querySelectorAll<HTMLElement>('input, textarea, select, [contenteditable="true"]')].find(
+    usable,
+  ) ?? [...root.querySelectorAll<HTMLElement>('button:not([role="tab"])')].find(usable)
+
 export const shownLocale = (locales: ReadonlyArray<string>, locale: string | undefined) =>
   locale !== undefined && locales.includes(locale) ? locale : (locales[0] ?? '')
 
