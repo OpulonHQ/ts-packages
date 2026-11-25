@@ -34,6 +34,13 @@ export default async (ctx) => {
   await page.keyboard.type('x9')
   check((await price.inputValue()) === '12,50', 'typed characters past the amount are refused too')
   await shot('money-refused')
+  await price.fill('')
+  await page.keyboard.type('.50')
+  await shows('price', '50')
+  await price.fill('')
+  await page.keyboard.type('-,50')
+  await shows('price', '-50')
+  check(true, 'a leading decimal separator starts an amount: .50 is 50 and -,50 is -50 minor units')
   await price.fill('1.15')
   await shows('price', '115')
 
@@ -98,8 +105,22 @@ export default async (ctx) => {
   await shows('scan', 'scan.pdf, 8 B, application/pdf')
   const printed = (name) => page.locator('form p span').filter({ hasText: new RegExp(`^${name}, `) })
   await printed('scan.pdf').waitFor()
-  const holdsNothing = () => file.evaluate((input) => input.files.length === 0 && input.getAttribute('aria-invalid') !== 'true')
-  check(await holdsNothing(), 'the field prints scan.pdf from the model; the native input holds no file and is valid again')
+  const holds = (name) =>
+    file.evaluate(
+      (input, want) => [...input.files].map((f) => f.name).join() === want && input.getAttribute('aria-invalid') !== 'true',
+      name,
+    )
+  const cdp = await page.context().newCDPSession(page)
+  const announced = async () => {
+    await file.focus()
+    const { result } = await cdp.send('Runtime.evaluate', { expression: 'document.activeElement' })
+    const { nodes } = await cdp.send('Accessibility.getPartialAXTree', { objectId: result.objectId, fetchRelatives: false })
+    const node = nodes[0]
+    return [node.name?.value, node.value?.value, node.description?.value].filter(Boolean).join(' | ')
+  }
+  check(await holds('scan.pdf'), 'the native input holds the model’s file and is valid again')
+  const afterPick = await announced()
+  check(afterPick.includes('scan.pdf') && !/no file chosen/i.test(afterPick), `focused picker after a pick is announced as: ${afterPick}`)
 
   await bar.getByRole('button', { name: 'Save' }).click()
   await page.getByText('Choose a day.').waitFor()
@@ -126,7 +147,9 @@ export default async (ctx) => {
   await printed('other.pdf').waitFor()
   await discard()
   await printed('scan.pdf').waitFor()
-  check((await printed('other.pdf').count()) === 0 && (await holdsNothing()), 'Discard after a replacement shows the saved file, and the picker holds nothing')
+  check((await printed('other.pdf').count()) === 0 && (await holds('scan.pdf')), 'Discard after a replacement shows the saved file in the field and in the picker')
+  const afterDiscard = await announced()
+  check(afterDiscard.includes('scan.pdf') && !/no file chosen|other\.pdf/i.test(afterDiscard), `focused picker after Discard is announced as: ${afterDiscard}`)
 
   await page.getByRole('switch', { name: 'Lock the fields' }).click()
   for (const field of [page.getByLabel('Due on'), page.getByLabel('Publish at'), price, note, file])
@@ -136,13 +159,13 @@ export default async (ctx) => {
   await shot('locked')
   await page.getByRole('switch', { name: 'Lock the fields' }).click()
   await printed('scan.pdf').waitFor()
-  check(await file.isEnabled(), 'after lock and unlock the field still prints scan.pdf')
+  check((await file.isEnabled()) && (await holds('scan.pdf')), 'after lock and unlock the field and the picker still show scan.pdf')
   await file.setInputFiles({ name: 'big.pdf', mimeType: 'application/pdf', buffer: Buffer.alloc(1024 * 1024 + 1) })
   await page.getByText('The file is larger than 1 MB.').waitFor()
   await page.getByRole('button', { name: 'Remove scan.pdf' }).click()
   await shows('scan', 'none')
   check(
-    (await page.getByText('The file is larger than 1 MB.').count()) === 0 && (await holdsNothing()),
+    (await page.getByText('The file is larger than 1 MB.').count()) === 0 && (await holds('')),
     'Remove after a refused replacement ends the error and the invalid state',
   )
 

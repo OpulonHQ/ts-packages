@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
  * Picks one file in the browser's native file input. The model is the `File` (name, size,
- * type) and the only record of the choice: the field prints the file from it, and the native
- * input is emptied after every pick. Sending the file anywhere is the screen's job. A file over
+ * type) and the only record of the choice: the field prints the file from it, and after every
+ * pick or model change the native input is given the model's file, or none. Sending the file anywhere is the screen's job. A file over
  * `maxSize` or outside `accept` is refused with a message, until another file is picked or the
  * chosen one changes; the model stays as it was.
  *
@@ -13,7 +13,7 @@ import { useLocale } from '@nuxt/ui/composables'
 import UButton from '@nuxt/ui/components/Button.vue'
 import UFormField from '@nuxt/ui/components/FormField.vue'
 import UInput from '@nuxt/ui/components/Input.vue'
-import { ref, watch } from 'vue'
+import { onMounted, ref, useTemplateRef, watch } from 'vue'
 import { useFieldDisabled } from '../../disabled.ts'
 import { srOnlyHint, type FieldProps } from '../../fields.ts'
 import { formatBytes } from '../../format.ts'
@@ -44,10 +44,8 @@ const accepted = (file: File) =>
 
 const refused = ref<string>()
 function pick(event: Event) {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  input.value = ''
-  if (!file) return
+  const file = (event.target as HTMLInputElement).files?.[0]
+  if (!file) return show()
   refused.value =
     props.maxSize !== undefined && file.size > props.maxSize
       ? text.value.fileTooLarge(formatBytes(props.maxSize, code.value))
@@ -55,8 +53,25 @@ function pick(event: Event) {
         ? undefined
         : text.value.fileNotAccepted
   if (refused.value === undefined) model.value = file
+  else show()
 }
-watch(model, () => (refused.value = undefined))
+const control = useTemplateRef('control')
+function show() {
+  const input = control.value?.inputRef
+  if (!input) return
+  const held = new DataTransfer()
+  if (model.value) held.items.add(model.value)
+  input.files = held.files
+}
+onMounted(show)
+watch(
+  model,
+  () => {
+    refused.value = undefined
+    show()
+  },
+  { flush: 'post' },
+)
 </script>
 
 <template>
@@ -72,12 +87,13 @@ watch(model, () => (refused.value = undefined))
     :error="refused"
   >
     <UInput
+      ref="control"
       type="file"
       :accept="accept"
       :disabled="disabled"
       class="w-full"
-      :ui="{ base: 'text-transparent' }"
       @change="pick"
+      @vue:updated="show()"
     />
     <p v-if="model" class="mt-1 flex items-center gap-1 text-sm text-muted">
       <span class="truncate">{{ model.name }}, {{ formatBytes(model.size, code) }}</span>

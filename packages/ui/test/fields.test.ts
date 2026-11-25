@@ -3,12 +3,20 @@ import FieldDateTime from '@opulonjs/ui/components/Field/DateTime'
 import FieldFile from '@opulonjs/ui/components/Field/File'
 import FieldMoney from '@opulonjs/ui/components/Field/Money'
 import FieldRelation from '@opulonjs/ui/components/Field/Relation'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { createApp, defineComponent, h, nextTick, ref, type Component, type Ref } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { nuxtUiSk, type SelectItem, UApp, UForm, uiPlugin } from '../src/index.ts'
 
 type Finished = (fn: () => void) => void
+
+vi.stubGlobal(
+  'DataTransfer',
+  class {
+    files: Array<File> = []
+    items = { add: (file: File) => void this.files.push(file) }
+  },
+)
 
 const mount = <Value>(
   field: Component,
@@ -180,7 +188,7 @@ test('Field/Money refuses an edit that is not an amount, so the text always is t
   const field = mount<number>(FieldMoney, { currency: 'EUR' }, onTestFinished, { value: 100 })
   field.type('5')
   await expect.poll(() => field.model.value).toBe(500)
-  for (const typed of ['1.234', '1 000', '1e3', 'abc', '90071992547409.92', '.5']) {
+  for (const typed of ['1.234', '1 000', '1e3', 'abc', '90071992547409.92']) {
     field.type(typed)
     await expect.poll(() => field.input().value).toBe('5')
     expect(field.model.value).toBe(500)
@@ -191,6 +199,27 @@ test('Field/Money refuses an edit that is not an amount, so the text always is t
   expect(field.input().value).toBe('-')
   field.type('-2')
   await expect.poll(() => field.model.value).toBe(-200)
+})
+
+test('Field/Money reads a leading decimal separator as zero whole units', async ({
+  onTestFinished,
+}) => {
+  const field = mount<number>(FieldMoney, { currency: 'EUR' }, onTestFinished)
+  for (const [typed, minor] of [
+    ['.50', 50],
+    [',50', 50],
+    ['-.50', -50],
+    ['.5', 50],
+    ['.', null],
+    ['-.', null],
+    [',', null],
+  ] as const) {
+    field.type('7')
+    await expect.poll(() => field.model.value).toBe(700)
+    field.type(typed)
+    await expect.poll(() => field.input().value).toBe(typed)
+    expect(field.model.value).toBe(minor)
+  }
 })
 
 test('Field/Money shows the saved amount after Discard, whatever was typed before', async ({
@@ -239,7 +268,7 @@ test('Field/Money shows the decimal separator of the admin locale', async ({ onT
 
 const pick = (file: File) => {
   const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
-  Object.defineProperty(input, 'files', { value: [file], configurable: true })
+  Object.defineProperty(input, 'files', { value: [file], configurable: true, writable: true })
   input.dispatchEvent(new Event('change'))
 }
 
@@ -261,23 +290,34 @@ test('Field/File reports the picked file and shows its name', async ({ onTestFin
   await expect.poll(() => field.model.value).toBeNull()
 })
 
-test('Field/File empties the native input after a pick, so only the model says which file shows', async ({
+test('Field/File gives the native input the file the model holds, so the control names it', async ({
   onTestFinished,
 }) => {
-  const field = mount<File>(FieldFile, {}, onTestFinished)
-  const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
-  const emptied: Array<string> = []
-  Object.defineProperty(input, 'value', { get: () => '', set: (next) => emptied.push(next) })
+  const field = mount<File>(FieldFile, { maxSize: 64 }, onTestFinished)
+  const held = () =>
+    [...(document.querySelector<HTMLInputElement>('input[type="file"]')!.files ?? [])].map(
+      (file) => file.name,
+    )
   const saved = new File(['a'], 'saved.pdf', { type: 'application/pdf' })
   pick(saved)
   await expect.poll(() => field.model.value).toBe(saved)
-  expect(emptied).toEqual([''])
+  await expect.poll(held).toEqual(['saved.pdf'])
   pick(new File(['b'], 'replacement.pdf', { type: 'application/pdf' }))
   await expect.poll(field.text).toContain('replacement.pdf')
-  expect(emptied).toEqual(['', ''])
+  await expect.poll(held).toEqual(['replacement.pdf'])
   field.model.value = saved
-  await expect.poll(field.text).toContain('saved.pdf')
+  await expect.poll(held).toEqual(['saved.pdf'])
   expect(field.text()).not.toContain('replacement.pdf')
+  field.fieldProps.value = { maxSize: 64, disabled: true }
+  await expect.poll(() => control().disabled).toBe(true)
+  field.fieldProps.value = { maxSize: 64 }
+  await expect.poll(() => control().disabled).toBe(false)
+  expect(held()).toEqual(['saved.pdf'])
+  pick(new File(['x'.repeat(65)], 'large.pdf', { type: 'application/pdf' }))
+  await expect.poll(field.text).toContain('larger than')
+  await expect.poll(held).toEqual(['saved.pdf'])
+  field.model.value = null
+  await expect.poll(held).toEqual([])
 })
 
 test('Field/File ends a refusal when the file is removed or another one is picked', async ({

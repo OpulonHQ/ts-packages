@@ -4,10 +4,10 @@ export const minorDigits = (currency: string): number =>
 
 export const parseMoney = (input: string, digits: number): number | null | 'invalid' => {
   const typed = input.trim()
-  if (typed === '' || typed === '-') return null
-  const match = /^(-?)(\d+)(?:[.,](\d*))?$/.exec(typed)
+  const match = /^(-?)(\d*)(?:[.,](\d*))?$/.exec(typed)
   if (!match || (match[3]?.length ?? 0) > digits) return 'invalid'
-  const minor = Number(`${match[1]}${match[2]}${(match[3] ?? '').padEnd(digits, '0')}`)
+  if (!match[2] && !match[3]) return null
+  const minor = Number(`${match[1]}${match[2] || '0'}${(match[3] ?? '').padEnd(digits, '0')}`)
   return Number.isSafeInteger(minor) ? minor : 'invalid'
 }
 
