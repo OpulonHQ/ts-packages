@@ -1,5 +1,4 @@
 <script setup lang="ts">
-/** The signed-in user's own settings: the admin language and the password. */
 import { useAdmin, useI18n } from '@opulonjs/admin'
 import { UButton, UCard, UForm } from '@opulonjs/ui'
 import FieldText from '@opulonjs/ui/components/Field/Text'

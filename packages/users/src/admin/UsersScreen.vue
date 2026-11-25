@@ -101,7 +101,10 @@ const loadInvitations = () => {
     (result) => {
       if (ticket === latestInvitations) invitations.value = result.invitations
     },
-    () => {},
+    () => {
+      if (ticket === latestInvitations)
+        notice.value = { error: true, text: t('users.errors.failed') }
+    },
   )
 }
 void loadInvitations()

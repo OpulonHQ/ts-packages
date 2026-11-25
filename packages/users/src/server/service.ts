@@ -232,7 +232,6 @@ export class Users extends Context.Service<
             )
           : Effect.void
 
-      /** The request's session, once `password` is its user's. */
       const withPassword = Effect.fn('Users.withPassword')(function* (
         headers: Headers,
         password: string,
@@ -265,7 +264,6 @@ export class Users extends Context.Service<
         sql<GrantedRole>`select id, to_jsonb(permissions) as permissions from users.role
           where id in (select jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb))`
 
-      /** Runs an invitation change under the users/roles lock, the actor read as of now. */
       const asManager = <A, E, R>(
         change: (self: Access, catalog: ReadonlyArray<string>) => Effect.Effect<A, E, R>,
       ) =>
@@ -286,7 +284,6 @@ export class Users extends Context.Service<
           )
         }).pipe(withSql)
 
-      /** An invitation granting what the actor may not grant is not theirs to send or revoke. */
       const grantable = (
         self: Access,
         roles: ReadonlyArray<GrantedRole>,
@@ -310,7 +307,6 @@ export class Users extends Context.Service<
         email: string,
         roles: ReadonlyArray<GrantedRole>,
       ) {
-        // Escalation guard (TSPACK-10): an invitation grants its roles on acceptance.
         yield* grantable(self, roles, catalog)
         if (yield* userIdByEmail(email)) return yield* new Conflict()
         const invitation = yield* createInvitation({
