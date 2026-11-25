@@ -45,15 +45,30 @@ test.for(Object.entries(catalogs))(
   },
 )
 
-const labels = (value: unknown): ReadonlyArray<Catalog> =>
-  value === null || typeof value !== 'object'
-    ? []
-    : typeof (value as Catalog).en === 'string'
-      ? [value as Catalog]
-      : Object.values(value).flatMap(labels)
+type LabelledField = { readonly label?: unknown; readonly help?: unknown }
 
-test('every built-in cms label has English, Slovak and Italian', () => {
-  const builtIn = labels({ richTextSection, siteSettingsFields })
-  expect(builtIn.length).toBeGreaterThan(0)
-  for (const label of builtIn) expect(Object.keys(label).sort()).toEqual(['en', 'it', 'sk'])
+const fieldLabels = (
+  owner: string,
+  fields: Readonly<Record<string, LabelledField>>,
+): ReadonlyArray<readonly [string, unknown]> =>
+  Object.entries(fields).flatMap(([name, field]) => [
+    [`${owner}.${name}.label`, field.label] as const,
+    ...('help' in field ? [[`${owner}.${name}.help`, field.help] as const] : []),
+  ])
+
+const builtInLabels = [
+  ['richTextSection.label', richTextSection.label] as const,
+  ...fieldLabels('richTextSection', richTextSection.fields),
+  ...fieldLabels('siteSettingsFields', siteSettingsFields),
+]
+
+test('finds the seven built-in cms labels', () => {
+  expect(builtInLabels).toHaveLength(7)
 })
+
+test.for(builtInLabels)(
+  'the built-in cms label %s has English, Slovak and Italian',
+  ([, label]) => {
+    expect(Object.keys(label as object).sort()).toEqual(['en', 'it', 'sk'])
+  },
+)
