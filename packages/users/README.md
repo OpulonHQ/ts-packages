@@ -19,10 +19,10 @@ export const staff = staffAccess(server, {
 `env` is the Worker env: the Hyperdrive binding `database` picks, plus the `USERS_BASE_URL` and
 `USERS_AUTH_SECRET` the users module already needs.
 
-| Call                                      | Resolves with                                                                 |
-| ----------------------------------------- | ----------------------------------------------------------------------------- |
-| `staff.session(request, env)`             | `{ user, setCookies }` for a signed-in, active staff user, else `undefined`   |
-| `staff.require(request, env, permission)` | `{ ok: true, user, setCookies }`, or `{ ok: false, response }` to answer with |
+| Call                                      | Resolves with                                                                                  |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `staff.session(request, env)`             | `{ user, passwordConfirmed, setCookies }` for a signed-in, active staff user, else `undefined` |
+| `staff.require(request, env, permission)` | `{ ok: true, user, setCookies }`, or `{ ok: false, response }` to answer with                  |
 
 `user` holds `id`, `name`, `email`, `locale` and `permissions` (the keys the user holds).
 `permission` is a permission key, or `signedIn` for any staff user. A refusal's `response` is what
@@ -101,6 +101,53 @@ createAdmin({
   },
 }).mount('#app')
 ```
+
+## Ask for the password again before a sensitive action
+
+Mark an endpoint `Sensitive` and a signed-in staff user must have entered their password
+shortly before it runs. Without a recent confirmation the endpoint answers 403 with
+`{"_tag":"PasswordConfirmationRequired"}`, after the session and permission checks.
+
+```ts
+import { Authorization, Policy, Sensitive } from '@opulonjs/core/api'
+
+export const ShopGroup = HttpApiGroup.make('shop')
+  .add(
+    HttpApiEndpoint.post('refund', '/refunds', { payload: Refund })
+      .annotate(Policy, 'shop.orders.refund')
+      .annotate(Sensitive, true),
+  )
+  .middleware(Authorization)
+```
+
+A screen calls the endpoint through `useApiClient` and adds nothing. On that answer the admin
+shell opens one password dialog, confirms the session and sends the request once more; the screen
+gets the final answer. When the user cancels the dialog or leaves the screen, nothing is sent
+again and the call fails with `PasswordConfirmationRequired`. A request the admin sends another
+way (its own `fetch`) is not repeated.
+
+`POST <apiPrefix>/users/password-confirmation` with `{ "password": "..." }` confirms the session
+that sent it: 204, 403 `{"_tag":"WrongPassword"}`, or 429 `{"_tag":"TooManyRequests"}` after 5
+attempts a minute from one client address. A wrong password writes the audit event
+`users.password_confirmation_failed`. A confirmation belongs to that one session: another browser,
+a new sign-in and a password reset start unconfirmed. Signing in is not a confirmation.
+
+A confirmation lasts 5 minutes. Set `USERS_PASSWORD_CONFIRM_WINDOW` in the Worker env to change
+it for the whole host, for example `10 minutes`.
+
+A host route outside the composed API makes the same check with `staffAccess`:
+
+```ts
+const check = await staff.require(request, env, 'shop.orders.refund', { sensitive: true })
+if (!check.ok) return check.response
+```
+
+Call such a route through the admin's `useApiClient` to get the dialog, or handle the 403 yourself:
+confirm with the endpoint above, then send the request again. `staff.session` also returns
+`passwordConfirmed`.
+
+Core's `authorization(authenticate)` takes a lookup that returns `{ user, passwordConfirmed }`. A
+lookup that returns only the user, as before, never passes a `Sensitive` endpoint.
 
 ## Import users from another system
 
