@@ -203,3 +203,54 @@ test('dropping a dragged row on another row reports the new order', async ({ onT
   rows[0]!.dispatchEvent(new Event('drop', { bubbles: true, cancelable: true }))
   expect(orders).toEqual([['Charlie', 'Alpha', 'Bravo']])
 })
+
+test('reorder is off while a filter or a sort decides which rows show, and in which order', async ({
+  onTestFinished,
+}) => {
+  const orders: Array<unknown> = []
+  const table = mount(
+    {
+      columns: [{ key: 'title', label: 'Title', sortable: true }],
+      rows: dated,
+      dateFilters: [{ key: 'created', label: 'Created' }],
+      reorderable: true,
+      onReorder: (rows: Dated[]) => orders.push(rows),
+    },
+    onTestFinished,
+  )
+  const up = () => document.querySelector<HTMLButtonElement>('button[aria-label="Move Charlie up"]')
+  await expect.poll(() => up()?.disabled).toBe(false)
+  type('Created from', '2026-11-10')
+  await expect.poll(titles).toEqual(['Bravo', 'Charlie'])
+  expect(up()!.disabled).toBe(true)
+  const rows = [...document.querySelectorAll('tbody tr')]
+  rows[1]!.querySelector('[draggable]')!.dispatchEvent(new Event('dragstart', { bubbles: true }))
+  rows[0]!.dispatchEvent(new Event('drop', { bubbles: true, cancelable: true }))
+  expect(orders).toEqual([])
+  table.button('Reset')!.click()
+  await expect.poll(() => up()?.disabled).toBe(false)
+  document.querySelector<HTMLButtonElement>('button[aria-label="Sort by Title"]')!.click()
+  await expect.poll(() => up()?.disabled).toBe(true)
+})
+
+test('client mode reports every row in the new order, not only the page that shows', async ({
+  onTestFinished,
+}) => {
+  const orders: Array<Array<string>> = []
+  mount(
+    {
+      columns: datedColumns,
+      rows: dated,
+      perPage: 2,
+      reorderable: true,
+      onReorder: (rows: Dated[]) => orders.push(rows.map((row) => row.title)),
+    },
+    onTestFinished,
+  )
+  await expect.poll(titles).toEqual(['Alpha', 'Bravo'])
+  document.querySelector<HTMLButtonElement>('button[aria-label="Move Bravo up"]')!.click()
+  expect(orders).toEqual([['Bravo', 'Alpha', 'Charlie']])
+  await expect
+    .poll(() => document.querySelector('[aria-live="polite"]')?.textContent?.trim())
+    .toBe('Bravo moved to position 1 of 3')
+})

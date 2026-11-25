@@ -64,7 +64,10 @@ watch(open, (isOpen) => {
 })
 watch(term, () => {
   clearTimeout(debounce)
-  if (open.value) debounce = setTimeout(load, 250)
+  if (!open.value) return
+  searches.next()
+  pending.value = true
+  debounce = setTimeout(load, 250)
 })
 </script>
 

@@ -275,6 +275,29 @@ test('Field/Relation drops the answer of a search a newer search superseded', as
   expect(options()).toEqual(['Newer'])
 })
 
+test('Field/Relation drops an answer that lands after the user typed a newer term', async ({
+  onTestFinished,
+}) => {
+  const answers = new Map<string, (items: ReadonlyArray<SelectItem>) => void>()
+  mount<number>(
+    FieldRelation,
+    {
+      search: (term: string) =>
+        new Promise<ReadonlyArray<SelectItem>>((resolve) => answers.set(term, resolve)),
+    },
+    onTestFinished,
+  )
+  open()
+  await expect.poll(() => [...answers.keys()]).toEqual([''])
+  search('new')
+  await nextTick()
+  answers.get('')!([{ label: 'Older', value: 1 }])
+  await expect.poll(() => [...answers.keys()]).toEqual(['', 'new'])
+  expect(options()).toEqual([])
+  answers.get('new')!([{ label: 'Newer', value: 2 }])
+  await expect.poll(options).toEqual(['Newer'])
+})
+
 test('Field/Relation says when the search failed', async ({ onTestFinished }) => {
   const field = mount<number>(
     FieldRelation,

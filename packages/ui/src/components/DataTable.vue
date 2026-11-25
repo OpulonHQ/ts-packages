@@ -64,9 +64,10 @@ const props = withDefaults(
     searchPlaceholder?: string
     selectable?: boolean
     /**
-     * Rows move by drag handle or by their Move up and Move down buttons; each move emits
-     * `reorder` with the current page's rows in the new order. Server mode shows the new order
-     * at once; in client mode apply it to `rows`. Saving the order is the screen's job.
+     * Rows move by drag handle or by their Move up and Move down buttons, except while a search,
+     * a filter or a sort is active. Each move emits `reorder` with the rows in the new order:
+     * all of `rows` in client mode (apply it to `rows`), the current page's rows in server mode
+     * (shown at once). Saving the order is the screen's job.
      */
     reorderable?: boolean
     /** Names a row in its move buttons and in the announcement; default: the first column. */
@@ -209,15 +210,18 @@ const dragged = ref<number>()
 const dropTarget = ref<number>()
 const labelOf = (row: Row) =>
   props.rowLabel?.(row) ?? String(getPath(row, props.columns[0]?.key ?? '') ?? '')
+const reorderOff = computed(() => filtered.value || sortState.value !== null)
 function move(from: number, to: number) {
-  if (from === to) return
-  const rows = [...current.value.rows]
-  const [row] = rows.splice(from, 1)
+  if (from === to || reorderOff.value) return
+  const before = (page.value - 1) * props.perPage
+  const offset = props.load ? 0 : before
+  const rows = [...(props.load ? loaded.value.rows : (props.rows ?? []))]
+  const [row] = rows.splice(offset + from, 1)
   if (!row) return
-  rows.splice(to, 0, row)
+  rows.splice(offset + to, 0, row)
   if (props.load) loaded.value = { ...loaded.value, rows }
   emit('reorder', rows)
-  announcement.value = text.value.movedTo(labelOf(row), to + 1, rows.length)
+  announcement.value = text.value.movedTo(labelOf(row), before + to + 1, current.value.total)
 }
 async function step(index: number, direction: 'up' | 'down') {
   const to = direction === 'up' ? index - 1 : index + 1
@@ -268,7 +272,9 @@ const moveButton = (row: Row, index: number, direction: 'up' | 'down') =>
     icon: direction === 'up' ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down',
     'aria-label': text.value[direction === 'up' ? 'moveUp' : 'moveDown'](labelOf(row)),
     'data-move': direction,
-    disabled: direction === 'up' ? index === 0 : index === current.value.rows.length - 1,
+    disabled:
+      reorderOff.value ||
+      (direction === 'up' ? index === 0 : index === current.value.rows.length - 1),
     onClick: (event: Event) => {
       event.stopPropagation()
       void step(index, direction)
@@ -312,9 +318,11 @@ const tableColumns = computed<TableColumn<Row>[]>(() => [
               h(
                 'span',
                 {
-                  draggable: 'true',
+                  draggable: String(!reorderOff.value),
                   'aria-hidden': 'true',
-                  class: 'flex cursor-grab p-1 text-dimmed hover:text-default',
+                  class: reorderOff.value
+                    ? 'flex p-1 text-dimmed opacity-50'
+                    : 'flex cursor-grab p-1 text-dimmed hover:text-default',
                   onDragstart: (event: DragEvent) => onDragStart(event, row.index),
                   onDragend: onDragEnd,
                 },
