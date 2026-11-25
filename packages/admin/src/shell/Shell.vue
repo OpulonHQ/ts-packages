@@ -3,6 +3,7 @@ import {
   type DropdownMenuItem,
   type NavigationMenuItem,
   nuxtUiEn,
+  nuxtUiIt,
   nuxtUiSk,
   UAlert,
   UApp,
@@ -41,18 +42,20 @@ const {
   navTarget,
   signOut,
   accountRoute,
+  locales,
   setLocale,
   editors,
   confirmDiscard,
   discardRequest,
   passwordRequest,
 } = useAdmin()
-const { t, locale, availableLocales } = useI18n()
+const { t, locale } = useI18n()
 const toast = useToast()
 const route = useRoute()
 const failedScreen = inject(failedScreenKey)
 
-const uiLocale = computed(() => (locale.value === 'sk' ? nuxtUiSk : nuxtUiEn))
+const uiLocales: Readonly<Record<string, typeof nuxtUiEn>> = { sk: nuxtUiSk, it: nuxtUiIt }
+const uiLocale = computed(() => uiLocales[locale.value] ?? nuxtUiEn)
 // Public routes (sign-in) and signed-out states render without the dashboard frame.
 const bare = computed(() => route.meta.access?.public === true || status.value !== 'ready')
 
@@ -146,12 +149,12 @@ const userMenu = computed<DropdownMenuItem[][]>(() => [
     ...(accountRoute
       ? [{ label: t('admin.account'), icon: 'i-lucide-user-cog', to: { name: accountRoute } }]
       : []),
-    ...(setLocale
+    ...(setLocale && locales.length > 1
       ? [
           {
             label: t('admin.language'),
             icon: 'i-lucide-languages',
-            children: availableLocales.map((code) => ({
+            children: locales.map((code) => ({
               label: languageName(code),
               type: 'checkbox' as const,
               checked: locale.value === code,

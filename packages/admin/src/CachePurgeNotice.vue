@@ -4,12 +4,13 @@ import { UAlert } from '@opulonjs/ui'
 import { useI18n } from 'vue-i18n'
 import { useApiClient } from './api-client.ts'
 import en from './messages/cache-purges/en.ts'
+import it from './messages/cache-purges/it.ts'
 import sk from './messages/cache-purges/sk.ts'
 import { computed, onMounted, onScopeDispose, ref, watch } from 'vue'
 
 const props = defineProps<{ pending?: boolean }>()
 const core = useApiClient(CoreGroup)
-const { t, locale } = useI18n({ useScope: 'local', messages: { en, sk } })
+const { t, locale } = useI18n({ useScope: 'local', messages: { en, sk, it } })
 const load = () => core((client) => client.cachePurges())
 const summary = ref<Awaited<ReturnType<typeof load>>['summary']>({
   total: 0,

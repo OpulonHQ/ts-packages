@@ -105,10 +105,59 @@ const sk: KitText = {
   },
 }
 
-const texts: Record<string, KitText> = { en, sk }
+const it: KitText = {
+  confirm: 'Conferma',
+  cancel: 'Annulla',
+  areYouSure: 'Vuoi continuare?',
+  search: 'Cerca…',
+  select: 'Seleziona…',
+  selectAll: 'Seleziona tutte le righe',
+  selectRow: 'Seleziona la riga',
+  sortBy: (label) => `Ordina per ${label}`,
+  noRecords: 'Nessun record trovato',
+  noMatches: 'Niente corrisponde alla ricerca o ai filtri.',
+  loading: 'Caricamento…',
+  loadFailed: 'Non è stato possibile caricare i dati.',
+  retry: 'Riprova',
+  unsavedChanges: 'Modifiche non salvate',
+  discard: 'Scarta',
+  save: 'Salva',
+  range: (from, to, total) => `${from}–${to} di ${total}`,
+  perPage: 'Righe per pagina',
+  resetFilters: 'Azzera',
+  rangeFrom: (label) => `${label} da`,
+  rangeTo: (label) => `${label} a`,
+  moveUp: (label) => `Sposta su: ${label}`,
+  moveDown: (label) => `Sposta giù: ${label}`,
+  movedTo: (label, position, total) => `${label}: spostato alla posizione ${position} di ${total}`,
+  clear: (label) => `Cancella: ${label}`,
+  removeFile: (name) => `Rimuovi ${name}`,
+  fileTooLarge: (size) => `Il file supera ${size}.`,
+  fileNotAccepted: 'Questo tipo di file non è accettato.',
+  link: 'Link',
+  linkApply: 'Applica',
+  linkRemove: 'Rimuovi',
+  contentLanguage: 'Lingua del contenuto',
+  tools: {
+    bold: 'Grassetto',
+    italic: 'Corsivo',
+    underline: 'Sottolineato',
+    strike: 'Barrato',
+    link: 'Link',
+    bulletList: 'Elenco puntato',
+    orderedList: 'Elenco numerato',
+    h2: 'Titolo 2',
+    h3: 'Titolo 3',
+    blockquote: 'Citazione',
+    undo: 'Annulla',
+    redo: 'Ripeti',
+  },
+}
+
+export const kitTexts: Readonly<Record<string, KitText>> = { en, sk, it }
 
 /** The kit's strings in the current Nuxt UI locale. */
 export const useKitText = () => {
   const { code } = useLocale()
-  return computed(() => texts[code.value] ?? en)
+  return computed(() => kitTexts[code.value] ?? en)
 }

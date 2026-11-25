@@ -380,7 +380,7 @@ const heldCatalogs = (holding = true) => {
   return {
     modules: adminModules.map((m) => ({
       ...m,
-      messages: { en: hold(m.messages.en), sk: hold(m.messages.sk) },
+      messages: { en: hold(m.messages.en), sk: hold(m.messages.sk!) },
     })),
     hold: () => {
       holding = true
@@ -1983,7 +1983,7 @@ test('a saved language whose fallback catalog fails to load logs the failure', a
             ...m.messages,
             sk: async () => {
               if (failing) throw new Error('users catalog unavailable')
-              return m.messages.sk()
+              return m.messages.sk!()
             },
           },
         }

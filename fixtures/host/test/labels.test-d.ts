@@ -1,5 +1,6 @@
-// Type-level tests, checked by `pnpm typecheck` (not run by vitest): permission and audit labels
-// must cover the `/api` catalogs in both en and sk, or the admin module does not compile.
+// Type-level tests, checked by `pnpm typecheck` (not run by vitest): the English permission and
+// audit labels must cover the `/api` catalogs, or the admin module does not compile. Other
+// languages are optional and may be partial.
 import { defineAdminModule, type ShellPermissionLabels } from '@opulonjs/admin'
 import { corePermissions } from '@opulonjs/core/api'
 import { expectTypeOf } from 'vitest'
@@ -32,15 +33,22 @@ defineAdminModule({
   messages: { en: async () => ({ default: full }), sk: async () => ({ default: full }) },
 })
 
+defineAdminModule({ ...base, messages: { en: async () => ({ default: full }) } })
+
 defineAdminModule({
   ...base,
   messages: {
     en: async () => ({ default: full }),
-    // @ts-expect-error sk lacks a permission label
-    sk: async () => ({
-      default: { ...full, permissions: { 'shop.orders.view': 'Zobraziť objednávky' } },
+    it: async () => ({
+      default: { permissions: { 'shop.orders.view': 'Visualizzare gli ordini' } },
     }),
   },
+})
+
+defineAdminModule({
+  ...base,
+  // @ts-expect-error English is required
+  messages: { sk: async () => ({ default: full }) },
 })
 
 defineAdminModule({
@@ -56,5 +64,5 @@ defineAdminModule({
 defineAdminModule({
   id: 'plain',
   routes: [],
-  messages: { en: async () => ({ default: {} }), sk: async () => ({ default: {} }) },
+  messages: { en: async () => ({ default: {} }) },
 })

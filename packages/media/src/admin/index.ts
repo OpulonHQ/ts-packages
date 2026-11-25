@@ -34,5 +34,6 @@ export const mediaAdmin = () =>
     messages: {
       en: () => import('./messages/en.ts'),
       sk: () => import('./messages/sk.ts'),
+      it: () => import('./messages/it.ts'),
     },
   })

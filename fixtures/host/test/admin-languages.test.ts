@@ -41,10 +41,12 @@ const menuItem = (name: string) =>
   [...document.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find((el) =>
     el.textContent?.includes(name),
   )
-const languages = async (userMenu: string, language: string) => {
+const openUserMenu = (label: string) =>
   document
-    .querySelector<HTMLElement>(`[aria-label="${userMenu}"]`)!
+    .querySelector<HTMLElement>(`[aria-label="${label}"]`)!
     .dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+const languages = async (userMenu: string, language: string) => {
+  openUserMenu(userMenu)
   await expect.poll(() => menuItem(language)).toBeDefined()
   menuItem(language)!.click()
   await expect.poll(() => menuItem('English')).toBeDefined()
@@ -60,9 +62,7 @@ test('a host offering English and Italian shows the shell, a package screen and 
   await expect.poll(admin.text).toContain('Bacheca')
   expect(document.documentElement.lang).toBe('it')
   expect(
-    document.querySelector(
-      `[aria-label="${nuxtUiIt.messages.dashboardSidebarCollapse.collapse}"]`,
-    ),
+    document.querySelector(`[aria-label="${nuxtUiIt.messages.dashboardSidebarCollapse.collapse}"]`),
   ).not.toBeNull()
   expect(await languages('Menu utente', 'Lingua')).toEqual(['English', 'Italiano'])
 
@@ -103,8 +103,10 @@ test('a host that sets no languages offers English and Slovak', async () => {
   expect(await languages('User menu', 'Language')).toEqual(['English', 'Slovenčina'])
 })
 
-test('a host that leaves English out offers only its own languages', async () => {
-  const admin = await mountAs(null, { locales: ['it'] })
+test('a host offering Italian alone shows it without a language menu', async () => {
+  const admin = await mountAs('en', { locales: ['it'] })
   await expect.poll(admin.text).toContain('Bacheca')
-  expect(await languages('Menu utente', 'Lingua')).toEqual(['Italiano'])
+  openUserMenu('Menu utente')
+  await expect.poll(() => menuItem('Esci')).toBeDefined()
+  expect(menuItem('Lingua')).toBeUndefined()
 })

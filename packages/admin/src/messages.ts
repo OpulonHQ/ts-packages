@@ -149,8 +149,88 @@ const sk: typeof en = {
   permissions: { 'core.audit.view': 'Zobraziť auditný záznam' },
 }
 
+const it: typeof en = {
+  admin: {
+    dashboard: 'Bacheca',
+    dashboardEmpty: 'Qui non c’è ancora niente da mostrare.',
+    loading: 'Caricamento…',
+    signOut: 'Esci',
+    userMenu: 'Menu utente',
+    account: 'Impostazioni dell’account',
+    language: 'Lingua',
+    languageFailed: 'Non è stato possibile salvare la lingua. Riprova.',
+    meFailed: 'L’amministrazione non riesce a raggiungere il server. Prova a ricaricare la pagina.',
+    screenFailed: {
+      message: 'Non è stato possibile caricare questa schermata.',
+      action: 'Riprova',
+    },
+    notFound: 'Pagina non trovata.',
+    navigation: 'Navigazione principale',
+    reload: {
+      message: 'È disponibile una nuova versione dell’amministrazione.',
+      action: 'Ricarica',
+    },
+    unsaved: 'Modifiche non salvate',
+    discard: {
+      title: 'Scartare le modifiche non salvate?',
+      description: 'Le modifiche fatte dopo l’ultimo salvataggio vanno perse.',
+      confirm: 'Scarta le modifiche',
+      cancel: 'Continua a modificare',
+    },
+    confirmPassword: {
+      title: 'Conferma la password',
+      description: 'Inserisci la password per continuare con questa azione.',
+      password: 'Password',
+      submit: 'Conferma',
+      cancel: 'Annulla',
+      wrong: 'La password non è corretta.',
+      tooMany: 'Troppi tentativi. Riprova tra un minuto.',
+      failed: 'Non è stato possibile verificare la password. Riprova.',
+    },
+    groups: { content: 'Contenuti', users: 'Utenti', settings: 'Impostazioni' },
+    audit: {
+      title: 'Registro di audit',
+      description:
+        'Gli eventi più recenti per primi. I nomi di attori e oggetti sono quelli al momento dell’evento.',
+      timeline: 'Cronologia di audit',
+      event: 'Evento',
+      filters: {
+        actor: 'Attore',
+        module: 'Modulo',
+        action: 'Azione',
+        subjectType: 'Tipo di oggetto',
+        subjectId: 'ID dell’oggetto',
+        subjectLabel: 'Nome dell’oggetto',
+        start: 'Dalla data (UTC)',
+        end: 'Fino alla data (UTC)',
+      },
+      filterHelp:
+        'Attore cerca per tipo, ID o nome. Nome dell’oggetto cerca nel testo. Modulo, azione, tipo e ID dell’oggetto devono corrispondere esattamente. Entrambe le date comprendono l’intero giorno in UTC.',
+      apply: 'Applica i filtri',
+      reset: 'Azzera i filtri',
+      invalidRange:
+        'Inserisci un intervallo di date valido, con la fine uguale o successiva all’inizio.',
+      invalidThrough: 'Inserisci una data di fine non successiva al 9999-12-30.',
+      empty: 'Nessun evento di audit corrisponde.',
+      failed: 'Non è stato possibile caricare gli eventi di audit. Riprova.',
+      retry: 'Riprova',
+      actors: { user: 'Utente', system: 'Sistema', anonymous: 'Anonimo' },
+      from: 'Da',
+      to: 'A',
+      ip: 'Indirizzo IP',
+      userAgent: 'User agent',
+      previous: 'Eventi precedenti',
+      next: 'Eventi successivi',
+      page: 'Pagina {page} di {pages}',
+      depthLimit:
+        'Si possono sfogliare solo i {count} eventi corrispondenti più recenti. Usa i filtri nel registro di audit per vedere la cronologia più vecchia.',
+    },
+  },
+  permissions: { 'core.audit.view': 'Visualizzare il registro di audit' },
+}
+
 /** Permission keys the shell labels (core's catalog). */
 export type ShellPermissionLabels = keyof typeof en.permissions
 
 /** The shell's own catalogs (`admin.*`, core's `permissions.*`); hosts extend or override them. */
-export const shellMessages: Readonly<Record<'en' | 'sk', Messages>> = { en, sk }
+export const shellMessages: Readonly<Record<'en' | 'sk' | 'it', Messages>> = { en, sk, it }

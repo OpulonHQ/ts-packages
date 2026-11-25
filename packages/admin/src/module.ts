@@ -12,8 +12,8 @@ export interface Messages {
 export type Labels<Keys extends string> = { readonly [K in Keys]: string }
 
 /**
- * A module's catalog for one admin locale. It must label every permission and audit action the
- * module declares in its `/api` catalogs; the shell serves them as `permissions.<key>` and
+ * A module's English catalog. It must label every permission and audit action the module
+ * declares in its `/api` catalogs; the shell serves them as `permissions.<key>` and
  * `audit.<key>`, everything else under the module id (`<id>.<key>`).
  */
 export type ModuleMessages<P extends string = never, A extends string = never> = Messages &
@@ -111,21 +111,28 @@ export interface AuthProvider {
   }) => Promise<void>
 }
 
+export type ModuleCatalogs<En extends Messages = Messages> = {
+  readonly en: Lazy<En>
+} & { readonly [locale: string]: Lazy<Messages> | undefined }
+
 export interface AdminModule<Id extends string = string> {
   readonly id: Id
   readonly routes: ReadonlyArray<AdminRoute<Id>>
   readonly nav?: ReadonlyArray<NavItem<Id>>
   /** Dashboard widgets. */
   readonly widgets?: ReadonlyArray<Widget>
-  /** Lazy catalogs, loaded when the module is enabled and its locale is used. */
-  readonly messages: { readonly en: Lazy<Messages>; readonly sk: Lazy<Messages> }
+  /**
+   * Lazy catalogs by admin locale, loaded when the module is enabled and its locale is used.
+   * Only English is required: a text another language lacks is shown in English.
+   */
+  readonly messages: ModuleCatalogs
   readonly auth?: AuthProvider
 }
 
 /**
  * Describes a module's admin side (package or host module) for `createAdmin`. Pass the
- * module's `/api` catalogs as `permissions` and `auditActions`: then both the en and sk
- * catalogs must label every key, or the module fails to typecheck.
+ * module's `/api` catalogs as `permissions` and `auditActions`: then the English catalog must
+ * label every key, or the module fails to typecheck. Other languages are optional.
  */
 export const defineAdminModule = <
   const Id extends string,
@@ -135,9 +142,6 @@ export const defineAdminModule = <
   m: Omit<AdminModule<Id>, 'messages'> & {
     readonly permissions?: ReadonlyArray<P>
     readonly auditActions?: ReadonlyArray<{ readonly key: A }>
-    readonly messages: {
-      readonly en: Lazy<ModuleMessages<NoInfer<P>, NoInfer<A>>>
-      readonly sk: Lazy<ModuleMessages<NoInfer<P>, NoInfer<A>>>
-    }
+    readonly messages: ModuleCatalogs<ModuleMessages<NoInfer<P>, NoInfer<A>>>
   },
 ): AdminModule<Id> => m
