@@ -1,5 +1,31 @@
 # @opulonjs/cms
 
+## 0.5.0
+
+### Minor Changes
+
+- 6c70812: A host chooses the admin languages: `createAdmin({ locales: ['en', 'it'], defaultLocale: 'it' })`. The language menu, the language picker on the account and user screens, Nuxt UI's own texts and the kit's texts follow that list; a user whose saved language is not offered gets the default. With one language offered the language menu is hidden. Without `locales` the admin offers English and Slovak as before. `createAdmin` throws when `defaultLocale` is not one of the offered languages. Before sign-in the page is marked with the language it shows (`<html lang>`): the default language on a fresh start, the language the user had after a sign-out. It shows English for a text the auth module's catalog lacks.
+
+  The packages ship Italian catalogs next to English and Slovak for the shell, the kit and the users, cms, emails and media modules. `@opulonjs/ui` exports `nuxtUiIt`; `useAdmin().locales` holds the offered list.
+
+  An admin module needs only an English catalog: `defineAdminModule({ messages: { en } })`. Other languages are optional and may be partial, and a text a language lacks is shown in English. `defineAdminModule` returns the loaders it was given as present (`module.messages.sk()` still compiles for a module that has `sk`), and accepts a named interface of loaders. The type check that a second catalog labels every permission and audit action is gone; only the English catalog must label them.
+
+- 4db3d25: Add a list field: `fields.list({ label, item, min, max })` holds repeated items in a section type, a collection or the site settings. An item is made of any field kind except a list, each localized or not. A list is stored as `[{ id, data }]`, and the server keeps item ids across saves, reorders and revisions. Editors add, remove and reorder items in the admin with buttons or by dragging, and the live preview follows. A save refuses more than `max` items (100 when unset); publishing needs at least `min` items and every item's required fields in each available locale or the default one. The Read API returns the items in one locale with media and links resolved like top-level fields. A page preview has the same items with media ids and links as stored, as for top-level fields. `SectionData<typeof definitions, 'cards'>` and `PublicDataOf<Group>` from `@opulonjs/cms/site` type a component's `data` from the definitions, list items included. `Field` has a second type parameter, its kind, and `FieldKind` has a new member `list`: a host widget or helper that switches over every kind needs a `list` case.
+- 8299be0: Page and routed-item SEO has three optional fields per content locale: keywords, a canonical URL (an http(s) URL or a site path) and JSON-LD structured data, checked as JSON on save. They draft, publish and keep revisions like the other SEO fields, and the Read API returns them in `seo`. `buildHead` writes a `keywords` meta tag, uses the canonical override for the canonical link and `og:url`, and returns the JSON-LD as `script` entries of type `application/ld+json`, escaped so the content cannot close its script tag. A host adds its own structured data with the `jsonLd` option of `buildHead`. When the site settings hold an X (Twitter) handle, `buildHead` adds `twitter:card`, `twitter:site`, `twitter:title`, `twitter:description` and `twitter:image`. A page that sets none of the new fields, on a site without a handle, gets the same head as before.
+
+### Patch Changes
+
+- Updated dependencies [6c70812]
+- Updated dependencies [0ad9cc4]
+- Updated dependencies [49cbf90]
+- Updated dependencies [15ed652]
+- Updated dependencies [46d314a]
+- Updated dependencies [f69140b]
+  - @opulonjs/admin@0.5.0
+  - @opulonjs/ui@0.5.0
+  - @opulonjs/media@0.5.0
+  - @opulonjs/core@0.5.0
+
 ## 0.4.0
 
 ### Minor Changes

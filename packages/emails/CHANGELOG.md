@@ -1,5 +1,29 @@
 # @opulonjs/emails
 
+## 0.5.0
+
+### Minor Changes
+
+- 6c70812: A host chooses the admin languages: `createAdmin({ locales: ['en', 'it'], defaultLocale: 'it' })`. The language menu, the language picker on the account and user screens, Nuxt UI's own texts and the kit's texts follow that list; a user whose saved language is not offered gets the default. With one language offered the language menu is hidden. Without `locales` the admin offers English and Slovak as before. `createAdmin` throws when `defaultLocale` is not one of the offered languages. Before sign-in the page is marked with the language it shows (`<html lang>`): the default language on a fresh start, the language the user had after a sign-out. It shows English for a text the auth module's catalog lacks.
+
+  The packages ship Italian catalogs next to English and Slovak for the shell, the kit and the users, cms, emails and media modules. `@opulonjs/ui` exports `nuxtUiIt`; `useAdmin().locales` holds the offered list.
+
+  An admin module needs only an English catalog: `defineAdminModule({ messages: { en } })`. Other languages are optional and may be partial, and a text a language lacks is shown in English. `defineAdminModule` returns the loaders it was given as present (`module.messages.sk()` still compiles for a module that has `sk`), and accepts a named interface of loaders. The type check that a second catalog labels every permission and audit action is gone; only the English catalog must label them.
+
+- ee2530d: Send attachments, copies and a reply-to address per email. `EmailService.send` takes `cc`, `bcc`, `replyTo` (default: the module's configured `replyTo`) and `attachments`. An attachment is either `{ filename, contentType, content }`, whose bytes are stored with the queued email until it is sent or failed, or `{ filename, contentType, size, key }`, for which only that metadata is stored and the host's new `AttachmentResolver` service returns the bytes at every delivery attempt. A retry sends the same copies, reply-to and attachments; a resolver failure, or bytes of another length than `size`, fails that attempt like a provider error, and the email log and the server log record only the file name, never the resolver's error text or the key. Attachments of one email may add up to `maxAttachmentsBytes` (10 MiB), those sent with `content` to `maxStoredAttachmentsBytes` (4 MiB); a larger send fails with the typed `AttachmentsTooLarge` (HTTP 413, `scope` `stored` or `total`) and queues nothing. `OutgoingEmail` gains `cc`, `bcc` and `attachments`, so every `Mailer`, `captureMailer()` included, receives them; `Mailer.resend` sends them to Resend. The email log API and screen show cc, bcc, reply-to and each attachment's name and size, never its content. Migration `0003_add_email_log_copies_and_attachments` adds the `cc`, `bcc`, `reply_to` and `attachments` columns to `emails.email_log`.
+
+### Patch Changes
+
+- Updated dependencies [6c70812]
+- Updated dependencies [0ad9cc4]
+- Updated dependencies [49cbf90]
+- Updated dependencies [15ed652]
+- Updated dependencies [46d314a]
+- Updated dependencies [f69140b]
+  - @opulonjs/admin@0.5.0
+  - @opulonjs/ui@0.5.0
+  - @opulonjs/core@0.5.0
+
 ## 0.4.0
 
 ### Patch Changes
