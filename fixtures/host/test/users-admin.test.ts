@@ -210,7 +210,9 @@ test('a user manager edits a name and email on the user screen and is told when 
   await expect.poll(admin.text).toContain('Another user already has this email.')
 
   const email = `ema-${member.id.slice(0, 8)}@example.test`
-  await expect.poll(() => button('Save the name and email')?.disabled).toBe(false)
+  await expect
+    .poll(() => document.querySelector<HTMLInputElement>('input[name="email"]')?.disabled)
+    .toBe(false)
   type('name', 'Ema After')
   type('email', email)
   button('Save the name and email')!.click()
@@ -231,7 +233,9 @@ test('a manager who changes their own email lands on sign-in, and the shell show
   await expect.poll(admin.text).toContain('The name and email are saved.')
   await expect.poll(userMenu).toContain('Maja After')
 
-  await expect.poll(() => button('Save the name and email')?.disabled).toBe(false)
+  await expect
+    .poll(() => document.querySelector<HTMLInputElement>('input[name="email"]')?.disabled)
+    .toBe(false)
   type('email', `maja-${manager.id.slice(0, 8)}@example.test`)
   button('Save the name and email')!.click()
   await expect.poll(() => location.pathname).toBe('/admin/sign-in')

@@ -79,6 +79,59 @@ test('an edited email stays unique, and a bad address or blank name is refused',
   expect((await host.me(member.cookie)).user.email).toBe(member.email)
 })
 
+test('a password reset link sent to the old address stops working when the email changes', async () => {
+  const manager = await signedIn({ permissions: ['users.manage'] })
+  const member = await seedUser(db.url)
+  const sent = host.mailer.sent.length
+  await host.request('POST', '/users/auth/request-password-reset', {
+    body: { email: member.email },
+  })
+  expect(host.mailer.sent[sent]!.to).toEqual([member.email])
+  const token = tokenFrom(host.mailer.sent[sent]!.html)
+
+  const email = `moved-${member.id.slice(0, 8)}@example.test`
+  expect((await editUser(manager.cookie, member.id, { name: 'Test User', email })).status).toBe(204)
+  expect(
+    await host.request('POST', '/users/auth/reset-password', {
+      body: { token, password: 'taken over password' },
+    }),
+  ).toMatchObject({ status: 400, body: { _tag: 'InvalidToken' } })
+  await host.signIn(email, member.password)
+})
+
+test('a name change keeps a pending password reset link working', async () => {
+  const manager = await signedIn({ permissions: ['users.manage'] })
+  const member = await seedUser(db.url)
+  await host.request('POST', '/users/auth/request-password-reset', {
+    body: { email: member.email },
+  })
+  const token = tokenFrom(host.mailer.sent.at(-1)!.html)
+  expect(
+    (await editUser(manager.cookie, member.id, { name: 'Renamed', email: member.email })).status,
+  ).toBe(204)
+  expect(
+    (
+      await host.request('POST', '/users/auth/reset-password', {
+        body: { token, password: 'a brand new password' },
+      })
+    ).status,
+  ).toBe(204)
+})
+
+test('an address sign-in rejects is refused before anything changes', async () => {
+  const manager = await signedIn({ permissions: ['users.manage'] })
+  const member = await signedIn({ permissions: [] })
+  expect(
+    (await editUser(manager.cookie, member.id, { name: 'Alex', email: 'alex..smith@example.test' }))
+      .status,
+  ).toBe(400)
+  expect(await alive(member.cookie)).toBe(200)
+  expect((await host.me(member.cookie)).user).toMatchObject({
+    name: 'Test User',
+    email: member.email,
+  })
+})
+
 test('editing a user needs users.manage and a user the actor outranks', async () => {
   const member = await signedIn({ permissions: ['demo.notes.view'] })
   const other = await seedUser(db.url)
@@ -158,11 +211,7 @@ test('an invitation sent again emails a new link and the old link stops working'
   const email = `again-${owner.id.slice(0, 8)}@example.test`
   const { id } = (await invite(owner.cookie, email, [role])).body as { id: string }
   const first = tokenFrom(host.mailer.sent.at(-1)!.html)
-  await sqlQuery(
-    db.url,
-    `update users.invitation set expires_at = now() - interval '1 second' where id = $1`,
-    [id],
-  )
+  expect(await inspect(first)).toBe(200)
 
   const sent = host.mailer.sent.length
   const resent = await host.request('POST', `/users/invitations/${id}/resend`, {
