@@ -1,7 +1,7 @@
 import { maxAttachmentsBytes, maxStoredAttachmentsBytes } from '@opulonjs/emails/api'
 import { Mailer } from '@opulonjs/emails/server'
 import { ConfigProvider, Layer } from 'effect'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { adminQuery } from '../../../test/postgres/admin.ts'
 import { useTestDatabase } from '../../../test/postgres/index.ts'
 import { makeShop, patternBytes } from './support/shop.ts'
@@ -109,8 +109,15 @@ test('a reference attachment is fetched at every attempt and never stored', asyn
 
 test('a reference the resolver cannot return fails that attempt like a send error', async () => {
   shop.files.delete(deed.key)
+  const logged: Array<string> = []
+  const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((method) =>
+    vi.spyOn(console, method).mockImplementation((...args) => void logged.push(args.join(' '))),
+  )
   const { status, body } = await shop.document({ files: [{ ...deed, size: 12 }] })
+  for (const spy of spies) spy.mockRestore()
   expect(status).toBe(200)
+  expect(logged.join('\n')).toContain('attachment "deed.pdf" could not be fetched')
+  expect(logged.join('\n')).not.toContain('deeds/7')
   expect(await entry(body.id)).toMatchObject({ status: 'queued', attempts: 1 })
   const failure = (await entry(body.id))?.error
   expect(failure).toContain('attachment "deed.pdf" could not be fetched')

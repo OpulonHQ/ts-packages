@@ -392,8 +392,8 @@ export class EmailService extends Context.Service<
               ),
             onSome: (r) =>
               r.resolve(a.key).pipe(
-                Effect.catchCause((cause) =>
-                  Effect.logWarning(`attachment "${a.filename}" could not be fetched`, cause).pipe(
+                Effect.catchCause(() =>
+                  Effect.logWarning(`attachment "${a.filename}" could not be fetched`).pipe(
                     Effect.andThen(
                       new MailerError({
                         message: `attachment "${a.filename}" could not be fetched`,
