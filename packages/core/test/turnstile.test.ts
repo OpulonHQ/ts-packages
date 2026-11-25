@@ -81,6 +81,18 @@ test('a siteverify that refuses, fails, answers nonsense or takes too long refus
     reason: 'rejected',
   })
   expect(await real({}, { fetch: answering(null) })).toEqual({ ok: false, reason: 'unavailable' })
+  expect(
+    await real(
+      {},
+      {
+        fetch: async () =>
+          Response.json(
+            { success: true, hostname: 'example.org', action: 'contact' },
+            { status: 500 },
+          ),
+      },
+    ),
+  ).toEqual({ ok: false, reason: 'unavailable' })
   expect(await real({}, { fetch: async () => new Response('<html>', { status: 502 }) })).toEqual({
     ok: false,
     reason: 'unavailable',

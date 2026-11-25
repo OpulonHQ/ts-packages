@@ -120,8 +120,56 @@ test('the forgotten-password screen shows the widget for its own action', async 
 })
 
 test('without the option the screens render no widget', async () => {
-  const text = lifetime.mount('/admin/sign-in', { fetch: host.browserFetch({ cookie: '' }) })
+  const unguarded = lifetime.track(makeHost(() => db.url))
+  const text = lifetime.mount('/admin/sign-in', { fetch: unguarded.browserFetch({ cookie: '' }) })
   await expect.poll(text).toContain('Forgot your password?')
   expect(widgets).toEqual([])
   expect(submit().disabled).toBe(false)
+})
+
+const notSetUp = 'The check that you are human is not set up correctly. Contact an administrator.'
+
+test('a guarded server and an admin without the site key: both screens say the check is not set up', async () => {
+  stubSiteverify()
+  const user = await seedUser(db.url)
+  const fetch = host.browserFetch({ cookie: '' })
+  const signIn = lifetime.mount('/admin/sign-in', { fetch })
+  await expect.poll(signIn).toContain('Forgot your password?')
+  type([user.email, user.password])
+  submit().click()
+  await expect.poll(signIn).toContain(notSetUp)
+  signIn.unmount()
+
+  const forgot = lifetime.mount('/admin/forgot-password', { fetch })
+  await expect.poll(forgot).toContain('Send the link')
+  type([user.email])
+  submit().click()
+  await expect.poll(forgot).toContain(notSetUp)
+})
+
+test('an admin with the site key and an unguarded server: both screens say the check is not set up', async () => {
+  stubSiteverify()
+  const unguarded = lifetime.track(makeHost(() => db.url))
+  const user = await seedUser(db.url)
+  const jar = { cookie: '' }
+  const fetch = unguarded.browserFetch(jar)
+  const signIn = lifetime.mount('/admin/sign-in', { modules, fetch })
+  await expect.poll(() => widgets.length).toBe(1)
+  widgets[0]!.callback(dummy.token)
+  await expect.poll(() => submit().disabled).toBe(false)
+  type([user.email, user.password])
+  submit().click()
+  await expect.poll(signIn).toContain(notSetUp)
+  expect(jar.cookie).toBe('')
+  signIn.unmount()
+
+  const sent = unguarded.mailer.sent.length
+  const forgot = lifetime.mount('/admin/forgot-password', { modules, fetch })
+  await expect.poll(() => widgets.length).toBe(2)
+  widgets[1]!.callback(dummy.token)
+  await expect.poll(() => submit().disabled).toBe(false)
+  type([user.email])
+  submit().click()
+  await expect.poll(forgot).toContain(notSetUp)
+  expect(unguarded.mailer.sent.length).toBe(sent)
 })

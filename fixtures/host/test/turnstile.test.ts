@@ -170,17 +170,65 @@ test('a password-reset request needs a token for its own action', async () => {
   ).toBe(204)
 })
 
-test('with the check off, sign-in and reset requests need no token and never ask siteverify', async () => {
+test('with the check off, a request without a token behaves as before and never asks siteverify', async () => {
   const calls = stubSiteverify()
   const user = await seedUser(db.url)
   for (const on of [unguarded, guarded({ USERS_TURNSTILE: 'false' })]) {
     expect((await signIn(on, { email: user.email, password: user.password })).status).toBe(200)
-    expect(
-      (await signIn(on, { email: user.email, password: user.password, turnstileToken: 'ignored' }))
-        .status,
-    ).toBe(200)
     expect((await signIn(on, { email: user.email, password: 'not the password' })).status).toBe(401)
     expect((await requestReset(on, { email: user.email })).status).toBe(204)
   }
   expect(calls).toEqual([])
 })
+
+test('with the check off, a request that carries a token is refused as a configuration error', async () => {
+  const calls = stubSiteverify()
+  const user = await seedUser(db.url)
+  const sent = unguarded.mailer.sent.length
+  expect(
+    await signIn(unguarded, {
+      email: user.email,
+      password: user.password,
+      turnstileToken: dummy.token,
+    }),
+  ).toMatchObject({ status: 403, body: { _tag: 'TurnstileNotConfigured' } })
+  expect(
+    await requestReset(unguarded, { email: user.email, turnstileToken: dummy.token }),
+  ).toMatchObject({ status: 403, body: { _tag: 'TurnstileNotConfigured' } })
+  expect(unguarded.mailer.sent.length).toBe(sent)
+  expect(calls).toEqual([])
+})
+
+test('a check that is on without a secret answers as a configuration error', async () => {
+  stubSiteverify()
+  const user = await seedUser(db.url)
+  expect(
+    await signIn(guarded({ USERS_TURNSTILE_SECRET: undefined }), {
+      email: user.email,
+      password: user.password,
+      turnstileToken: dummy.token,
+    }),
+  ).toMatchObject({ status: 403, body: { _tag: 'TurnstileNotConfigured' } })
+})
+
+test.each([
+  ['boolean true', 403, true],
+  ['"true"', 403, 'true'],
+  ['"yes"', 403, 'yes'],
+  ['number 1', 403, 1],
+  ['boolean false', 200, false],
+  ['"false"', 200, 'false'],
+  ['missing', 200, undefined],
+  ['"enabled"', 500, 'enabled'],
+  ['number 2', 500, 2],
+])(
+  'USERS_TURNSTILE as %s in the Worker env: a sign-in without a token answers %s',
+  async (_name, status, value) => {
+    stubSiteverify()
+    const user = await seedUser(db.url)
+    const logs = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const host = guarded({ USERS_TURNSTILE: value } as unknown as Partial<Env>)
+    expect((await signIn(host, { email: user.email, password: user.password })).status).toBe(status)
+    logs.mockRestore()
+  },
+)
