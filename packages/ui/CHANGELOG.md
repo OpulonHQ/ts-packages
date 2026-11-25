@@ -1,5 +1,33 @@
 # @opulonjs/ui
 
+## 0.5.0
+
+### Minor Changes
+
+- 6c70812: A host chooses the admin languages: `createAdmin({ locales: ['en', 'it'], defaultLocale: 'it' })`. The language menu, the language picker on the account and user screens, Nuxt UI's own texts and the kit's texts follow that list; a user whose saved language is not offered gets the default. With one language offered the language menu is hidden. Without `locales` the admin offers English and Slovak as before. `createAdmin` throws when `defaultLocale` is not one of the offered languages. Before sign-in the page is marked with the language it shows (`<html lang>`): the default language on a fresh start, the language the user had after a sign-out. It shows English for a text the auth module's catalog lacks.
+
+  The packages ship Italian catalogs next to English and Slovak for the shell, the kit and the users, cms, emails and media modules. `@opulonjs/ui` exports `nuxtUiIt`; `useAdmin().locales` holds the offered list.
+
+  An admin module needs only an English catalog: `defineAdminModule({ messages: { en } })`. Other languages are optional and may be partial, and a text a language lacks is shown in English. `defineAdminModule` returns the loaders it was given as present (`module.messages.sk()` still compiles for a module that has `sk`), and accepts a named interface of loaders. The type check that a second catalog labels every permission and audit action is gone; only the English catalog must label them.
+
+- 46d314a: A host can put a Cloudflare Turnstile check in front of staff sign-in and password-reset requests, and use the same check on its own forms. With `USERS_TURNSTILE=true` in the Worker env, `POST /api/users/auth/sign-in` and `/api/users/auth/request-password-reset` answer 403 `TurnstileFailed` unless the payload's new `turnstileToken` passes, before any user lookup, password check or rate-limit count. The check needs `USERS_TURNSTILE_SECRET` and `USERS_TURNSTILE_HOSTNAMES` (comma-separated). A siteverify that fails, answers a non-2xx status or does not answer within 5 seconds refuses the request. `usersAdmin({ turnstile: { siteKey } })` shows the widget on the sign-in and forgotten-password screens; when Cloudflare's script does not load they say so and offer a retry. The two sides must agree: the check on without a secret or hostnames, or a request that carries a token while the check is off, answers 403 `TurnstileNotConfigured`, and the screens say the check is not set up. With `USERS_TURNSTILE` unset and no site key, sign-in behaves as before. `Users.requestPasswordReset(headers, email)` takes the token as an optional third argument.
+
+  `verifyTurnstile({ secret, hostnames, action, token })` from the new `@opulonjs/core/turnstile` entry is the server check as a Promise, for a host route: it asks siteverify and compares the action and the hostname. `@opulonjs/ui/components/Turnstile` is the widget for a host form (`v-model` is the token, `site-key` and `action` are props, `reset()` asks for a new token, the `unavailable` slot shows when the script does not load). Cloudflare's dummy keys work for local development: its dummy secrets answer hostname `example.com` and no action, so with one of them those two comparisons are skipped. See the users README.
+
+  Config now reads boolean and number values of the Worker env (a Wrangler `vars` entry such as `USERS_TURNSTILE = true`) as their text; before, only strings were read and such a value fell back to its default without a word. A host that wrote a var in a form its Config key does not accept now fails instead: `USERS_PASSWORD_CONFIRM_WINDOW = 300` as a number was ignored and is now a Config error on sign-in, password reset and every request that reads the session; invitation inspection still answers. Write it as a duration, `"5 minutes"`.
+
+- f69140b: Add five form fields to the UI kit, each with the `Field/*` props (label, error, disabled) and replaceable through `overrides.components`:
+
+  - `Field/Date`: a `YYYY-MM-DD` day in the native date input.
+  - `Field/DateTime`: an ISO 8601 UTC instant, edited in the native date and time input in the browser's time zone.
+  - `Field/Money`: the user types a decimal amount (`12.50` or `12,50`), the model is the integer number of minor units of `currency` (1250 for EUR, 12 for JPY). The number of decimals comes from `Intl`; no floating-point math. The input takes only text that is such an amount: an edit or a paste that is not one changes nothing, so the text shown always is the model.
+  - `Field/File`: one `File` from the native file input, printed from the model with a Remove button; the native input always holds the model's file, or none. A file over `maxSize` (bytes) or outside `accept` is refused with a message until the choice changes. Sending the file is the screen's job.
+  - `Field/Relation`: the screen passes `search(term)`, which answers the options (usually from the server); the field calls it when the list opens and 250 ms after the last keystroke, drops an answer that a newer search or a newer keystroke superseded, and offers options only once the current request has answered. An optional value has a Clear button, disabled with the field and the form. `item` gives the label of a value that is already set.
+
+  `DataTable` gains `dateFilters` (a From and a To day per filter; `load` gets them as the new optional `query.dateRanges`, client mode filters by the row value's local day) and `reorderable` (a drag handle plus Move up and Move down buttons per row, a screen-reader announcement of the new position, and a `reorder` event with the rows in their new order: all of `rows` in client mode, the current page's rows in server mode). Reorder is off while a search, a filter or a sort is active, and in server mode until the answer of the current query shows. A move names its rows by object identity: a row that no longer shows moves nothing. Saving the order is the screen's job. New type exports: `DataTableDateFilter`, `DateRange`.
+
+  `useUnsavedChanges` and `sameContent` in `@opulonjs/admin` now see a picked or replaced `File` as a change.
+
 ## 0.4.0
 
 No changes in this release.
