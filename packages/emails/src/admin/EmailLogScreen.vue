@@ -33,12 +33,9 @@ const columns = computed(() => [
     format: (value: unknown) => formatDateTime(value, locale.value),
   },
   { key: 'templateKey', label: t('emails.log.columns.templateKey') },
-  {
-    key: 'recipients',
-    label: t('emails.log.columns.recipients'),
-    format: (value: unknown) => (Array.isArray(value) ? value.join(', ') : ''),
-  },
+  { key: 'recipients', label: t('emails.log.columns.recipients') },
   { key: 'subject', label: t('emails.log.columns.subject') },
+  { key: 'attachments', label: t('emails.log.columns.attachments') },
   { key: 'status', label: t('emails.log.columns.status'), nowrap: true },
   {
     key: 'attempts',
@@ -47,6 +44,20 @@ const columns = computed(() => [
     nowrap: true,
   },
 ])
+
+const formatSize = (bytes: number) => {
+  const [unit, value] =
+    bytes >= 1048576
+      ? ['megabyte', bytes / 1048576]
+      : bytes >= 1024
+        ? ['kilobyte', bytes / 1024]
+        : ['byte', bytes]
+  return new Intl.NumberFormat(locale.value, {
+    style: 'unit',
+    unit,
+    maximumFractionDigits: 1,
+  }).format(value)
+}
 
 const statusFilter = computed(() => ({
   key: 'status',
@@ -66,6 +77,25 @@ const statusFilter = computed(() => ({
       :error-message="t('emails.log.failed')"
       :caption="t('emails.log.title')"
     >
+      <template #recipients-cell="{ row }">
+        <div>{{ row.original.recipients.join(', ') }}</div>
+        <div v-if="row.original.cc.length" class="text-xs text-muted">
+          {{ t('emails.log.cc') }}: {{ row.original.cc.join(', ') }}
+        </div>
+        <div v-if="row.original.bcc.length" class="text-xs text-muted">
+          {{ t('emails.log.bcc') }}: {{ row.original.bcc.join(', ') }}
+        </div>
+        <div v-if="row.original.replyTo" class="text-xs text-muted">
+          {{ t('emails.log.replyTo') }}: {{ row.original.replyTo }}
+        </div>
+      </template>
+      <template #attachments-cell="{ row }">
+        <ul v-if="row.original.attachments.length">
+          <li v-for="(file, index) in row.original.attachments" :key="index">
+            {{ file.filename }} ({{ formatSize(file.size) }})
+          </li>
+        </ul>
+      </template>
       <template #status-cell="{ row }">
         <StatusBadge
           :status="row.original.status"

@@ -19,10 +19,14 @@ cd "$host"
 DATABASE_URL_DIRECT="$db_url" node node_modules/@opulonjs/core/dist/cli.mjs migrate --server server/opulon.ts
 
 export CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE="$db_url"
+resend_stub=()
+[ -z "${VERIFY_RESEND_STUB:-}" ] ||
+  resend_stub=(--var "DEMO_RESEND_STUB:1" --var "EMAILS_RESEND_KEY:local-stub")
 exec pnpm dlx wrangler@4.150.0 dev \
   --port "$port" --ip 127.0.0.1 \
   --persist-to .wrangler/verify \
   --test-scheduled \
   --var "OPULON_BUILD_ID:$(grep -o 'build-id" content="[^"]*"' public/admin/index.html | cut -d'"' -f3)" \
   --var "USERS_BASE_URL:$base" \
-  --var "USERS_AUTH_SECRET:verify-host-local-secret-0123456789abcdef"
+  --var "USERS_AUTH_SECRET:verify-host-local-secret-0123456789abcdef" \
+  "${resend_stub[@]}"

@@ -11,8 +11,9 @@ import {
   withTransaction,
 } from '@opulonjs/core'
 import { createWorker, PgFromHyperdrive } from '@opulonjs/core/workers'
-import { EmailLogPage } from '@opulonjs/emails/api'
+import { AttachmentsTooLarge, EmailLogPage } from '@opulonjs/emails/api'
 import {
+  AttachmentResolver,
   captureMailer,
   emailComponent,
   type Mailer,
@@ -61,6 +62,28 @@ const ShopGroup = HttpApiGroup.make('shop')
     }).annotate(Policy, 'signedIn'),
   )
   .add(HttpApiEndpoint.post('alert', '/alerts').annotate(Policy, 'signedIn'))
+  .add(
+    HttpApiEndpoint.post('document', '/documents', {
+      payload: Schema.Struct({
+        to: Schema.String,
+        cc: Schema.optional(Schema.Array(Schema.String)),
+        bcc: Schema.optional(Schema.Array(Schema.String)),
+        replyTo: Schema.optional(Schema.String),
+        files: Schema.Array(
+          Schema.Struct({
+            filename: Schema.String,
+            contentType: Schema.String,
+            text: Schema.optional(Schema.String),
+            fill: Schema.optional(Schema.Number),
+            key: Schema.optional(Schema.String),
+            size: Schema.optional(Schema.Number),
+          }),
+        ),
+      }),
+      success: Schema.Struct({ id: Schema.String }),
+      error: AttachmentsTooLarge,
+    }).annotate(Policy, 'signedIn'),
+  )
   .middleware(Authorization)
 
 const shop = defineModule({
@@ -97,9 +120,36 @@ const shop = defineModule({
               })
             }).pipe(Effect.orDie),
           )
+          .handle('document', ({ payload }) =>
+            mail
+              .send(orderConfirmed, {
+                to: payload.to,
+                cc: payload.cc,
+                bcc: payload.bcc,
+                replyTo: payload.replyTo,
+                vars: { name: 'Jana', order: 'A-9' },
+                attachments: payload.files.map(
+                  ({ filename, contentType, text, fill, key, size }) =>
+                    key === undefined
+                      ? {
+                          filename,
+                          contentType,
+                          content:
+                            fill === undefined
+                              ? new TextEncoder().encode(text)
+                              : patternBytes(fill),
+                        }
+                      : { filename, contentType, key, size: size ?? 0 },
+                ),
+              })
+              .pipe(Effect.catchTag('SqlError', Effect.die)),
+          )
       }),
     ),
 })
+
+/** `size` bytes that are not all alike, so a wrong encoding or a shifted chunk shows. */
+export const patternBytes = (size: number) => Uint8Array.from({ length: size }, (_, i) => i % 251)
 
 /** A host email component: a coupon code box. */
 export const coupon = emailComponent({
@@ -115,6 +165,7 @@ export const shopServer = composeServer({
     core(),
     emails({
       from: 'Shop <noreply@example.test>',
+      replyTo: 'help@example.test',
       brand: { name: 'Shop', footer: { en: 'Shop footer', sk: 'Pätička obchodu' } },
       components: [coupon],
     }),
@@ -136,11 +187,25 @@ export function makeShop(
   options: { readonly mailer?: Layer.Layer<Mailer>; readonly clock?: Clock.Clock } = {},
 ) {
   const mailer = captureMailer()
+  const files = new Map<string, Uint8Array>()
+  const resolved: Array<string> = []
+  const resolver = Layer.succeed(
+    AttachmentResolver,
+    AttachmentResolver.of({
+      resolve: (key) =>
+        Effect.suspend(() => {
+          resolved.push(key)
+          const file = files.get(key)
+          return file ? Effect.succeed(file) : Effect.fail(new Error(`no file "${key}"`))
+        }),
+    }),
+  )
   const worker = createWorker(shopServer, {
     infra: (env: ShopEnv) =>
       Layer.mergeAll(
         PgFromHyperdrive({ connectionString: env.url }),
         options.mailer ?? mailer.layer,
+        resolver,
         options.clock ? Layer.succeed(Clock.Clock, options.clock) : Layer.empty,
         authorization(() =>
           Effect.succeed({
@@ -185,6 +250,8 @@ export function makeShop(
 
   return {
     mailer,
+    files,
+    resolved,
     request,
     fetch,
     order: (o: { email?: string; name?: string; locale?: string | null; rollback?: boolean }) =>
@@ -193,6 +260,27 @@ export function makeShop(
         name: o.name ?? 'Jana',
         locale: o.locale ?? null,
         rollback: o.rollback ?? false,
+      }),
+    document: (o: {
+      to?: string
+      cc?: ReadonlyArray<string>
+      bcc?: ReadonlyArray<string>
+      replyTo?: string
+      files?: ReadonlyArray<{
+        filename: string
+        contentType: string
+        text?: string
+        fill?: number
+        key?: string
+        size?: number
+      }>
+    }) =>
+      request('POST', '/shop/documents', {
+        to: o.to ?? 'visitor@example.test',
+        cc: o.cc,
+        bcc: o.bcc,
+        replyTo: o.replyTo,
+        files: o.files ?? [],
       }),
     log: async (query = '') =>
       Schema.decodeUnknownSync(EmailLogPage)((await request('GET', `/emails/log${query}`)).body),

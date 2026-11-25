@@ -26,6 +26,12 @@ export const EmailLogEntry = Schema.Struct({
   templateKey: Schema.String,
   locale: Schema.String,
   recipients: Schema.Array(Schema.String),
+  cc: Schema.Array(Schema.String),
+  bcc: Schema.Array(Schema.String),
+  /** The address replies go to: the send's own, else the module's configured one. */
+  replyTo: Schema.NullOr(Schema.String),
+  /** Name and size in bytes of each attached file; the content is never part of the log. */
+  attachments: Schema.Array(Schema.Struct({ filename: Schema.String, size: Schema.Number })),
   /** The rendered subject. */
   subject: Schema.String,
   status: EmailStatus,
@@ -88,6 +94,30 @@ export const RenderedPreview = Schema.Struct({
   html: Schema.String,
   text: Schema.String,
 })
+
+/** Bytes all attachments of one email may add up to (Resend takes 40 MB after Base64). */
+export const maxAttachmentsBytes = 10 * 1024 * 1024
+
+/**
+ * Bytes the attachments stored with a queued email (those sent with `content`) may add up to.
+ * Lower than the total: they are written to and read back from the email log row as Base64.
+ */
+export const maxStoredAttachmentsBytes = 4 * 1024 * 1024
+
+/**
+ * The attachments of one send are over a limit, so nothing was queued. `scope` names it:
+ * `stored` is `maxStoredAttachmentsBytes`, `total` is `maxAttachmentsBytes`.
+ */
+export class AttachmentsTooLarge extends Schema.TaggedError<AttachmentsTooLarge>()(
+  'AttachmentsTooLarge',
+  {
+    scope: Schema.Literals(['stored', 'total']),
+    size: Schema.Number,
+    limit: Schema.Number,
+    message: Schema.String,
+  },
+  { httpApiStatus: 413 },
+) {}
 
 /** The wording breaks the template's rules (undeclared placeholder, unknown component, …). */
 export class TemplateInvalid extends Schema.TaggedError<TemplateInvalid>()(

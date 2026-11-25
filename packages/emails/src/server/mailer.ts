@@ -1,11 +1,22 @@
 import { Config, Context, Effect, Layer, Option, Redacted, Schema } from 'effect'
+import { encodeBase64 } from './base64.ts'
+
+/** A file as a provider receives it. */
+export interface OutgoingAttachment {
+  readonly filename: string
+  readonly contentType: string
+  readonly content: Uint8Array
+}
 
 /** A rendered email as a provider receives it. */
 export interface OutgoingEmail {
   /** `Name <address>` or a bare address. */
   readonly from: string
   readonly to: ReadonlyArray<string>
+  readonly cc?: ReadonlyArray<string> | undefined
+  readonly bcc?: ReadonlyArray<string> | undefined
   readonly replyTo?: string | undefined
+  readonly attachments?: ReadonlyArray<OutgoingAttachment> | undefined
   readonly subject: string
   readonly html: string
   readonly text: string
@@ -64,6 +75,17 @@ export class Mailer extends Context.Service<
                     html: email.html,
                     text: email.text,
                     ...(email.replyTo ? { reply_to: email.replyTo } : {}),
+                    ...(email.cc?.length ? { cc: email.cc } : {}),
+                    ...(email.bcc?.length ? { bcc: email.bcc } : {}),
+                    ...(email.attachments?.length
+                      ? {
+                          attachments: email.attachments.map((a) => ({
+                            filename: a.filename,
+                            content: encodeBase64(a.content),
+                            content_type: a.contentType,
+                          })),
+                        }
+                      : {}),
                   }),
                 })
                 const body = await new Response(
@@ -94,14 +116,21 @@ export class Mailer extends Context.Service<
       }),
     )
 
-  /** Development: logs recipients and subject instead of sending. */
+  /** Development: logs the addresses, subject and attachment names instead of sending. */
   static readonly log = Layer.succeed(
     Mailer,
     Mailer.of({
       send: (email) =>
         Effect.logInfo('email not sent (log mailer)', {
           to: email.to,
+          cc: email.cc ?? [],
+          bcc: email.bcc ?? [],
+          replyTo: email.replyTo,
           subject: email.subject,
+          attachments: (email.attachments ?? []).map((a) => ({
+            filename: a.filename,
+            size: a.content.byteLength,
+          })),
         }).pipe(Effect.as({ id: null })),
     }),
   )
@@ -135,3 +164,16 @@ export const captureMailer = () => {
   )
   return Object.assign(state, { layer })
 }
+
+/**
+ * Returns the bytes of a reference attachment (`{ key }` in `EmailService.send`) at every
+ * delivery attempt, so the email log never holds them. The host provides it in its
+ * `infra(env)`, next to its Mailer; a host that sends no reference attachments provides none.
+ */
+export class AttachmentResolver extends Context.Service<
+  AttachmentResolver,
+  {
+    /** A failure fails that delivery attempt; the outbox retries it like a provider error. */
+    readonly resolve: (key: string) => Effect.Effect<Uint8Array, unknown>
+  }
+>()('@opulonjs/emails/AttachmentResolver') {}

@@ -10,9 +10,13 @@ export default {
       templateKey: 'Šablóna',
       recipients: 'Príjemcovia',
       subject: 'Predmet',
+      attachments: 'Prílohy',
       status: 'Stav',
       attempts: 'Pokusy',
     },
+    cc: 'Kópia',
+    bcc: 'Skrytá kópia',
+    replyTo: 'Odpovedať na',
     status: { queued: 'Vo fronte', sent: 'Odoslaný', failed: 'Zlyhal', skipped: 'Vynechaný' },
   },
   templates: {
