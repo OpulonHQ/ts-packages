@@ -21,6 +21,7 @@ export class Notes extends Context.Service<
   Notes,
   {
     readonly list: () => Effect.Effect<ReadonlyArray<typeof Note.Type>>
+    readonly search: (term: string) => Effect.Effect<ReadonlyArray<typeof Note.Type>>
     readonly ticks: () => Effect.Effect<ReadonlyArray<typeof Tick.Type>>
     readonly stamp: (by: string) => Effect.Effect<typeof Note.Type>
   }
@@ -32,6 +33,12 @@ export class Notes extends Context.Service<
       return {
         list: Effect.fn('Notes.list')(function* () {
           const rows = yield* sql`select id, body from demo.note order by id`
+          return yield* Schema.decodeUnknownEffect(Schema.Array(Note))(rows)
+        }, Effect.orDie),
+        search: Effect.fn('Notes.search')(function* (term: string) {
+          const rows = yield* sql`
+            select id, body from demo.note
+            where position(lower(${term}) in lower(body)) > 0 order by id limit 20`
           return yield* Schema.decodeUnknownEffect(Schema.Array(Note))(rows)
         }, Effect.orDie),
         ticks: Effect.fn('Notes.ticks')(function* () {
@@ -94,6 +101,7 @@ export const demo = defineModule({
         const mail = yield* EmailService
         return h
           .handle('notes', () => notes.list())
+          .handle('searchNotes', ({ query }) => notes.search(query.q))
           .handle('ticks', () => notes.ticks())
           .handle('stamp', () => Effect.flatMap(CurrentUser, (user) => notes.stamp(user.name)))
           .handle('ping', () =>

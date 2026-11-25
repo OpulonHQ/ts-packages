@@ -1,7 +1,7 @@
 <script setup lang="ts" generic="Row extends Record<string, unknown>">
 /**
- * List table for admin screens: search, select filters, sortable columns, pagination, row
- * selection and an empty state.
+ * List table for admin screens: search, select and date-range filters, sortable columns,
+ * pagination, row selection, row reorder and an empty state.
  *
  * Client mode: pass `rows`; everything runs in memory.
  * Server mode: pass `load`, which receives a `TableQuery` and returns `{ rows, total }`
@@ -18,16 +18,31 @@
 import type { TableColumn, TableRow } from '@nuxt/ui'
 import UButton from '@nuxt/ui/components/Button.vue'
 import UCheckbox from '@nuxt/ui/components/Checkbox.vue'
+import UIcon from '@nuxt/ui/components/Icon.vue'
 import UInput from '@nuxt/ui/components/Input.vue'
 import UPagination from '@nuxt/ui/components/Pagination.vue'
 import USelectMenu from '@nuxt/ui/components/SelectMenu.vue'
 import UTable from '@nuxt/ui/components/Table.vue'
 import EmptyState from '@opulonjs/ui/components/EmptyState'
-import { computed, h, onMounted, ref, shallowRef, useSlots, watch } from 'vue'
+import {
+  computed,
+  h,
+  nextTick,
+  onMounted,
+  ref,
+  shallowRef,
+  toRaw,
+  useSlots,
+  useTemplateRef,
+  watch,
+} from 'vue'
 import { EMPTY_PLACEHOLDER, getPath, humanize } from '../format.ts'
+import { requestTickets } from '../latest.ts'
 import {
   type DataTableColumn,
+  type DataTableDateFilter,
   type DataTableFilter,
+  type DateRange,
   nextSort,
   queryRows,
   type SortState,
@@ -44,9 +59,20 @@ const props = withDefaults(
     /** Server mode. */
     load?: (query: TableQuery) => Promise<TablePage<Row>>
     filters?: ReadonlyArray<DataTableFilter>
+    /** Each adds a From and a To day; the chosen days reach `load` as `query.dateRanges`. */
+    dateFilters?: ReadonlyArray<DataTableDateFilter>
     searchable?: boolean
     searchPlaceholder?: string
     selectable?: boolean
+    /**
+     * Rows move by drag handle or by their Move up and Move down buttons, except while a search,
+     * a filter or a sort is active or a load is under way. Each move emits `reorder` with the rows in the new order:
+     * all of `rows` in client mode (apply it to `rows`), the current page's rows in server mode
+     * (shown at once). Saving the order is the screen's job.
+     */
+    reorderable?: boolean
+    /** Names a row in its move buttons and in the announcement; default: the first column. */
+    rowLabel?: (row: Row) => string
     perPage?: number
     /** Bounds selectable pages while preserving the true total in the range label. */
     maxPage?: number
@@ -61,10 +87,18 @@ const props = withDefaults(
     /** Makes rows clickable (a prop, so hover styling only applies when used). */
     onRowClick?: (row: Row) => void
   }>(),
-  { filters: () => [], searchable: false, selectable: false, perPage: 25, sort: null },
+  {
+    filters: () => [],
+    dateFilters: () => [],
+    searchable: false,
+    selectable: false,
+    reorderable: false,
+    perPage: 25,
+    sort: null,
+  },
 )
 
-const emit = defineEmits<{ 'update:selected': [rows: Row[]] }>()
+const emit = defineEmits<{ 'update:selected': [rows: Row[]]; reorder: [rows: Row[]] }>()
 const slots = useSlots()
 const text = useKitText()
 
@@ -73,6 +107,7 @@ const sortState = shallowRef<SortState | null>(props.sort)
 const search = ref('')
 const appliedSearch = ref('')
 const filterValues = ref<Record<string, string | number>>({})
+const dateRanges = ref<Record<string, DateRange>>({})
 const loaded = shallowRef<TablePage<Row>>({ rows: [], total: 0 })
 const pending = ref(false)
 const failed = ref(false)
@@ -83,22 +118,29 @@ const query = computed<TableQuery>(() => ({
   sort: sortState.value,
   search: appliedSearch.value,
   filters: filterValues.value,
+  dateRanges: dateRanges.value,
 }))
 
-let latest = 0
+const loads = requestTickets()
+const answered = shallowRef<TableQuery>()
 async function refresh() {
   if (!props.load) return
-  const ticket = ++latest
+  const ticket = loads.next()
+  const asked = query.value
+  answered.value = undefined
   pending.value = true
   failed.value = false
   try {
-    const result = await props.load(query.value)
-    if (ticket === latest) loaded.value = result
+    const result = await props.load(asked)
+    if (ticket.isLatest()) {
+      loaded.value = result
+      answered.value = asked
+    }
   } catch (error) {
-    if (ticket === latest) failed.value = true
+    if (ticket.isLatest()) failed.value = true
     console.error(error)
   } finally {
-    if (ticket === latest) pending.value = false
+    if (ticket.isLatest()) pending.value = false
   }
 }
 defineExpose({ refresh })
@@ -132,13 +174,25 @@ function setFilter(key: string, value: string | number | undefined) {
   filterValues.value = next
   page.value = 1
 }
+function setDate(key: string, end: keyof DateRange, value: string) {
+  const { from, to }: DateRange = { ...dateRanges.value[key], [end]: value }
+  const next = { ...dateRanges.value }
+  if (from || to) next[key] = { ...(from && { from }), ...(to && { to }) }
+  else delete next[key]
+  dateRanges.value = next
+  page.value = 1
+}
 const filtered = computed(
-  () => appliedSearch.value !== '' || Object.keys(filterValues.value).length > 0,
+  () =>
+    appliedSearch.value !== '' ||
+    Object.keys(filterValues.value).length > 0 ||
+    Object.keys(dateRanges.value).length > 0,
 )
 function resetFilters() {
   search.value = ''
   appliedSearch.value = ''
   filterValues.value = {}
+  dateRanges.value = {}
   page.value = 1
 }
 
@@ -156,6 +210,90 @@ watch(
 )
 watch(selected, (rows) => emit('update:selected', rows))
 const clearSelection = () => (rowSelection.value = {})
+
+const root = useTemplateRef<HTMLElement>('root')
+const announcement = ref('')
+const dragged = shallowRef<Row>()
+const dropTarget = ref<number>()
+const labelOf = (row: Row) =>
+  props.rowLabel?.(row) ?? String(getPath(row, props.columns[0]?.key ?? '') ?? '')
+const canReorder = computed(
+  () =>
+    !filtered.value && sortState.value === null && (!props.load || answered.value === query.value),
+)
+const indexIn = (rows: ReadonlyArray<Row>, row: Row) =>
+  rows.findIndex((other) => toRaw(other) === toRaw(row))
+function move(row: Row, target: Row | undefined) {
+  const shown = current.value.rows
+  if (!canReorder.value || !target || toRaw(row) === toRaw(target)) return
+  if (indexIn(shown, row) < 0 || indexIn(shown, target) < 0) return
+  const rows = [...(props.load ? loaded.value.rows : (props.rows ?? []))]
+  const to = indexIn(rows, target)
+  const [moved] = rows.splice(indexIn(rows, row), 1)
+  rows.splice(to, 0, moved!)
+  if (props.load) loaded.value = { ...loaded.value, rows }
+  emit('reorder', rows)
+  const position = (props.load ? (page.value - 1) * props.perPage : 0) + to + 1
+  announcement.value = text.value.movedTo(labelOf(row), position, current.value.total)
+}
+async function step(row: Row, direction: 'up' | 'down') {
+  const shown = current.value.rows
+  const to = indexIn(shown, row) + (direction === 'up' ? -1 : 1)
+  move(row, shown[to])
+  await nextTick()
+  const buttons = [
+    ...(root.value?.querySelectorAll<HTMLButtonElement>(
+      `tbody tr:nth-child(${to + 1}) button[data-move]`,
+    ) ?? []),
+  ].filter((button) => !button.disabled)
+  const same = buttons.find((button) => button.dataset.move === direction)
+  ;(same ?? buttons[0])?.focus()
+}
+const rowIndex = (event: Event) => {
+  const row = (event.target as Element).closest('tbody tr')
+  return row?.parentElement ? [...row.parentElement.children].indexOf(row) : undefined
+}
+function onDragStart(event: DragEvent, row: Row) {
+  dragged.value = row
+  if (!event.dataTransfer) return
+  event.dataTransfer.effectAllowed = 'move'
+  const element = (event.target as Element).closest('tr')
+  if (element) event.dataTransfer.setDragImage(element, 0, 0)
+}
+function onDragOver(event: DragEvent) {
+  const index = rowIndex(event)
+  if (dragged.value === undefined || index === undefined) return
+  event.preventDefault()
+  dropTarget.value = index
+}
+function onDrop(event: DragEvent) {
+  const index = rowIndex(event)
+  if (dragged.value !== undefined && index !== undefined) {
+    event.preventDefault()
+    move(dragged.value, current.value.rows[index])
+  }
+  onDragEnd()
+}
+function onDragEnd() {
+  dragged.value = undefined
+  dropTarget.value = undefined
+}
+const moveButton = (row: Row, index: number, direction: 'up' | 'down') =>
+  h(UButton, {
+    color: 'neutral',
+    variant: 'ghost',
+    size: 'xs',
+    icon: direction === 'up' ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down',
+    'aria-label': text.value[direction === 'up' ? 'moveUp' : 'moveDown'](labelOf(row)),
+    'data-move': direction,
+    disabled:
+      !canReorder.value ||
+      (direction === 'up' ? index === 0 : index === current.value.rows.length - 1),
+    onClick: (event: Event) => {
+      event.stopPropagation()
+      void step(row, direction)
+    },
+  })
 
 const align = { left: '', center: 'text-center', right: 'text-right' }
 
@@ -184,6 +322,33 @@ const header = (column: DataTableColumn<Row>) => {
 }
 
 const tableColumns = computed<TableColumn<Row>[]>(() => [
+  ...(props.reorderable
+    ? [
+        {
+          id: 'reorder',
+          header: '',
+          cell: ({ row }) =>
+            h('div', { class: 'flex items-center' }, [
+              h(
+                'span',
+                {
+                  draggable: String(canReorder.value),
+                  'aria-hidden': 'true',
+                  class: canReorder.value
+                    ? 'flex cursor-grab p-1 text-dimmed hover:text-default'
+                    : 'flex p-1 text-dimmed opacity-50',
+                  onDragstart: (event: DragEvent) => onDragStart(event, row.original),
+                  onDragend: onDragEnd,
+                },
+                h(UIcon, { name: 'i-lucide-grip-vertical', class: 'size-4' }),
+              ),
+              moveButton(row.original, row.index, 'up'),
+              moveButton(row.original, row.index, 'down'),
+            ]),
+          meta: { class: { th: 'w-px', td: 'w-px whitespace-nowrap' } },
+        } satisfies TableColumn<Row>,
+      ]
+    : []),
   ...(props.selectable
     ? [
         {
@@ -250,6 +415,11 @@ const onSelect = (_event: Event, row: TableRow<Row>) => props.onRowClick?.(row.o
 // Nuxt UI keeps every cell on one line, so a long title or path pushes the columns after it
 // out of the visible box. Cells wrap instead (long words and paths anywhere); `nowrap` columns
 // opt out. Clickable rows get the pointer, the empty and loading rows do not.
+const tableMeta = computed(() => ({
+  class: {
+    tr: (row: { index: number }) => (row.index === dropTarget.value ? 'bg-elevated' : ''),
+  },
+}))
 const tableUi = computed(() => ({
   td: 'whitespace-normal [overflow-wrap:anywhere]',
   tbody: props.onRowClick ? '[&>tr:has(>[data-slot=td])]:cursor-pointer' : undefined,
@@ -258,9 +428,9 @@ const tableUi = computed(() => ({
 </script>
 
 <template>
-  <div class="space-y-3">
+  <div ref="root" class="space-y-3">
     <div
-      v-if="searchable || filters.length || $slots.toolbar"
+      v-if="searchable || filters.length || dateFilters.length || $slots.toolbar"
       class="flex flex-wrap items-center gap-2"
     >
       <UInput
@@ -285,6 +455,30 @@ const tableUi = computed(() => ({
         class="w-full sm:w-44"
         @update:model-value="(value: string | number | undefined) => setFilter(filter.key, value)"
       />
+      <div
+        v-for="filter in dateFilters"
+        :key="filter.key"
+        class="flex items-center gap-1 text-sm text-muted"
+      >
+        <span>{{ filter.label }}</span>
+        <UInput
+          type="date"
+          :model-value="dateRanges[filter.key]?.from ?? ''"
+          :max="dateRanges[filter.key]?.to"
+          :aria-label="text.rangeFrom(filter.label)"
+          size="sm"
+          @update:model-value="(value: string) => setDate(filter.key, 'from', value)"
+        />
+        <span aria-hidden="true">–</span>
+        <UInput
+          type="date"
+          :model-value="dateRanges[filter.key]?.to ?? ''"
+          :min="dateRanges[filter.key]?.from"
+          :aria-label="text.rangeTo(filter.label)"
+          size="sm"
+          @update:model-value="(value: string) => setDate(filter.key, 'to', value)"
+        />
+      </div>
       <UButton
         v-if="filtered"
         color="neutral"
@@ -320,6 +514,8 @@ const tableUi = computed(() => ({
       </div>
     </slot>
 
+    <p v-if="reorderable" class="sr-only" aria-live="polite">{{ announcement }}</p>
+
     <UTable
       v-model:row-selection="rowSelection"
       :data="[...current.rows]"
@@ -327,8 +523,11 @@ const tableUi = computed(() => ({
       :loading="pending"
       :caption="caption"
       :ui="tableUi"
+      :meta="tableMeta"
       class="rounded-lg border border-default"
       :on-select="onRowClick ? onSelect : undefined"
+      @dragover="onDragOver"
+      @drop="onDrop"
     >
       <template v-for="name in forwarded" :key="name" #[name]="slotProps">
         <slot :name="name" v-bind="slotProps" />

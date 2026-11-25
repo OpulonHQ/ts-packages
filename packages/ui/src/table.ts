@@ -1,5 +1,5 @@
 import type { SelectItem } from './fields.ts'
-import { getPath } from './format.ts'
+import { getPath, dateTimeLocalValue, toDate } from './format.ts'
 
 export type SortDirection = 'asc' | 'desc'
 
@@ -18,6 +18,14 @@ export interface TableQuery {
   readonly search: string
   /** Select filter values by filter key; unset filters are absent. */
   readonly filters: Readonly<Record<string, string | number>>
+  /** Date-range filter values by filter key; unset filters are absent. */
+  readonly dateRanges?: Readonly<Record<string, DateRange>>
+}
+
+/** Days as `YYYY-MM-DD`, both included; an open end is absent. */
+export interface DateRange {
+  readonly from?: string
+  readonly to?: string
 }
 
 export interface TablePage<Row> {
@@ -33,9 +41,15 @@ export const nextSort = (current: SortState | null, column: string): SortState |
       ? { column, direction: 'desc' }
       : null
 
+const localDay = (value: unknown): string | undefined => {
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value
+  const date = toDate(value)
+  return date && dateTimeLocalValue(date).slice(0, 10)
+}
+
 /**
  * Client mode: search (any column's text contains the term, case-insensitive), exact-match
- * filters, sort and one page, in memory.
+ * filters, date ranges (the row value's day in local time), sort and one page, in memory.
  */
 export const queryRows = <Row>(
   rows: ReadonlyArray<Row>,
@@ -51,7 +65,11 @@ export const queryRows = <Row>(
             .toLowerCase()
             .includes(term),
         )) &&
-      Object.entries(query.filters).every(([key, value]) => getPath(row, key) === value),
+      Object.entries(query.filters).every(([key, value]) => getPath(row, key) === value) &&
+      Object.entries(query.dateRanges ?? {}).every(([key, { from, to }]) => {
+        const day = localDay(getPath(row, key))
+        return day !== undefined && (!from || day >= from) && (!to || day <= to)
+      }),
   )
   const sort = query.sort
   if (sort) {
@@ -93,4 +111,10 @@ export interface DataTableFilter {
   key: string
   label: string
   options: ReadonlyArray<SelectItem>
+}
+
+export interface DataTableDateFilter {
+  /** Row key of a date, a date-time or a `YYYY-MM-DD` day. */
+  key: string
+  label: string
 }

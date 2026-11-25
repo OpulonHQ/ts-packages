@@ -19,10 +19,26 @@ export const languageName = (code: string, inLocale: string = code): string => {
   return name ? name.charAt(0).toLocaleUpperCase(inLocale) + name.slice(1) : code
 }
 
-const toDate = (value: unknown): Date | undefined => {
+export const toDate = (value: unknown): Date | undefined => {
   if (value === null || value === undefined || value === '') return undefined
   const date = value instanceof Date ? value : new Date(String(value))
   return Number.isNaN(date.getTime()) ? undefined : date
+}
+
+export const dateTimeLocalValue = (date: Date): string => {
+  const pad = (part: number) => String(part).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+export const formatBytes = (bytes: number, locale: string): string => {
+  const units = ['byte', 'kilobyte', 'megabyte', 'gigabyte']
+  const power = Math.min(Math.floor(Math.log(Math.max(bytes, 1)) / Math.log(1024)), 3)
+  return new Intl.NumberFormat(locale, {
+    style: 'unit',
+    unit: units[power],
+    unitDisplay: power === 0 ? 'long' : 'short',
+    maximumFractionDigits: 1,
+  }).format(bytes / 1024 ** power)
 }
 
 /** A day the way every admin list shows it (`Nov 7, 2026`, `7. 11. 2026`); empty: `—`. */

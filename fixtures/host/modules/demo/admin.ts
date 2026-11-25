@@ -2,7 +2,8 @@ import { defineAdminModule } from '@opulonjs/admin'
 import { demoPermissions } from './api.ts'
 
 /**
- * The demo module's admin side: a notes screen and dashboard widget through its own API group.
+ * The demo module's admin side: a notes screen and dashboard widget through its own API group, and a
+ * screen showing the UI kit's fields and table.
  */
 export const demoAdmin = defineAdminModule({
   id: 'demo',
@@ -14,8 +15,17 @@ export const demoAdmin = defineAdminModule({
       permission: 'demo.notes.view',
       component: () => import('./admin/NotesScreen.vue'),
     },
+    {
+      name: 'demo.kit',
+      path: '/demo/kit',
+      permission: 'demo.notes.view',
+      component: () => import('./admin/KitScreen.vue'),
+    },
   ],
-  nav: [{ label: 'nav.notes', route: 'demo.notes', icon: 'i-lucide-notebook', group: 'content' }],
+  nav: [
+    { label: 'nav.notes', route: 'demo.notes', icon: 'i-lucide-notebook', group: 'content' },
+    { label: 'nav.kit', route: 'demo.kit', icon: 'i-lucide-grip-vertical', group: 'content' },
+  ],
   widgets: [
     {
       name: 'notes',
