@@ -117,7 +117,7 @@ test('collection items and site settings hold lists too', async () => {
   })
 
   const saved = await host.saveDraft<SiteSettings>('/settings', {
-    data: { offices: [entry({ city: 'Rome', map: { type: 'page', id: target.id } })] },
+    data: { offices: [entry({ city: 'Rome', map: { it: { type: 'page', id: target.id } } })] },
   })
   expect(saved.status).toBe(200)
   expect((await host.publishDraft('/settings')).status).toBe(200)
@@ -126,6 +126,10 @@ test('collection items and site settings hold lists too', async () => {
     { data: { city: 'Rome', map: { type: 'page', id: target.id, href: '/it/ufficio-roma' } } },
   ])
   expect(tags(site.headers)).toContain(`cms:page:${target.id}`)
+  const english = await read<PublicSite>('/site?locale=en')
+  expect(english.body.settings['offices']).toEqual([
+    { id: expect.any(String), data: { city: 'Rome', map: null } },
+  ])
 
   await host.saveDraft('/settings', { data: { offices: [entry({})] } })
   const refused = await host.publishDraft('/settings')

@@ -55,13 +55,16 @@ cards: {
 
 An item holds any field kind except a list, and each item field is localized or not, as at the
 top level. Editors add, remove and reorder items with buttons or by dragging the grip. A save
-refuses more than `max` items (100 when unset). Publishing needs at least `min` items (one for a
-`required` list) and every item's required fields, in each available locale or in the default one.
+refuses more than `max` items (100 when unset). Publishing needs at least `min` items and every
+item's required fields, in each available locale or in the default one.
 
 A list is stored as `[{ id, data }]` in the editor's order; `data` is stored like a section's
 data, so a localized item field holds `{ [locale]: value }`. The server keeps each item's id
-across saves, reorders and revisions. The Read API and the live preview return the same
-`[{ id, data }]` in one locale, with media and links inside items resolved like top-level ones.
+across saves, reorders and revisions. The Read API returns `[{ id, data }]` in one locale, with
+media and links inside items resolved like top-level ones. A page preview (the preview endpoint
+and the live preview) has the same items in one locale, but with media ids and links as stored,
+without `href`, at the top level and inside items alike. A component rendered in a preview has to
+accept both.
 
 `SectionData` types a section component's `data` prop from the definitions, list items included:
 
@@ -82,8 +85,7 @@ defineProps<{ data: SectionData<typeof definitions, 'cards'> }>()
 </template>
 ```
 
-`PublicDataOf<typeof definitions.collections.posts>` does the same for a collection's or the site
-settings' data.
+`PublicDataOf<typeof definitions.collections.posts>` does the same for a collection's data.
 
 ## Filter a collection's admin list
 

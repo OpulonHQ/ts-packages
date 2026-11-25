@@ -171,11 +171,11 @@ export const fields = {
     make('custom', o.schema, o, false),
   /**
    * Repeated items in an order the editor sets, each with its own fields (any kind but a list,
-   * localized or not per field). `min` and `max` bound the count (at most 100); `min` and
-   * `required` are checked on publish.
+   * localized or not per field). `min` and `max` bound the count (at most 100); `min` is
+   * checked on publish.
    */
   list: <I extends Readonly<Record<string, ItemField>>>(
-    o: Pick<FieldOptions, 'label' | 'help' | 'required'> & {
+    o: Pick<FieldOptions, 'label' | 'help'> & {
       readonly item: I
       readonly min?: number
       readonly max?: number

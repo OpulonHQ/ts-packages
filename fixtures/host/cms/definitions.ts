@@ -39,6 +39,7 @@ export const definitions = defineCms({
       label: { en: 'Cards', sk: 'Karty' },
       fields: {
         heading: fields.text({ label: { en: 'Heading', sk: 'Nadpis' } }),
+        more: fields.link({ label: { en: 'More link', sk: 'Odkaz na viac' } }),
         cards: fields.list({
           label: { en: 'Cards', sk: 'Karty' },
           min: 1,
@@ -118,7 +119,7 @@ export const definitions = defineCms({
       label: { en: 'Offices', sk: 'Pobočky' },
       item: {
         city: fields.text({ label: { en: 'City', sk: 'Mesto' }, localized: false, required: true }),
-        map: fields.link({ label: { en: 'Map', sk: 'Mapa' } }),
+        map: fields.link({ label: { en: 'Map', sk: 'Mapa' }, localized: true }),
       },
     }),
   },

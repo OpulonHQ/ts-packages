@@ -54,7 +54,8 @@ export type InferredSectionData = [
   Expect<Equal<Card['id'], string>>,
   Expect<Equal<Card['data']['title'], string | null | undefined>>,
   Expect<Equal<Card['data']['image'], ResolvedMedia | null | undefined>>,
-  Expect<Equal<Card['data']['link'], ResolvedLink | undefined>>,
+  Expect<Equal<Card['data']['link'], ResolvedLink | null | undefined>>,
+  Expect<Equal<SectionData<typeof definitions, 'cards'>['more'], ResolvedLink | null | undefined>>,
 ]
 // @ts-expect-error: `price` is not a field of a card
 export type NoSuchItemField = Card['data']['price']

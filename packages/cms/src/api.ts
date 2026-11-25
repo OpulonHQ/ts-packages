@@ -763,7 +763,7 @@ type PublicValue<F> = F extends { readonly kind: 'list'; readonly item: infer I 
     ? K extends 'media'
       ? ResolvedMedia | null
       : K extends 'link'
-        ? ResolvedLink
+        ? ResolvedLink | null
         : T | null
     : unknown
 type PublicFields<Fields> = { readonly [Name in keyof Fields]?: PublicValue<Fields[Name]> }

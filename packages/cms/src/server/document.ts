@@ -169,7 +169,7 @@ export const checkFields = (
       const value = data[name]
       if (field.kind === 'list') {
         const items = listItems(value)
-        const least = Math.max(field.min ?? 0, field.required ? 1 : 0)
+        const least = field.min ?? 0
         if (items.length < least)
           return yield* invalid(
             `"${label}" needs at least ${least} ${least === 1 ? 'item' : 'items'}.`,

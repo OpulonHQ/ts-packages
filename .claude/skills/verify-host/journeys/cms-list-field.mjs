@@ -130,4 +130,18 @@ export default async (ctx) => {
   await page.reload()
   await shows(['A', 'B'], 'after restore')
   await shot('list-restored')
+
+  await page.getByRole('radiogroup', { name: 'Content language' }).getByText('Italian', { exact: true }).click()
+  const add = list.getByRole('button', { name: 'Add item', exact: true })
+  for (const index of [2, 3]) {
+    await add.focus()
+    await page.keyboard.press('Enter')
+    await page.waitForFunction(
+      (name) => document.activeElement?.getAttribute('name') === name,
+      `sections.0.cards.${index}.title.it`,
+    )
+    check(true, `Italian shown: Enter on Add item focuses item ${index + 1}'s Italian Title`)
+  }
+  check(await add.isDisabled(), 'Add item is disabled at the maximum of 4, and focus is in the new item')
+  await shot('list-added-by-keyboard-in-italian')
 }

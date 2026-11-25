@@ -5,6 +5,7 @@ import { computed, nextTick, ref, useId, useTemplateRef } from 'vue'
 import { type Field, labelText, maxListItems } from '../api.ts'
 import { listItems } from '../localize.ts'
 import FieldsForm from './FieldsForm.vue'
+import { firstControl } from './use-cms.ts'
 
 const model = defineModel<unknown>()
 const props = defineProps<{
@@ -59,11 +60,8 @@ async function remove(index: number) {
 async function add() {
   model.value = [...items.value, { id: crypto.randomUUID(), data: {} }]
   await nextTick()
-  focus(
-    row(items.value.length - 1)?.lastElementChild?.querySelector<HTMLElement>(
-      'input, textarea, select, button, [contenteditable="true"]',
-    ),
-  )
+  const fields = row(items.value.length - 1)?.lastElementChild
+  focus(fields && firstControl(fields))
 }
 function startDrag(event: DragEvent, index: number) {
   dragged.value = index
