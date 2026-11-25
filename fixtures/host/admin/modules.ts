@@ -14,7 +14,7 @@ export const cmsOptions = {
   },
 } satisfies CmsAdminOptions
 
-const turnstileSiteKey: string | undefined = import.meta.env?.VITE_USERS_TURNSTILE_SITE_KEY
+const turnstileSiteKey: string | undefined = import.meta.env.VITE_USERS_TURNSTILE_SITE_KEY
 
 // The host's admin module list. Every id must also be a server module (server/opulon.ts);
 // `pnpm pack:check` compares the two lists. Server-only modules are allowed.

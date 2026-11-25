@@ -10,7 +10,6 @@ export const turnstileConfig = Config.all({
   hostnames: Config.String('USERS_TURNSTILE_HOSTNAMES').pipe(Config.withDefault('')),
 })
 
-/** With the guard on, fails unless `token` is a Turnstile token solved for `action`. */
 export const requireTurnstile = Effect.fn('Users.requireTurnstile')(function* (
   headers: Headers,
   action: 'sign-in' | 'request-password-reset',

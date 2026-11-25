@@ -11,8 +11,7 @@ export const dummy = {
   token: 'XXXX.DUMMY.TOKEN.XXXX',
 } as const
 
-/** What siteverify answers for a dummy secret, as Cloudflare documents it. */
-const cloudflare = (form: URLSearchParams) => {
+const dummySecretAnswer = (form: URLSearchParams) => {
   const secret = form.get('secret')
   if (secret === dummy.passSecret && form.get('response') === dummy.token)
     return Response.json({
@@ -34,13 +33,8 @@ const cloudflare = (form: URLSearchParams) => {
   })
 }
 
-/**
- * Replaces the global `fetch` with a siteverify that answers like Cloudflare's dummy secrets, or
- * as `answer` says. Any other URL throws, so a test never reaches the network. Resolves with the
- * forms it received. Undo with `vi.unstubAllGlobals()`.
- */
 export function stubSiteverify(
-  answer: (form: URLSearchParams, signal: AbortSignal) => Response | Promise<Response> = cloudflare,
+  answer: (form: URLSearchParams) => Response | Promise<Response> = dummySecretAnswer,
 ) {
   const calls: Array<URLSearchParams> = []
   vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -49,7 +43,7 @@ export function stubSiteverify(
       throw new Error(`unexpected fetch: ${request.method} ${request.url}`)
     const form = new URLSearchParams(await request.text())
     calls.push(form)
-    return answer(form, request.signal)
+    return answer(form)
   })
   return calls
 }

@@ -25,7 +25,6 @@ const load = () =>
     if (loaded) return resolve(loaded)
     const script = document.createElement('script')
     script.src = scriptUrl
-    script.async = true
     script.onload = () => {
       const loaded = api()
       if (loaded) resolve(loaded)
