@@ -32,6 +32,9 @@ export interface Env {
   readonly USERS_AUTH_SECRET: string
   readonly DEMO_RESEND_STUB?: string
   readonly USERS_PASSWORD_CONFIRM_WINDOW?: string
+  readonly USERS_TURNSTILE?: string
+  readonly USERS_TURNSTILE_SECRET?: string
+  readonly USERS_TURNSTILE_HOSTNAMES?: string
 }
 
 const StubbedEmail = Schema.Struct({

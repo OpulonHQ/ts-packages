@@ -32,6 +32,7 @@ export { UserManagement } from './manage.ts'
 export { Users } from './service.ts'
 export { staffAccess, type StaffCheck, type StaffSession } from './staff.ts'
 export { invitationEmail, passwordResetEmail } from './templates.ts'
+export { turnstileConfig } from './turnstile.ts'
 
 const requestHeaders = Effect.map(HttpServerRequest, (r) => ({
   headers: new Headers(r.headers),
@@ -111,7 +112,7 @@ export const users = () =>
               )
               .handle('requestPasswordReset', ({ payload }) =>
                 Effect.flatMap(requestHeaders, ({ headers }) =>
-                  users.requestPasswordReset(headers, payload.email),
+                  users.requestPasswordReset(headers, payload),
                 ),
               )
               .handle('resetPassword', ({ payload }) =>

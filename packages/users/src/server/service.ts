@@ -14,13 +14,20 @@ import { EmailService } from '@opulonjs/emails/server'
 import { Context, Data, Effect, Layer } from 'effect'
 import { BadRequest, Conflict, Forbidden, Unauthorized } from 'effect/http-api/HttpApiError'
 import { SqlClient } from 'effect/sql/SqlClient'
-import { InvalidToken, Refused, TooManyRequests, WrongPassword } from '../api.ts'
+import {
+  InvalidToken,
+  Refused,
+  TooManyRequests,
+  type TurnstileFailed,
+  WrongPassword,
+} from '../api.ts'
 import { canGrant, loadAccess, lockAccessWrites } from './access.ts'
 import { type AuthResult, BetterAuth, signInRateLimitKey } from './auth.ts'
 import { adminLink, createInvitation, hashToken } from './invitations.ts'
 import { hashPassword, isBcryptHash, verifyPassword } from './password.ts'
 import { authenticate, foreignOrigin } from './session.ts'
 import { invitationEmail, passwordResetEmail } from './templates.ts'
+import { requireTurnstile } from './turnstile.ts'
 
 const addressPattern = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/
 export const normalizeEmail = (email: string) => email.trim().toLowerCase()
@@ -80,13 +87,20 @@ export class Users extends Context.Service<
     ) => Effect.Effect<void, Unauthorized | WrongPassword | TooManyRequests>
     readonly signIn: (
       headers: Headers,
-      input: { readonly email: string; readonly password: string },
-    ) => Effect.Effect<AuthResult & { readonly userId: string }, Unauthorized | TooManyRequests>
+      input: {
+        readonly email: string
+        readonly password: string
+        readonly turnstileToken?: string | undefined
+      },
+    ) => Effect.Effect<
+      AuthResult & { readonly userId: string },
+      Unauthorized | TooManyRequests | TurnstileFailed
+    >
     readonly signOut: (headers: Headers) => Effect.Effect<AuthResult>
     readonly requestPasswordReset: (
       headers: Headers,
-      email: string,
-    ) => Effect.Effect<void, TooManyRequests>
+      input: { readonly email: string; readonly turnstileToken?: string | undefined },
+    ) => Effect.Effect<void, TooManyRequests | TurnstileFailed>
     readonly resetPassword: (
       headers: Headers,
       input: { readonly token: string; readonly password: string },
@@ -210,6 +224,7 @@ export class Users extends Context.Service<
         signIn: Effect.fn('Users.signIn')(function* (headers, input) {
           // Login CSRF: another site must not sign a visitor in to an account it controls.
           if (yield* foreignOrigin(headers)) return yield* new Unauthorized()
+          yield* requireTurnstile(headers, 'sign-in', input.turnstileToken)
           const email = normalizeEmail(input.email)
           const { verifiedHash: verified, ...result } = yield* auth.post(
             '/sign-in/email',
@@ -254,9 +269,10 @@ export class Users extends Context.Service<
           return result
         }, withSql),
 
-        requestPasswordReset: Effect.fn('Users.requestPasswordReset')(function* (headers, email) {
+        requestPasswordReset: Effect.fn('Users.requestPasswordReset')(function* (headers, input) {
+          yield* requireTurnstile(headers, 'request-password-reset', input.turnstileToken)
           const result = yield* auth.post('/request-password-reset', headers, {
-            email: normalizeEmail(email),
+            email: normalizeEmail(input.email),
           })
           yield* failOnServerError(result)
           if (result.status === 429) return yield* tooMany(result)

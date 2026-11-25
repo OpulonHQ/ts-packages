@@ -23,6 +23,11 @@
       "types": "./dist/api.d.mts",
       "default": "./dist/api.mjs"
     },
+    "./turnstile": {
+      "@opulonjs/source": "./src/turnstile.ts",
+      "types": "./dist/turnstile.d.mts",
+      "default": "./dist/turnstile.mjs"
+    },
     "./workers": {
       "@opulonjs/source": "./src/workers.ts",
       "types": "./dist/workers.d.mts",

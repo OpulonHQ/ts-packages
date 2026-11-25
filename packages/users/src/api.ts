@@ -75,11 +75,20 @@ export class WrongPassword extends Schema.TaggedError<WrongPassword>()(
   { httpApiStatus: 403 },
 ) {}
 
+/** The Turnstile check is on and the request's token is missing or did not pass. */
+export class TurnstileFailed extends Schema.TaggedError<TurnstileFailed>()(
+  'TurnstileFailed',
+  {},
+  { httpApiStatus: 403 },
+) {}
+
 /** An email address as the API takes it: at most 254 characters. */
 export const Email = Schema.String.check(Schema.isMaxLength(254))
 /** Better Auth's limits: 8 to 128 characters. */
 const Password = Schema.String.check(Schema.isMinLength(8), Schema.isMaxLength(128))
 const Token = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200))
+/** A Cloudflare Turnstile token: at most 2048 characters. Read only when the check is on. */
+const TurnstileToken = Schema.optionalKey(Schema.String.check(Schema.isMaxLength(2048)))
 
 /** Sign-in, sign-out, password reset and invitation acceptance: reachable without a session. */
 export const UsersAuthGroup = HttpApiGroup.make('users.auth')
@@ -88,16 +97,17 @@ export const UsersAuthGroup = HttpApiGroup.make('users.auth')
       payload: Schema.Struct({
         email: Email,
         password: Schema.String.check(Schema.isMaxLength(128)),
+        turnstileToken: TurnstileToken,
       }),
       success: Schema.Struct({ id: Schema.String }),
-      error: [Unauthorized, TooManyRequests],
+      error: [Unauthorized, TooManyRequests, TurnstileFailed],
     }),
   )
   .add(HttpApiEndpoint.post('signOut', '/auth/sign-out'))
   .add(
     HttpApiEndpoint.post('requestPasswordReset', '/auth/request-password-reset', {
-      payload: Schema.Struct({ email: Email }),
-      error: TooManyRequests,
+      payload: Schema.Struct({ email: Email, turnstileToken: TurnstileToken }),
+      error: [TooManyRequests, TurnstileFailed],
     }),
   )
   .add(
