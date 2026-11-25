@@ -39,6 +39,12 @@ export default {
     short: 'Použite aspoň 8 znakov.',
     tooMany: 'Príliš veľa pokusov. Počkajte minútu a skúste to znova.',
     failed: 'Niečo sa pokazilo. Skúste to znova.',
+    turnstile: 'Overenie, že ste človek, sa nepodarilo. Skúste to znova.',
+    turnstileSetup:
+      'Overenie, že ste človek, nie je správne nastavené. Obráťte sa na administrátora.',
+    turnstileUnavailable:
+      'Overenie, že ste človek, sa nenačítalo. Skontrolujte pripojenie alebo blokovanie obsahu.',
+    turnstileRetry: 'Skúsiť znova',
   },
   nav: { users: 'Používatelia', roles: 'Roly' },
   status: { active: 'Aktívny', deactivated: 'Deaktivovaný' },

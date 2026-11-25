@@ -232,3 +232,100 @@ A bcrypt check runs in JavaScript on Workers. A sign-in against a hash with cost
 time of 0.2 to 0.3 seconds, measured on a local workerd; later sign-ins use the current format.
 Expect a bcrypt check to need far more than the 10 ms of CPU per request of Workers Free, so
 imported bcrypt users need Workers Paid until their first sign-in has upgraded the hash.
+
+## Guard sign-in with Cloudflare Turnstile
+
+Off by default. To turn it on, set three Worker env values and pass the widget's site key to the
+admin:
+
+| Env                         | Value                                                                  |
+| --------------------------- | ---------------------------------------------------------------------- |
+| `USERS_TURNSTILE`           | `true`                                                                 |
+| `USERS_TURNSTILE_SECRET`    | the widget's secret key (`wrangler secret put`)                        |
+| `USERS_TURNSTILE_HOSTNAMES` | the hostnames the admin is served from, comma-separated: `example.com` |
+
+```ts
+usersAdmin({ turnstile: { siteKey: import.meta.env.VITE_TURNSTILE_SITE_KEY } })
+```
+
+The sign-in and forgotten-password screens then show the widget, and the server refuses a sign-in
+or password-reset request with 403 `{"_tag":"TurnstileFailed"}` unless its `turnstileToken` passes
+siteverify for the action (`sign-in`, `request-password-reset`) and one of the hostnames. The check
+runs before the user is looked up, so a refused request costs no password hash and no sign-in
+attempt. A siteverify that fails or does not answer within 5 seconds refuses the request.
+Invitation acceptance and the reset link itself are not guarded.
+
+The Worker switch and the admin's site key are set separately, and both sides must agree. Each
+of these answers 403 `{"_tag":"TurnstileNotConfigured"}` or shows "The check that you are human is
+not set up correctly", and the Worker logs the first two:
+
+- `USERS_TURNSTILE` on without a secret or hostname list: every request is refused.
+- A site key in the admin with `USERS_TURNSTILE` off: a request that carries a token is refused. A
+  request without a token works as it does with no Turnstile at all.
+- `USERS_TURNSTILE` on and no site key in the admin: the screens have no widget and every sign-in
+  is refused.
+
+How `USERS_TURNSTILE` is read (text is lowercase, exactly as written here):
+
+| Value                                                                           | The check                                   |
+| ------------------------------------------------------------------------------- | ------------------------------------------- |
+| boolean `true`, `true`, `yes`, `on`, `1`                                        | on                                          |
+| not set, an empty value, boolean `false`, `false`, `no`, `off`, `0`             | off                                         |
+| any other text or number (`TRUE`, `enabled`, `2`)                               | every sign-in and reset request answers 500 |
+| a JSON object, array or `null` (ignored like a binding, so it reads as not set) | off                                         |
+
+An admin built with a site key against a Worker whose switch is off refuses every sign-in with
+the "not set up correctly" message. That is how a switch left empty by mistake shows up.
+
+When Cloudflare's script does not load, for example behind a content blocker, the screens say so
+and offer "Try again".
+
+For local development use Cloudflare's dummy keys: site key `1x00000000000000000000AA` with secret
+`1x0000000000000000000000000000000AA` always passes, secret `2x0000000000000000000000000000000AA`
+always fails. A dummy secret answers hostname `example.com` and no action, so those two
+comparisons are skipped for it; `USERS_TURNSTILE_HOSTNAMES` must still be set.
+
+### The same check on a host form
+
+```ts
+import { verifyTurnstile } from '@opulonjs/core/turnstile'
+
+const check = await verifyTurnstile({
+  secret: env.TURNSTILE_SECRET,
+  hostnames: ['example.com'],
+  action: 'contact',
+  token: body.turnstileToken,
+  remoteIp: request.headers.get('cf-connecting-ip') ?? undefined,
+})
+if (!check.ok) return new Response(null, { status: 403 })
+```
+
+It never throws and refuses on every failure; `check.reason` is for the server log. The entry
+imports neither Effect nor the users module. The widget for the form is a Vue component:
+
+```vue
+<script setup lang="ts">
+import Turnstile from '@opulonjs/ui/components/Turnstile'
+import { ref, useTemplateRef } from 'vue'
+
+const token = ref<string>()
+const widget = useTemplateRef('widget')
+</script>
+
+<template>
+  <Turnstile ref="widget" v-model="token" site-key="1x00000000000000000000AA" action="contact" />
+</template>
+```
+
+`token` is undefined until the visitor passes and again when the token expires. A token passes
+the server once: call `widget.reset()` after every post that used it. When Cloudflare's script
+does not load, the component renders its `unavailable` slot; the slot's `retry` loads it again:
+
+```vue
+<Turnstile v-model="token" site-key="..." action="contact">
+  <template #unavailable="{ retry }">
+    <p role="alert">The check did not load.</p>
+    <button type="button" @click="retry">Try again</button>
+  </template>
+</Turnstile>
+```

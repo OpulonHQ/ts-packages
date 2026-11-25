@@ -111,7 +111,7 @@ export const users = () =>
               )
               .handle('requestPasswordReset', ({ payload }) =>
                 Effect.flatMap(requestHeaders, ({ headers }) =>
-                  users.requestPasswordReset(headers, payload.email),
+                  users.requestPasswordReset(headers, payload.email, payload.turnstileToken),
                 ),
               )
               .handle('resetPassword', ({ payload }) =>

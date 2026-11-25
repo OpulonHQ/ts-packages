@@ -37,6 +37,12 @@ export default {
     short: 'Use at least 8 characters.',
     tooMany: 'Too many attempts. Wait a minute and try again.',
     failed: 'Something went wrong. Try again.',
+    turnstile: 'The check that you are human did not pass. Try again.',
+    turnstileSetup:
+      'The check that you are human is not set up correctly. Contact an administrator.',
+    turnstileUnavailable:
+      'The check that you are human did not load. Check your connection or content blocker.',
+    turnstileRetry: 'Try again',
   },
   nav: { users: 'Users', roles: 'Roles' },
   status: { active: 'Active', deactivated: 'Deactivated' },

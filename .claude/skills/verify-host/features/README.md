@@ -5,6 +5,7 @@ Maintained source for verifying what a user of a host built from `@opulonjs/*` s
 | Feature | File | Packages | Journey |
 | --- | --- | --- | --- |
 | Sign in, invitations, password reset | [sign-in.md](sign-in.md) | users, admin | `sign-in.mjs`, `forgot-password.mjs`, `smoke.sh` |
+| Turnstile sign-in guard | [turnstile.md](turnstile.md) | users, core, ui | `turnstile.mjs` |
 | Users and roles | [users-and-roles.md](users-and-roles.md) | users, core | `users-and-roles.mjs` |
 | Media library | [media.md](media.md) | media | `media.mjs`, `smoke.sh` |
 | CMS pages and Read API | [cms-pages.md](cms-pages.md) | cms | `cms-pages.mjs`, `cms-list-field.mjs`, `cms-seo.mjs`, `cms-collection-filters.mjs`, `cms-draft-conflict.mjs`, `cms-media-pick-during-save.mjs`, `smoke.sh` |

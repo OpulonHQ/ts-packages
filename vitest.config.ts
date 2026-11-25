@@ -18,6 +18,8 @@ const adminTests = [
   'packages/{ui,admin}/test/**/*.test.ts',
   'fixtures/host/test/media/admin.test.ts',
   'fixtures/host/test/admin-late-results.test.ts',
+  'fixtures/host/test/turnstile-admin.test.ts',
+  'fixtures/host/test/turnstile-unavailable-admin.test.ts',
   'fixtures/host/test/cms/admin.test.ts',
   'fixtures/host/test/cms/redirects-admin.test.ts',
   'fixtures/host/test/cms/content-admin.test.ts',
