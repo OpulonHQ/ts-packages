@@ -37,6 +37,7 @@ export default {
     short: 'Use at least 8 characters.',
     tooMany: 'Too many attempts. Wait a minute and try again.',
     failed: 'Something went wrong. Try again.',
+    turnstile: 'The check that you are human did not pass. Try again.',
   },
   nav: { users: 'Users', roles: 'Roles' },
   status: { active: 'Active', deactivated: 'Deactivated' },

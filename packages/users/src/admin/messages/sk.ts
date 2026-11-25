@@ -39,6 +39,7 @@ export default {
     short: 'Použite aspoň 8 znakov.',
     tooMany: 'Príliš veľa pokusov. Počkajte minútu a skúste to znova.',
     failed: 'Niečo sa pokazilo. Skúste to znova.',
+    turnstile: 'Overenie, že ste človek, sa nepodarilo. Skúste to znova.',
   },
   nav: { users: 'Používatelia', roles: 'Roly' },
   status: { active: 'Aktívny', deactivated: 'Deaktivovaný' },

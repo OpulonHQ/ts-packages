@@ -2,10 +2,12 @@
 import { useAdmin, useI18n, useRoute, useRouter } from '@opulonjs/admin'
 import { UButton, UForm, ULink } from '@opulonjs/ui'
 import FieldText from '@opulonjs/ui/components/Field/Text'
-import { ref } from 'vue'
+import Turnstile from '@opulonjs/ui/components/Turnstile'
+import { ref, useTemplateRef } from 'vue'
 import AuthCard from './AuthCard.vue'
 import { safeRedirect, useAuthClient } from './client.ts'
 
+defineProps<{ turnstileSiteKey?: string | undefined }>()
 const { t } = useI18n()
 const { refresh } = useAdmin()
 const route = useRoute()
@@ -14,10 +16,13 @@ const call = useAuthClient()
 const state = ref({ email: null as string | null, password: null as string | null })
 const error = ref<string>()
 const busy = ref(false)
+const turnstileToken = ref<string>()
+const turnstile = useTemplateRef('turnstile')
 
 const errors: Record<string, string> = {
   Unauthorized: 'users.signIn.invalid',
   TooManyRequests: 'users.errors.tooMany',
+  TurnstileFailed: 'users.errors.turnstile',
 }
 
 async function submit() {
@@ -25,7 +30,11 @@ async function submit() {
   error.value = undefined
   const result = await call((client) =>
     client.signIn({
-      payload: { email: state.value.email ?? '', password: state.value.password ?? '' },
+      payload: {
+        email: state.value.email ?? '',
+        password: state.value.password ?? '',
+        ...(turnstileToken.value ? { turnstileToken: turnstileToken.value } : {}),
+      },
     }),
   )
   if (result.ok) {
@@ -35,6 +44,7 @@ async function submit() {
   } else {
     error.value = t(errors[result.tag] ?? 'users.errors.failed')
     state.value.password = null
+    turnstile.value?.reset()
   }
   busy.value = false
 }
@@ -57,7 +67,20 @@ async function submit() {
         :label="t('users.fields.password')"
         required
       />
-      <UButton type="submit" block :loading="busy" :label="t('users.signIn.submit')" />
+      <Turnstile
+        v-if="turnstileSiteKey"
+        ref="turnstile"
+        v-model="turnstileToken"
+        :site-key="turnstileSiteKey"
+        action="sign-in"
+      />
+      <UButton
+        type="submit"
+        block
+        :loading="busy"
+        :disabled="!!turnstileSiteKey && !turnstileToken"
+        :label="t('users.signIn.submit')"
+      />
     </UForm>
     <ULink :to="{ name: 'users.forgotPassword' }" class="block text-center text-sm">
       {{ t('users.signIn.forgot') }}

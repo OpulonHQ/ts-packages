@@ -1,13 +1,32 @@
-import { defineAdminModule } from '@opulonjs/admin'
+import { defineAdminModule, type Lazy } from '@opulonjs/admin'
+import { type Component, defineComponent, h } from 'vue'
 import { usersAuditActions, usersPermissions } from '../api.ts'
+
+export interface UsersAdminOptions {
+  /**
+   * Shows the Cloudflare Turnstile widget on the sign-in and forgotten-password screens. Set it
+   * together with `USERS_TURNSTILE` on the server, which then refuses a request without a token.
+   */
+  readonly turnstile?: { readonly siteKey: string } | undefined
+}
 
 /**
  * The users module's admin side and the admin's auth provider: the public sign-in, forgotten
  * password, password reset and invitation screens, sign-out, the Users and Roles screens and
  * each user's own account (admin language).
  */
-export const usersAdmin = () =>
-  defineAdminModule({
+export const usersAdmin = (options: UsersAdminOptions = {}) => {
+  const siteKey = options.turnstile?.siteKey
+  const guarded = (load: Lazy<Component>): Lazy<Component> =>
+    siteKey === undefined
+      ? load
+      : async () => {
+          const { default: screen } = await load()
+          return {
+            default: defineComponent(() => () => h(screen, { turnstileSiteKey: siteKey })),
+          }
+        }
+  return defineAdminModule({
     id: 'users',
     permissions: usersPermissions,
     auditActions: usersAuditActions,
@@ -52,13 +71,13 @@ export const usersAdmin = () =>
         name: 'users.signIn',
         path: '/sign-in',
         public: true,
-        component: () => import('./SignInScreen.vue'),
+        component: guarded(() => import('./SignInScreen.vue')),
       },
       {
         name: 'users.forgotPassword',
         path: '/forgot-password',
         public: true,
-        component: () => import('./ForgotPasswordScreen.vue'),
+        component: guarded(() => import('./ForgotPasswordScreen.vue')),
       },
       {
         name: 'users.resetPassword',
@@ -107,3 +126,4 @@ export const usersAdmin = () =>
       sk: () => import('./messages/sk.ts'),
     },
   })
+}
