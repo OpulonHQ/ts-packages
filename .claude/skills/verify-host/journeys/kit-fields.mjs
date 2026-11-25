@@ -92,6 +92,7 @@ export default async (ctx) => {
   await page.getByLabel('Due from').fill('2026-11-10')
   await page.getByLabel('Due to').fill('2026-11-30')
   await order('Collect signatures', 'File the deed')
+  check(await page.getByRole('button', { name: 'Move File the deed up' }).isDisabled(), 'reorder is off while the date filter hides rows')
   await shot('date-range')
   await page.getByRole('button', { name: 'Reset' }).click()
   await order('Draft the contract', 'Collect signatures', 'File the deed', 'Send the invoice')
