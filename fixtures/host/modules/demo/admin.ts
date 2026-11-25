@@ -24,7 +24,7 @@ export const demoAdmin = defineAdminModule({
   ],
   nav: [
     { label: 'nav.notes', route: 'demo.notes', icon: 'i-lucide-notebook', group: 'content' },
-    { label: 'nav.kit', route: 'demo.kit', icon: 'i-lucide-form-input', group: 'content' },
+    { label: 'nav.kit', route: 'demo.kit', icon: 'i-lucide-grip-vertical', group: 'content' },
   ],
   widgets: [
     {
