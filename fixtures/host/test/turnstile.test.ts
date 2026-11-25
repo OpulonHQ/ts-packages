@@ -215,6 +215,7 @@ test.each([
   ['boolean true', 403, true],
   ['"true"', 403, 'true'],
   ['"yes"', 403, 'yes'],
+  ['"on"', 403, 'on'],
   ['number 1', 403, 1],
   ['boolean false', 200, false],
   ['"false"', 200, 'false'],
