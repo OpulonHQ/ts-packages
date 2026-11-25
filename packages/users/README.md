@@ -232,3 +232,66 @@ A bcrypt check runs in JavaScript on Workers. A sign-in against a hash with cost
 time of 0.2 to 0.3 seconds, measured on a local workerd; later sign-ins use the current format.
 Expect a bcrypt check to need far more than the 10 ms of CPU per request of Workers Free, so
 imported bcrypt users need Workers Paid until their first sign-in has upgraded the hash.
+
+## Guard sign-in with Cloudflare Turnstile
+
+Off by default. To turn it on, set three Worker env values and pass the widget's site key to the
+admin:
+
+| Env                         | Value                                                                  |
+| --------------------------- | ---------------------------------------------------------------------- |
+| `USERS_TURNSTILE`           | `true`                                                                 |
+| `USERS_TURNSTILE_SECRET`    | the widget's secret key (`wrangler secret put`)                        |
+| `USERS_TURNSTILE_HOSTNAMES` | the hostnames the admin is served from, comma-separated: `example.com` |
+
+```ts
+usersAdmin({ turnstile: { siteKey: import.meta.env.VITE_TURNSTILE_SITE_KEY } })
+```
+
+The sign-in and forgotten-password screens then show the widget, and the server refuses a sign-in
+or password-reset request with 403 `{"_tag":"TurnstileFailed"}` unless its `turnstileToken` passes
+siteverify for the action (`sign-in`, `request-password-reset`) and one of the hostnames. The check
+runs before the user is looked up, so a refused request costs no password hash and no sign-in
+attempt. With `USERS_TURNSTILE` on, a missing secret or hostname list, or a siteverify that fails
+or does not answer within 5 seconds, refuses every request: nobody signs in until it is fixed.
+Invitation acceptance and the reset link itself are not guarded.
+
+For local development use Cloudflare's dummy keys: site key `1x00000000000000000000AA` with secret
+`1x0000000000000000000000000000000AA` always passes, secret `2x0000000000000000000000000000000AA`
+always fails. A dummy secret answers hostname `example.com` and no action, so those two
+comparisons are skipped for it; `USERS_TURNSTILE_HOSTNAMES` must still be set.
+
+### The same check on a host form
+
+```ts
+import { verifyTurnstile } from '@opulonjs/core/turnstile'
+
+const check = await verifyTurnstile({
+  secret: env.TURNSTILE_SECRET,
+  hostnames: ['example.com'],
+  action: 'contact',
+  token: body.turnstileToken,
+  remoteIp: request.headers.get('cf-connecting-ip') ?? undefined,
+})
+if (!check.ok) return new Response(null, { status: 403 })
+```
+
+It never throws and refuses on every failure; `check.reason` is for the server log. The entry
+imports neither Effect nor the users module. The widget for the form is a Vue component:
+
+```vue
+<script setup lang="ts">
+import Turnstile from '@opulonjs/ui/components/Turnstile'
+import { ref, useTemplateRef } from 'vue'
+
+const token = ref<string>()
+const widget = useTemplateRef('widget')
+</script>
+
+<template>
+  <Turnstile ref="widget" v-model="token" site-key="1x00000000000000000000AA" action="contact" />
+</template>
+```
+
+`token` is undefined until the visitor passes and again when the token expires. A token passes
+the server once: call `widget.reset()` after every post that used it.
