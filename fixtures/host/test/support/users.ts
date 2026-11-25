@@ -94,13 +94,15 @@ export function makeHost(
 
   /**
    * A fetch for the admin app (happy-dom) routed into the Worker, acting as a same-origin
-   * browser: it sends the jar's cookie and keeps the jar up to date from Set-Cookie.
+   * browser at its own address: it sends the jar's cookie and keeps the jar up to date from
+   * Set-Cookie.
    */
   const browserFetch =
-    (jar: { cookie: string }): typeof globalThis.fetch =>
+    (jar: { cookie: string }, ip = randomIp()): typeof globalThis.fetch =>
     async (input, init) => {
       const request = new Request(input, init)
       request.headers.set('origin', origin)
+      request.headers.set('cf-connecting-ip', ip)
       if (jar.cookie) request.headers.set('cookie', jar.cookie)
       const response = await fetch(request)
       if (response.headers.getSetCookie().length > 0) jar.cookie = cookieHeader(response.headers)

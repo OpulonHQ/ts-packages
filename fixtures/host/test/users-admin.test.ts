@@ -1,3 +1,4 @@
+import type { Router } from 'vue-router'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import { useTestDatabase } from '../../../test/postgres/index.ts'
 import { hostMessages } from '../admin/messages.ts'
@@ -569,4 +570,69 @@ test('a refusal that arrives after the prompt was cancelled is refused without a
   expect(prompt()).toBeUndefined()
   expect(requests()).toBe(2)
   expect(await stamps('Olga')).toEqual([])
+})
+
+/**
+ * The Notes screen for a password prompt whose confirmation is answered only once a navigation
+ * `leave` started is pending (held before it resolves, as while a lazy screen loads).
+ */
+async function openNotesLeavingWhileConfirming(name: string, leave: (router: Router) => unknown) {
+  const user = await seedUser(db.url, { name, permissions: ['demo.notes.view'] })
+  const jar = { cookie: await host.signIn(user.email, user.password) }
+  const send = host.browserFetch(jar)
+  const loading = lifetime.gate()
+  const pending = Promise.withResolvers<void>()
+  let stampRequests = 0
+  unmountPrevious()
+  const text = lifetime.mount('/admin/', {
+    buildId: 'b1',
+    fetch: async (input, init) => {
+      const { url } = new Request(input, init)
+      if (url.endsWith('/api/demo/stamps')) stampRequests++
+      const response = await send(input, init)
+      if (url.endsWith('/api/users/password-confirmation') && response.ok) {
+        leave(router)
+        await pending.promise
+      }
+      return response
+    },
+  })
+  unmountPrevious = text.unmount
+  const router: Router = text.app.config.globalProperties.$router
+  await router.push('/demo/notes')
+  await expect.poll(text).toContain('hello from demo')
+  router.beforeResolve(async () => {
+    pending.resolve()
+    await loading.park()
+  })
+  button('Add a stamped note')!.click()
+  await answerPrompt(user.password)
+  await pending.promise
+  await lifetime.settled()
+  return { text, arrive: loading.resolve, requests: () => stampRequests }
+}
+
+test('a query navigation under way when the password is accepted stops the repeat', async () => {
+  const { text, arrive, requests } = await openNotesLeavingWhileConfirming('Ema', (router) =>
+    router.push('/demo/notes?page=2'),
+  )
+  await expect.poll(text).toContain('The note could not be stamped.')
+  arrive()
+  await lifetime.settled()
+  expect(requests()).toBe(1)
+  expect(await stamps('Ema')).toEqual([])
+  expect(prompt()).toBeUndefined()
+})
+
+test('leaving for a screen that is still loading while the password is checked stops the repeat', async () => {
+  const { arrive, requests } = await openNotesLeavingWhileConfirming('Ida', (router) =>
+    router.push('/'),
+  )
+  expect(requests()).toBe(1)
+  arrive()
+  await expect.poll(() => location.pathname).toBe('/admin/')
+  await lifetime.settled()
+  expect(requests()).toBe(1)
+  expect(await stamps('Ida')).toEqual([])
+  expect(prompt()).toBeUndefined()
 })

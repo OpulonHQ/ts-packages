@@ -428,9 +428,12 @@ export const createAdmin = (options: AdminOptions): App => {
   const passwordTicket = () => {
     const sent = ++passwordClock
     const route = router.currentRoute.value.fullPath
-    return async () => {
-      if (sent < cancelledAt || route !== router.currentRoute.value.fullPath) return false
-      return sent < confirmedAt || askPassword()
+    const left = () => sent < cancelledAt || route !== router.currentRoute.value.fullPath
+    return {
+      answered: async () => {
+        if (!left() && sent > confirmedAt) await askPassword()
+      },
+      maySendAgain: () => !left() && sent < confirmedAt,
     }
   }
   const accountRoute = auth.auth?.accountRoute
@@ -549,6 +552,9 @@ export const createAdmin = (options: AdminOptions): App => {
   })
   // Leave guards run before beforeEach, so a host leave guard's error stays in the console.
   let latest: RouteLocationNormalized | undefined
+  router.beforeEach((to, from) => {
+    if (to.fullPath !== from.fullPath) cancelPasswordWaits()
+  })
   router.beforeEach((to, from) =>
     unmounted ||
     status.value !== 'ready' ||
@@ -609,7 +615,6 @@ export const createAdmin = (options: AdminOptions): App => {
     if (unmounted) return
     if (isNavigationFailure(failure, NavigationFailureType.duplicated)) latest = to
     if (to === latest) failedScreen.value = undefined
-    if (!failure && to.fullPath !== from.fullPath) cancelPasswordWaits()
     if (from.matched.length > 0) checkForNewDeploy()
   })
 
