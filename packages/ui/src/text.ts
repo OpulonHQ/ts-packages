@@ -30,6 +30,14 @@ const en = {
   moveDown: (label: string) => `Move ${label} down`,
   movedTo: (label: string, position: number, total: number) =>
     `${label} moved to position ${position} of ${total}`,
+  invalidAmount: (decimals: number) =>
+    decimals === 0
+      ? 'Enter a whole amount.'
+      : `Enter an amount with up to ${decimals} decimal places.`,
+  chooseFile: 'Choose a file or drop it here',
+  maxFileSize: (size: string) => `Up to ${size}`,
+  fileTooLarge: (size: string) => `The file is larger than ${size}.`,
+  fileNotAccepted: 'This type of file is not accepted.',
   link: 'Link',
   linkApply: 'Apply',
   linkRemove: 'Remove',
@@ -77,6 +85,14 @@ const sk: KitText = {
   moveUp: (label) => `Posunúť vyššie: ${label}`,
   moveDown: (label) => `Posunúť nižšie: ${label}`,
   movedTo: (label, position, total) => `${label}: presunuté na pozíciu ${position} z ${total}`,
+  invalidAmount: (decimals) =>
+    decimals === 0
+      ? 'Zadajte celú sumu.'
+      : `Zadajte sumu s najviac ${decimals} desatinnými miestami.`,
+  chooseFile: 'Vyberte súbor alebo ho sem presuňte',
+  maxFileSize: (size) => `Najviac ${size}`,
+  fileTooLarge: (size) => `Súbor je väčší ako ${size}.`,
+  fileNotAccepted: 'Tento typ súboru nie je povolený.',
   link: 'Odkaz',
   linkApply: 'Použiť',
   linkRemove: 'Odstrániť',

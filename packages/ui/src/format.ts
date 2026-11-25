@@ -25,6 +25,23 @@ export const toDate = (value: unknown): Date | undefined => {
   return Number.isNaN(date.getTime()) ? undefined : date
 }
 
+/** A moment as the native date inputs hold it, in local time: `2026-11-07T14:37`. */
+export const localIso = (date: Date): string => {
+  const pad = (part: number) => String(part).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+/** A file size in the largest fitting unit (`4 B`, `1.5 MB`). */
+export const formatBytes = (bytes: number, locale: string): string => {
+  const units = ['byte', 'kilobyte', 'megabyte', 'gigabyte']
+  const power = Math.min(Math.floor(Math.log(Math.max(bytes, 1)) / Math.log(1024)), 3)
+  return new Intl.NumberFormat(locale, {
+    style: 'unit',
+    unit: units[power],
+    maximumFractionDigits: 1,
+  }).format(bytes / 1024 ** power)
+}
+
 /** A day the way every admin list shows it (`Nov 7, 2026`, `7. 11. 2026`); empty: `—`. */
 export const formatDate = (value: unknown, locale: string): string => {
   const date = toDate(value)

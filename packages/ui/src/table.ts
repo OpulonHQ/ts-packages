@@ -1,5 +1,5 @@
 import type { SelectItem } from './fields.ts'
-import { getPath, toDate } from './format.ts'
+import { getPath, localIso, toDate } from './format.ts'
 
 export type SortDirection = 'asc' | 'desc'
 
@@ -44,8 +44,7 @@ export const nextSort = (current: SortState | null, column: string): SortState |
 const localDay = (value: unknown): string | undefined => {
   if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value
   const date = toDate(value)
-  const pad = (part: number) => String(part).padStart(2, '0')
-  return date && `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+  return date && localIso(date).slice(0, 10)
 }
 
 /**

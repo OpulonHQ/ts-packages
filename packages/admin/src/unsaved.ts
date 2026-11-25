@@ -4,6 +4,7 @@ import { type ShellEditor, useAdmin } from './state.ts'
 export const normalized = (value: unknown): unknown => {
   if (value === null || value === undefined || value === '' || value === false) return undefined
   if (Array.isArray(value)) return value.length === 0 ? undefined : value.map(normalized)
+  if (value instanceof File) return [value.name, value.size, value.type, value.lastModified]
   if (typeof value === 'object') {
     const kept = Object.entries(value as Record<string, unknown>)
       .map(([key, inner]) => [key, normalized(inner)] as const)
