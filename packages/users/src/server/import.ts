@@ -1,18 +1,16 @@
 import { Audit, withTransaction } from '@opulonjs/core'
 import { Effect, Schema } from 'effect'
 import { SqlClient } from 'effect/sql/SqlClient'
-import * as z from 'zod'
 import { Email } from '../api.ts'
 import { lockAccessWrites } from './access.ts'
 import { isVerifiableHash } from './password.ts'
-import { normalizeEmail } from './invitations.ts'
+import { isSignInEmail, normalizeEmail } from './invitations.ts'
 
 const Row = Schema.Struct({
   email: Email.check(
     Schema.makeFilter(
       (email: string) =>
-        z.email().safeParse(normalizeEmail(email)).success ||
-        'not an email address sign-in accepts',
+        isSignInEmail(normalizeEmail(email)) || 'not an email address sign-in accepts',
     ),
   ),
   name: Schema.String,

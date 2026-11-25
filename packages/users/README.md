@@ -113,7 +113,9 @@ createAdmin({
 | Delete a role                | `DELETE /roles/:id`                | `users.roles.manage` | `users.role_deleted`       |
 | Change the own password      | `PUT /password`                    | a session            | `users.password_changed`   |
 
-A changed email must be free (409 otherwise) and ends that user's sessions. An invitation sent
+A changed email must be free (409 otherwise) and one sign-in accepts (400 otherwise). It ends that
+user's sessions and cancels the password reset links already sent to the old address; the old
+address gets no notice. An invitation sent
 again keeps its roles and gets a new link; the old link stops working. A manager cannot send again
 or revoke an invitation that grants a role they may not grant. A role is deleted only when no
 user holds it, deactivated users included (409 otherwise); Super admin is never deleted.

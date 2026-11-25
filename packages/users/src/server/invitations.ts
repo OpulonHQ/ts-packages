@@ -1,5 +1,6 @@
 import { Audit } from '@opulonjs/core'
 import { Effect } from 'effect'
+import * as z from 'zod'
 import { SqlClient } from 'effect/sql/SqlClient'
 import { usersBaseUrl } from './auth.ts'
 import { sha256Hex } from './password.ts'
@@ -14,6 +15,8 @@ const base64Url = (bytes: Uint8Array) =>
     .replace(/=+$/, '')
 
 export const normalizeEmail = (email: string) => email.trim().toLowerCase()
+/** Whether sign-in accepts `email`: the rule Better Auth applies to a sign-in request. */
+export const isSignInEmail = (email: string) => z.email().safeParse(email).success
 export const isEmailAddress = (email: string) => /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)
 
 /** SHA-256 hex of an invitation token: only the hash is stored. */

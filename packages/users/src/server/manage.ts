@@ -13,7 +13,7 @@ import { BadRequest, Conflict, Forbidden, NotFound } from 'effect/http-api/HttpA
 import { SqlClient } from 'effect/sql/SqlClient'
 import { Refused, type RoleInfo, superAdminRole, UserList, type UserQuery } from '../api.ts'
 import { type Access, canGrant, loadAccess, lockAccessWrites, outranks } from './access.ts'
-import { isEmailAddress, normalizeEmail } from './invitations.ts'
+import { isSignInEmail, normalizeEmail } from './invitations.ts'
 
 /** Permissions nobody may take from themselves (no self-lockout). */
 const lockoutKeys = ['users.manage', 'users.roles.manage'] as const
@@ -44,7 +44,10 @@ export class UserManagement extends Context.Service<
     readonly deleteRole: (
       id: string,
     ) => Effect.Effect<void, Conflict | NotFound | Forbidden | Refused, CurrentUser>
-    /** Sets a user's name and email; a changed email ends that user's sessions. */
+    /**
+     * Sets a user's name and email. A changed email ends that user's sessions and cancels the
+     * password reset links already sent to the old address.
+     */
     readonly updateUser: (
       userId: string,
       input: { readonly name: string; readonly email: string },
@@ -288,7 +291,7 @@ export class UserManagement extends Context.Service<
 
         updateUser: Effect.fn('UserManagement.updateUser')(function* (userId, input) {
           const email = normalizeEmail(input.email)
-          if (!isEmailAddress(email)) return yield* new BadRequest()
+          if (!isSignInEmail(email)) return yield* new BadRequest()
           return yield* guarded('users.manage', (actor) =>
             Effect.gen(function* () {
               const subject = yield* target(actor, userId)
@@ -304,8 +307,10 @@ export class UserManagement extends Context.Service<
               yield* sql`update users."user"
                 set name = ${input.name}, email = ${email}, updated_at = now()
                 where id = ${userId}`
-              if (email !== subject.user.email)
+              if (email !== subject.user.email) {
                 yield* sql`delete from users.session where user_id = ${userId}`
+                yield* sql`delete from users.verification where value = ${userId}`
+              }
               yield* Audit.record({
                 action: 'users.updated',
                 subject: { type: 'user', id: userId, label: email },
