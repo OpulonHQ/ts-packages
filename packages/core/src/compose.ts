@@ -104,6 +104,7 @@ export interface ComposedServer<R = unknown> {
 }
 
 const idPattern = /^[a-z][a-z0-9_]*$/
+const hostPermissionPattern = /^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$/
 const localePattern = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/
 
 /**
@@ -117,9 +118,16 @@ export const composeServer = <const Ms extends ReadonlyArray<Module>>(options: {
   readonly apiPrefix?: `/${string}`
   /** Content locales (e.g. `['en', 'it']`), the first is the default. Default `['en']`. */
   readonly contentLocales?: ReadonlyArray<string>
+  /**
+   * Permission keys of the host's own routes outside the composed API (`shop.orders.view`).
+   * They join the catalog, so roles grant them and Super admin holds them. The first segment
+   * must not be a composed module's id; label them in `createAdmin({ messages })`.
+   */
+  readonly permissions?: ReadonlyArray<string>
 }): ComposedServer<Unprovided<Ms>> => {
   const apiPrefix = options.apiPrefix ?? '/api'
   const contentLocales = options.contentLocales ?? ['en']
+  const hostPermissions = options.permissions ?? []
   const modules = sortModules(options.modules)
   const errors: Array<string> = []
 
@@ -155,6 +163,18 @@ export const composeServer = <const Ms extends ReadonlyArray<Module>>(options: {
     }
   }
 
+  for (const key of hostPermissions) {
+    const owner = modules.find((m) => m.id === key.split('.')[0])
+    if (!hostPermissionPattern.test(key) || key.length > 200)
+      errors.push(
+        `host permission "${key}" must look like "shop.orders.view", at most 200 characters`,
+      )
+    else if (owner)
+      errors.push(`host permission "${key}" is in module "${owner.id}"'s prefix; declare it there`)
+  }
+  if (new Set(hostPermissions).size !== hostPermissions.length)
+    errors.push('permissions lists a host permission twice')
+
   const contributions = modules.flatMap((m) => m.contributes ?? [])
   const contributed = new Set<string>()
   for (const m of modules)
@@ -175,7 +195,7 @@ export const composeServer = <const Ms extends ReadonlyArray<Module>>(options: {
     ),
   )
 
-  const catalog = new Set(modules.flatMap((m) => m.permissions))
+  const catalog = new Set([...modules.flatMap((m) => m.permissions), ...hostPermissions])
   for (const group of Object.values(api.groups)) {
     const isPublic = Option.isSome(Context.getOption(group.annotations, Public))
     for (const endpoint of Object.values(group.endpoints)) {

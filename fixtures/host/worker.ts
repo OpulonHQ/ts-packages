@@ -16,6 +16,7 @@ import {
 } from '@opulonjs/media/server'
 import { Layer } from 'effect'
 import { server } from './server/opulon.ts'
+import { staff } from './server/staff.ts'
 
 export interface Env {
   readonly HYPERDRIVE: { readonly connectionString: string }
@@ -62,6 +63,27 @@ const serveContact = async (request: Request, env: Env) => {
     : new Response(null, { status: 429, headers: { 'retry-after': String(hit.retryAfter) } })
 }
 
+const privateJson = (body: unknown, setCookies: ReadonlyArray<string>) => {
+  const response = Response.json(body, { headers: { 'cache-control': 'private, no-store' } })
+  for (const cookie of setCookies) response.headers.append('set-cookie', cookie)
+  return response
+}
+
+const serveShop = async (request: Request, env: Env) => {
+  const { pathname } = new URL(request.url)
+  if (pathname === '/shop/staff') {
+    const session = await staff.session(request, env)
+    return privateJson({ user: session?.user ?? null }, session?.setCookies ?? [])
+  }
+  if (pathname === '/shop/orders') {
+    const check = await staff.require(request, env, 'shop.orders.view')
+    return check.ok
+      ? privateJson({ viewer: check.user.id, orders: [] }, check.setCookies)
+      : check.response
+  }
+  return undefined
+}
+
 /** The fixture Worker with a given Mailer; tests pass `captureMailer().layer`. */
 export const hostWorker = (mailer: Layer.Layer<Mailer> = Mailer.log) => {
   const opulon = createWorker(server, {
@@ -84,6 +106,7 @@ export const hostWorker = (mailer: Layer.Layer<Mailer> = Mailer.log) => {
         (await serveAdmin(request, env.ASSETS)) ??
         (await serveMedia(request, r2MediaStorage(env.MEDIA_BUCKET))) ??
         (await serveContact(request, env)) ??
+        (await serveShop(request, env)) ??
         opulon.fetch(request, env, ctx)
       )
     },

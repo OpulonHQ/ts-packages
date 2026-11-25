@@ -58,6 +58,30 @@ const fails = (modules: ReadonlyArray<Module>, message: RegExp) =>
   )
 
 describe('composeServer fails at startup on', () => {
+  test.each(['orders', 'Shop.orders.view', 'shop..view', `shop.${'x'.repeat(200)}`])(
+    'a malformed host permission %s',
+    (key) =>
+      expect(() => composeServer({ modules: [module('demo')], permissions: [key] })).toThrow(
+        expect.objectContaining({
+          name: CompositionError.name,
+          message: expect.stringContaining(`host permission "${key}" must look like`),
+        }),
+      ),
+  )
+
+  test('a host permission inside a composed module prefix', () =>
+    expect(() =>
+      composeServer({ modules: [module('demo')], permissions: ['demo.notes.view'] }),
+    ).toThrow(/host permission "demo.notes.view" is in module "demo"'s prefix/))
+
+  test('a host permission listed twice', () =>
+    expect(() =>
+      composeServer({
+        modules: [module('demo')],
+        permissions: ['shop.orders.view', 'shop.orders.view'],
+      }),
+    ).toThrow(/permissions lists a host permission twice/))
+
   test.each(['me', 'audit'])('a reserved core URL module id %s', (id) =>
     fails([module(id)], /reserved.*core/),
   )
@@ -237,4 +261,12 @@ describe('composeServer accepts', () => {
     })
     expect(server.modules.map((m) => m.id)).toEqual(['media', 'cms', 'demo', 'other'])
   })
+})
+
+test('host permissions join the composed catalog after the modules keys', () => {
+  const server = composeServer({
+    modules: [module('demo', { permissions: ['demo.view'] })],
+    permissions: ['shop.orders.view'],
+  })
+  expect(server.composed.permissions).toEqual(['demo.view', 'shop.orders.view'])
 })
