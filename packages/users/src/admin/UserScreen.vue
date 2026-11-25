@@ -11,7 +11,7 @@ import LocalePicker from './LocalePicker.vue'
 import { failureKey, useUsersClient } from './client.ts'
 
 const { t } = useI18n()
-const { me, saveLocale } = useAdmin()
+const { me, refresh, saveLocale } = useAdmin()
 const id = String(useRoute().params.id)
 const users = useUsersClient()
 const user = shallowRef<UserInfo>()
@@ -101,7 +101,10 @@ function saveDetails() {
     email: (details.value?.email ?? '').trim(),
   }
   return run(
-    () => users((c) => c.updateUser({ params: { id }, payload })),
+    async () => {
+      await users((c) => c.updateUser({ params: { id }, payload }))
+      if (id === me.value?.user.id) await refresh()
+    },
     'users.user.detailsSaved',
     'details',
     { Conflict: 'users.user.emailTaken', BadRequest: 'users.user.emailInvalid' },
