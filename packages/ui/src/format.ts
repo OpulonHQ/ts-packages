@@ -19,7 +19,7 @@ export const languageName = (code: string, inLocale: string = code): string => {
   return name ? name.charAt(0).toLocaleUpperCase(inLocale) + name.slice(1) : code
 }
 
-const toDate = (value: unknown): Date | undefined => {
+export const toDate = (value: unknown): Date | undefined => {
   if (value === null || value === undefined || value === '') return undefined
   const date = value instanceof Date ? value : new Date(String(value))
   return Number.isNaN(date.getTime()) ? undefined : date

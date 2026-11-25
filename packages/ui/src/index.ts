@@ -60,7 +60,9 @@ export type { BadgeColor } from './format.ts'
 export { nextSort, queryRows } from './table.ts'
 export type {
   DataTableColumn,
+  DataTableDateFilter,
   DataTableFilter,
+  DateRange,
   SortDirection,
   SortState,
   TablePage,
