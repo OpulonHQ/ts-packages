@@ -25,6 +25,16 @@ const en = {
       confirm: 'Discard changes',
       cancel: 'Keep editing',
     },
+    confirmPassword: {
+      title: 'Confirm your password',
+      description: 'Enter your password to continue with this action.',
+      password: 'Password',
+      submit: 'Confirm',
+      cancel: 'Cancel',
+      wrong: 'The password is wrong.',
+      tooMany: 'Too many attempts. Try again in a minute.',
+      failed: 'The password could not be checked. Try again.',
+    },
     groups: { content: 'Content', users: 'Users', settings: 'Settings' },
     audit: {
       title: 'Audit log',
@@ -87,6 +97,16 @@ const sk: typeof en = {
       description: 'Zmeny od posledného uloženia sa stratia.',
       confirm: 'Zahodiť zmeny',
       cancel: 'Pokračovať v úpravách',
+    },
+    confirmPassword: {
+      title: 'Potvrďte svoje heslo',
+      description: 'Ak chcete v tejto akcii pokračovať, zadajte svoje heslo.',
+      password: 'Heslo',
+      submit: 'Potvrdiť',
+      cancel: 'Zrušiť',
+      wrong: 'Heslo je nesprávne.',
+      tooMany: 'Príliš veľa pokusov. Skúste to znova o minútu.',
+      failed: 'Heslo sa nepodarilo overiť. Skúste to znova.',
     },
     groups: { content: 'Obsah', users: 'Používatelia', settings: 'Nastavenia' },
     audit: {

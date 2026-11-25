@@ -15,6 +15,14 @@ export type { Me } from '@opulonjs/core/api'
 export interface ApiContext {
   readonly apiPrefix: string
   readonly fetch: typeof globalThis.fetch
+  /** Asks the user for their password; resolves true once the session is confirmed. */
+  readonly confirmPassword?: () => Promise<boolean>
+}
+
+/** The open password prompt, for the shell's dialog. */
+export interface PasswordRequest {
+  readonly submit: (password: string) => Promise<'confirmed' | 'wrong' | 'tooMany' | 'failed'>
+  readonly cancel: () => void
 }
 
 export const apiContextKey: InjectionKey<ApiContext> = Symbol('@opulonjs/admin/api')
@@ -85,6 +93,8 @@ export interface AdminState {
   readonly confirmDiscard: () => Promise<boolean>
   /** The open question's answer, for the shell's dialog. */
   readonly discardRequest: ShallowRef<((discard: boolean) => void) | undefined>
+  /** Set while a sensitive action waits for the user's password; one prompt at a time. */
+  readonly passwordRequest: ShallowRef<PasswordRequest | undefined>
   readonly widgets: ComputedRef<ReadonlyArray<ShellWidget>>
   /** Whether the signed-in user holds a permission (UX only; the API enforces it). */
   readonly can: (permission: string) => boolean

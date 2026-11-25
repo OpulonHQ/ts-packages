@@ -25,6 +25,11 @@ export type GroupClient<Group extends HttpApiGroup.Constraint> = HttpApiClient.C
  * after the `await` cannot touch a screen, toast or route that moved on. The request itself still
  * completes. Pass `{ detached: true }` for calls handed to an owner that outlives the component,
  * such as the `save` given to `useAdmin().saveLocale`.
+ *
+ * A `Sensitive` endpoint that answers `PasswordConfirmationRequired` makes the shell ask for the
+ * user's password and the request is sent once more; the screen sees only the final answer. When
+ * the user cancels, leaves the screen or the component unmounts, nothing is sent again and the
+ * call fails with `PasswordConfirmationRequired`.
  */
 export const useApiClient = <Group extends HttpApiGroup.Constraint>(
   group: Group,
@@ -32,7 +37,7 @@ export const useApiClient = <Group extends HttpApiGroup.Constraint>(
 ) => {
   const context = inject(apiContextKey)
   if (!context) throw new Error('useApiClient must be called inside a createAdmin app')
-  const { apiPrefix, fetch } = context
+  const { apiPrefix, confirmPassword } = context
   const moduleId = group.identifier.split('.')[0]
   const api = HttpApi.make('opulon')
     .add(group as unknown as HttpApiGroup.Top)
@@ -46,6 +51,20 @@ export const useApiClient = <Group extends HttpApiGroup.Constraint>(
   let unmounted = false
   const scoped = !detached && getCurrentScope() !== undefined
   if (scoped) onScopeDispose(() => (unmounted = true))
+
+  const fetch: typeof context.fetch = async (input, init) => {
+    const refused = await context.fetch(input, init)
+    if (refused.status !== 403 || !confirmPassword || init?.body instanceof ReadableStream)
+      return refused
+    const body: unknown = await refused
+      .clone()
+      .json()
+      .catch(() => undefined)
+    if (!body || typeof body !== 'object' || !('_tag' in body)) return refused
+    if (body._tag !== 'PasswordConfirmationRequired') return refused
+    if (unmounted || !(await confirmPassword()) || unmounted) return refused
+    return context.fetch(input, init)
+  }
 
   return <A, E>(run: (client: GroupClient<Group>) => Effect.Effect<A, E>): Promise<A> => {
     const answer = Effect.runPromise(

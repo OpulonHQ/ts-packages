@@ -29,6 +29,7 @@ import {
   type ShellNavItem,
   useAdmin,
 } from '../state.ts'
+import PasswordPrompt from './PasswordPrompt.vue'
 import ScreenFailed from './ScreenFailed.vue'
 
 const {
@@ -44,6 +45,7 @@ const {
   editors,
   confirmDiscard,
   discardRequest,
+  passwordRequest,
 } = useAdmin()
 const { t, locale, availableLocales } = useI18n()
 const toast = useToast()
@@ -400,5 +402,6 @@ const title = computed(() => {
       danger
       @confirm="discardRequest?.(true)"
     />
+    <PasswordPrompt v-if="passwordRequest" :request="passwordRequest" />
   </UApp>
 </template>

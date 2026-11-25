@@ -33,6 +33,7 @@ import {
   losesChanges,
   type AdminState,
   type Me,
+  type PasswordRequest,
   type NavTarget,
   type ShellEditor,
   type ShellNavGroup,
@@ -192,8 +193,10 @@ export const createAdmin = (options: AdminOptions): App => {
     | undefined
   let writeOrder = 0
   let armedWriteOrder = 0
+  const passwordRequest = shallowRef<PasswordRequest>()
   const showSignedOut = () => {
     session++
+    passwordRequest.value?.cancel()
     lastWrite = undefined
     me.value = undefined
     status.value = 'signedOut'
@@ -263,7 +266,10 @@ export const createAdmin = (options: AdminOptions): App => {
           me.value = { ...first, locale: me.value.locale }
           return
         }
-        if (me.value && me.value.user.id !== first.user.id) session++
+        if (me.value && me.value.user.id !== first.user.id) {
+          session++
+          passwordRequest.value?.cancel()
+        }
         lastWrite = undefined
         me.value = first
         status.value = 'ready'
@@ -385,6 +391,31 @@ export const createAdmin = (options: AdminOptions): App => {
 
   const providerSignOut = auth.auth?.signOut
   const providerSetLocale = auth.auth?.setLocale
+  const providerConfirmPassword = auth.auth?.confirmPassword
+  let confirming: Promise<boolean> | undefined
+  const confirmPassword = () =>
+    (confirming ??= new Promise<boolean>((resolve) => {
+      const settle = (confirmed: boolean) => {
+        if (passwordRequest.value !== request) return
+        passwordRequest.value = undefined
+        confirming = undefined
+        resolve(confirmed)
+      }
+      const request: PasswordRequest = {
+        submit: async (password) => {
+          const outcome = await providerConfirmPassword!({ apiPrefix, fetch, password }).catch(
+            (error: unknown) => {
+              console.error(error)
+              return 'failed' as const
+            },
+          )
+          if (outcome === 'confirmed') settle(true)
+          return outcome
+        },
+        cancel: () => settle(false),
+      }
+      passwordRequest.value = request
+    }))
   const accountRoute = auth.auth?.accountRoute
   let lastLocaleSave: Promise<void> = Promise.resolve()
   const saveLocale = async (locale: string | null, save: (userId: string) => Promise<void>) => {
@@ -437,6 +468,7 @@ export const createAdmin = (options: AdminOptions): App => {
     registerEditor,
     confirmDiscard,
     discardRequest,
+    passwordRequest,
     stale: computed(
       () => buildId !== undefined && me.value !== undefined && me.value.buildId !== buildId,
     ),
@@ -560,6 +592,7 @@ export const createAdmin = (options: AdminOptions): App => {
     if (unmounted) return
     if (isNavigationFailure(failure, NavigationFailureType.duplicated)) latest = to
     if (to === latest) failedScreen.value = undefined
+    if (!failure && to.path !== from.path) passwordRequest.value?.cancel()
     if (from.matched.length > 0) checkForNewDeploy()
   })
 
@@ -568,11 +601,16 @@ export const createAdmin = (options: AdminOptions): App => {
     .use(router)
     .use(i18n)
     .use(uiPlugin)
-    .provide(apiContextKey, { apiPrefix, fetch })
+    .provide(apiContextKey, {
+      apiPrefix,
+      fetch,
+      ...(providerConfirmPassword ? { confirmPassword } : {}),
+    })
     .provide(adminStateKey, state)
     .provide(failedScreenKey, failedScreen)
   app.onUnmount(() => {
     unmounted = true
+    passwordRequest.value?.cancel()
     router.options.history.destroy()
   })
   return app

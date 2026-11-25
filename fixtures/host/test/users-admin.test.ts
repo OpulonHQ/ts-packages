@@ -3,7 +3,7 @@ import { useTestDatabase } from '../../../test/postgres/index.ts'
 import { hostMessages } from '../admin/messages.ts'
 import { adminModules } from '../admin/modules.ts'
 import { useAdminLifetime } from './admin-lifetime.ts'
-import { makeHost, seedUser, tokenFrom } from './support/users.ts'
+import { makeHost, seedUser, sqlQuery, tokenFrom } from './support/users.ts'
 
 // Runs in the `admin` vitest project: the users screens in happy-dom, against the real Worker.
 const lifetime = useAdminLifetime()
@@ -403,4 +403,76 @@ test('Cmd/Ctrl+S sends the invitation from inside its slideover', async () => {
   await expect.poll(admin.text).toContain('The invitation to shortcut@example.test is on its way.')
   expect(field('email')).toBeNull()
   await expect.poll(() => host.mailer.sent.length).toBe(sent + 1)
+})
+
+const prompt = () =>
+  [...document.querySelectorAll<HTMLElement>('[role="dialog"]')].find((dialog) =>
+    dialog.textContent?.includes('Confirm your password'),
+  )
+const stamps = (by: string) =>
+  sqlQuery(db.url, 'select body from demo.note where body = $1', [`Stamped by ${by}`])
+async function openNotes(name: string) {
+  const user = await seedUser(db.url, { name, permissions: ['demo.notes.view'] })
+  const jar = { cookie: await host.signIn(user.email, user.password) }
+  const admin = mountAdmin('/admin/demo/notes', jar)
+  await expect.poll(admin.text).toContain('hello from demo')
+  return { user, admin }
+}
+async function answerPrompt(password: string) {
+  await expect.poll(prompt).toBeDefined()
+  type('password', password)
+  button('Confirm', prompt())!.click()
+}
+
+test('a sensitive action asks for the password, runs once it is right, and does not ask again', async () => {
+  const { user, admin } = await openNotes('Petra')
+  button('Add a stamped note')!.click()
+  await answerPrompt('not the password')
+  await expect.poll(admin.text).toContain('The password is wrong.')
+  expect(await stamps('Petra')).toEqual([])
+
+  await answerPrompt(user.password)
+  await expect.poll(admin.text).toContain('Stamped by Petra')
+  await expect.poll(prompt).toBeUndefined()
+  expect(admin.text()).not.toContain('The note could not be stamped.')
+
+  button('Add a stamped note')!.click()
+  await expect.poll(() => stamps('Petra')).toHaveLength(2)
+  expect(prompt()).toBeUndefined()
+})
+
+test('two sensitive actions waiting at once share one password prompt', async () => {
+  const { user } = await openNotes('Dana')
+  button('Add a stamped note')!.click()
+  button('Add a stamped note')!.click()
+  await lifetime.settled()
+  expect(document.querySelectorAll('input[name="password"]')).toHaveLength(1)
+  await answerPrompt(user.password)
+  await expect.poll(() => stamps('Dana')).toHaveLength(2)
+  await expect.poll(prompt).toBeUndefined()
+})
+
+test('cancelling the password prompt runs nothing and the screen gets the refusal', async () => {
+  const { admin } = await openNotes('Cyril')
+  button('Add a stamped note')!.click()
+  await expect.poll(prompt).toBeDefined()
+  button('Cancel', prompt())!.click()
+  await expect.poll(admin.text).toContain('The note could not be stamped.')
+  await expect.poll(prompt).toBeUndefined()
+  expect(await stamps('Cyril')).toEqual([])
+})
+
+test('leaving the screen closes the password prompt and the action never runs', async () => {
+  const { user, admin } = await openNotes('Lea')
+  button('Add a stamped note')!.click()
+  await expect.poll(prompt).toBeDefined()
+  await admin.text.app.config.globalProperties.$router.push('/')
+  await expect.poll(prompt).toBeUndefined()
+  const confirmed = await host.request('POST', '/users/password-confirmation', {
+    cookie: admin.jar.cookie,
+    body: { password: user.password },
+  })
+  expect(confirmed.status).toBe(204)
+  await lifetime.settled()
+  expect(await stamps('Lea')).toEqual([])
 })
