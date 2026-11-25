@@ -13,6 +13,13 @@ export default async (ctx) => {
     return { offered: offered.map((text) => text.trim()), status: (await saved).status() }
   }
 
+  const { user } = await (await page.request.get(`${base}/api/me`)).json()
+  const reset = await page.request.put(`${base}/api/users/users/${user.id}/locale`, {
+    data: { locale: 'en' },
+    headers: { origin: base },
+  })
+  check(reset.ok(), `start in English: PUT locale en ${reset.status()}`)
+
   await page.goto(`${base}/admin/`)
   await page.getByRole('link', { name: 'Dashboard' }).waitFor()
   await shot('english')
@@ -43,12 +50,12 @@ export default async (ctx) => {
   await shot('italian-dashboard')
 
   await page.goto(`${base}/admin/users`)
-  await page.getByRole('heading', { name: 'Utenti' }).waitFor()
+  await page.getByRole('heading', { name: 'Utenti' }).first().waitFor()
   await page.getByRole('button', { name: 'Invita' }).waitFor()
   await shot('italian-users')
 
   await page.goto(`${base}/admin/account`)
-  await page.getByRole('heading', { name: 'Il mio account' }).waitFor()
+  await page.getByRole('heading', { name: 'Il mio account' }).first().waitFor()
   const picker = page.getByRole('group', { name: 'Lingua dell’amministrazione' })
   const buttons = (await picker.getByRole('button').allTextContents()).map((text) => text.trim())
   check(
@@ -63,6 +70,6 @@ export default async (ctx) => {
 
   const english = await choose('Menu utente', 'Lingua', 'English')
   check(english.status === 204 || english.status === 200, `PUT locale en: ${english.status}`)
-  await page.getByRole('heading', { name: 'My account' }).waitFor()
+  await page.getByRole('heading', { name: 'My account' }).first().waitFor()
   check((await me()) === 'en', 'GET /api/me holds locale en again')
 }
