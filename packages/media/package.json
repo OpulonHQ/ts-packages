@@ -1,6 +1,6 @@
 {
   "name": "@opulonjs/media",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Media library on R2 for @opulonjs host apps: uploads, immutable serving, resized URLs",
   "license": "MIT",
   "type": "module",
