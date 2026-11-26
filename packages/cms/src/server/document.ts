@@ -136,6 +136,7 @@ export const normalizeDocument = (
         id: uuid.test(section.id) ? section.id : crypto.randomUUID(),
         type: section.type,
         data,
+        ...(section.hidden === true ? { hidden: true } : {}),
       })
     }
     return { locales: pageLocales, sections }

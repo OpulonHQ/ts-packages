@@ -90,6 +90,8 @@ export const Section = Schema.Struct({
   id: Schema.String,
   type: Schema.String,
   data: Schema.Record(Schema.String, Schema.Unknown),
+  /** Left out of the Read API; the draft preview still renders it. Stored only when true. */
+  hidden: Schema.optionalKey(Schema.Boolean),
 })
 export type Section = typeof Section.Type
 

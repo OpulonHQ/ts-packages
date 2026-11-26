@@ -364,3 +364,32 @@ test('publish, unpublish and redirect writes purge the tags the Read API answere
     ['cms:routes'],
   ])
 })
+
+test('a hidden section is left out of resolve; hiding and showing are draft changes', async () => {
+  const shown = section('hero', { title: { en: 'Shown' } })
+  const secret = section('hero', { title: { en: 'Secret' } })
+  const hidden = { ...secret, hidden: true }
+  const id = await publishedPage({ en: '/hidden-section' }, [shown, hidden])
+  const titles = async () => {
+    const { body } = await resolve('/hidden-section')
+    return body.kind === 'page' ? body.sections.map((s) => s.data['title']) : []
+  }
+
+  const first = await resolve('/hidden-section')
+  expect(first.body).toMatchObject({ sections: [{ id: shown.id, data: { title: 'Shown' } }] })
+  expect(first.body).not.toHaveProperty('sections.1')
+
+  const visible = page({ en: '/hidden-section' }, [shown, { ...secret, hidden: false }])
+  const saved = await host.save(id, visible)
+  expect(saved.body.status).toBe('changed')
+  expect(saved.body.draft.sections[1]).not.toHaveProperty('hidden')
+  expect(await titles()).toEqual(['Shown'])
+  expect((await host.publish(id)).status).toBe(200)
+  expect(await titles()).toEqual(['Shown', 'Secret'])
+
+  expect(
+    (await host.save(id, page({ en: '/hidden-section' }, [shown, hidden]))).body,
+  ).toMatchObject({ status: 'changed', draft: { sections: [{}, { hidden: true }] } })
+  expect(await titles()).toEqual(['Shown', 'Secret'])
+  expect((await host.save(id, visible)).body.status).toBe('published')
+})

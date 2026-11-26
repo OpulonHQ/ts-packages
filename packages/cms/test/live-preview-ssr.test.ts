@@ -36,3 +36,20 @@ test('server rendering shows the initial preview without live markers or a windo
   )
   expect(await renderToString(app)).toBe('<!--[--><h1 data-cms-field="title">Welcome</h1><!--]-->')
 })
+
+test('server rendering marks a hidden section of the initial preview', async () => {
+  const app = createSSRApp(() =>
+    h(CmsSections, {
+      sections: [
+        { id: 's1', type: 'hero', data: { title: 'Shown' } },
+        { id: 's2', type: 'hero', data: { title: 'Secret' }, hidden: true },
+      ],
+      components: sectionComponents<{ sections: { hero: unknown } }>({ hero: Hero }),
+    }),
+  )
+  const html = await renderToString(app)
+  expect(html).toContain('<h1 data-cms-field="title">Shown</h1>')
+  expect(html).toContain('<h1 data-cms-field="title" data-cms-hidden>Secret</h1>')
+  expect(html.match(/<style>/g)).toHaveLength(1)
+  expect(html).toContain('content:"Hidden on the site"')
+})

@@ -76,3 +76,22 @@ test('preview needs a signed-in user with cms.pages.view', async () => {
     404,
   )
 })
+
+test('preview keeps a hidden section, marked hidden', async () => {
+  const draft = page({ en: '/preview-hidden' }, [
+    section('hero', { title: { en: 'Shown' } }),
+    { ...section('hero', { title: { en: 'Secret' } }), hidden: true },
+  ])
+  const created = (await host.create(draft)).body
+  const saved = await host.call<PagePreview>('GET', `/pages/${created.id}/preview`)
+  const unsaved = await host.call<PagePreview>('POST', `/pages/${created.id}/preview`, {
+    body: draft,
+  })
+  for (const { body } of [saved, unsaved]) {
+    expect(body.sections).toMatchObject([
+      { data: { title: 'Shown' } },
+      { data: { title: 'Secret' }, hidden: true },
+    ])
+    expect(body.sections[0]).not.toHaveProperty('hidden')
+  }
+})

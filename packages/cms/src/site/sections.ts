@@ -31,13 +31,22 @@ export interface CmsSection {
   readonly id: string
   readonly type: string
   readonly data: PublicData
+  /** Only in a preview: the Read API leaves hidden sections out. */
+  readonly hidden?: boolean
 }
+
+const hiddenStyle =
+  '[data-cms-hidden]{outline:2px dashed #b45309;outline-offset:-2px;opacity:.6}' +
+  '[data-cms-hidden]::before{content:"Hidden on the site";display:block;padding:2px 6px;' +
+  'font:600 12px/1.5 system-ui,sans-serif;color:#fff;background:#b45309}'
 
 /**
  * Renders a page's sections in order, each as its type's component with a `data` prop. An
  * unknown type (a section type the site does not render yet) warns in dev and is skipped.
  * In a live preview (`useCmsLivePreview`) each section's root element gets
- * `data-cms-section="<id>"`, so a section component needs a single root to be selectable.
+ * `data-cms-section="<id>"`, and a hidden section (only previews carry one) gets
+ * `data-cms-hidden`, marked by one `<style>` before the sections. A section component needs a
+ * single root to be selectable and marked.
  */
 export const CmsSections = defineComponent({
   name: 'CmsSections',
@@ -47,17 +56,22 @@ export const CmsSections = defineComponent({
   },
   setup: (props) => {
     const live = inject(liveKey, undefined)
-    return () =>
-      props.sections.map((section) => {
+    return () => [
+      ...(props.sections.some((section) => section.hidden)
+        ? [h('style', { key: 'cms-hidden', innerHTML: hiddenStyle })]
+        : []),
+      ...props.sections.map((section) => {
         const component = props.components[section.type]
         if (component)
           return h(component, {
             key: section.id,
             data: section.data,
             ...(live?.value ? { 'data-cms-section': section.id } : {}),
+            ...(section.hidden ? { 'data-cms-hidden': '' } : {}),
           })
         warn(`CmsSections: no component for section type "${section.type}"`)
         return null
-      })
+      }),
+    ]
   },
 })

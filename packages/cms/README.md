@@ -197,6 +197,21 @@ The posted draft is cleaned as Save cleans it (rich text sanitized, URL links an
 trimmed, empty values dropped), whichever widget produced it. A URL link Save would refuse
 (not `https://`, `http://`, `mailto:`, `tel:`, `/` or `#`) is left out of the preview.
 
+## Hide a section
+
+Each section in the page editor has a **Hide on the site** switch, whatever its type. A hidden
+section keeps its content in the draft, and the document stores `hidden: true` on it. The Read
+API's `resolve()` leaves it out, so neither the public page nor its server-rendered HTML holds
+it. The page preview keeps it with `hidden: true`, and `CmsSections` renders its root with
+`data-cms-hidden` plus one `<style>` that outlines it, fades it and labels it "Hidden on the
+site". Like click-to-select, the marker needs the section component to have a single root
+element. Override `[data-cms-hidden]` in the site's CSS to style it differently.
+
+Hiding and showing are draft changes like any other: they reach the site on publish and a
+discarded draft undoes them. The switch is per section, not per locale. A section without the
+key is visible, and showing a section again removes the key, so a page hidden and shown back
+equals its published version.
+
 ## Sitemap limits
 
 The public `GET <apiPrefix>/cms/sitemap.xml` index links the files served by

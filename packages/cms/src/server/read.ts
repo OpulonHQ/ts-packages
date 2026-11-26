@@ -169,6 +169,7 @@ export const makeReader = (definitions: CmsDefinitions) =>
           const page = decodePage(row.published)
           const seo = page.locales[locale]!.seo
           const sections = page.sections.flatMap((s) => {
+            if (s.hidden) return []
             const group = Object.hasOwn(definitions.sections, s.type)
               ? definitions.sections[s.type]
               : undefined
