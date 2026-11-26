@@ -58,7 +58,7 @@ export const CmsSections = defineComponent({
     const live = inject(liveKey, undefined)
     return () => [
       ...(props.sections.some((section) => section.hidden)
-        ? [h('style', { key: 'cms-hidden' }, hiddenStyle)]
+        ? [h('style', { key: 'cms-hidden', innerHTML: hiddenStyle })]
         : []),
       ...props.sections.map((section) => {
         const component = props.components[section.type]
