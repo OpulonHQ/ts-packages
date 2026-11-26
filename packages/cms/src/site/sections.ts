@@ -44,9 +44,9 @@ const hiddenStyle =
  * Renders a page's sections in order, each as its type's component with a `data` prop. An
  * unknown type (a section type the site does not render yet) warns in dev and is skipped.
  * In a live preview (`useCmsLivePreview`) each section's root element gets
- * `data-cms-section="<id>"`, so a section component needs a single root to be selectable.
- * A hidden section (only previews carry one) renders with `data-cms-hidden` on its root, marked
- * by one `<style>` before the sections.
+ * `data-cms-section="<id>"`, and a hidden section (only previews carry one) gets
+ * `data-cms-hidden`, marked by one `<style>` before the sections. A section component needs a
+ * single root to be selectable and marked.
  */
 export const CmsSections = defineComponent({
   name: 'CmsSections',

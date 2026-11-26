@@ -204,7 +204,8 @@ section keeps its content in the draft, and the document stores `hidden: true` o
 API's `resolve()` leaves it out, so neither the public page nor its server-rendered HTML holds
 it. The page preview keeps it with `hidden: true`, and `CmsSections` renders its root with
 `data-cms-hidden` plus one `<style>` that outlines it, fades it and labels it "Hidden on the
-site". Override `[data-cms-hidden]` in the site's CSS to style it differently.
+site". Like click-to-select, the marker needs the section component to have a single root
+element. Override `[data-cms-hidden]` in the site's CSS to style it differently.
 
 Hiding and showing are draft changes like any other: they reach the site on publish and a
 discarded draft undoes them. The switch is per section, not per locale. A section without the
