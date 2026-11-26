@@ -5,7 +5,6 @@ import FieldSelect from '@opulonjs/ui/components/Field/Select'
 import { computed, onScopeDispose, ref, useId, useTemplateRef, watch } from 'vue'
 import type { Page, PageDocument } from '../api.ts'
 import type { CmsPreviewOptions } from './context.ts'
-import { pagePreview } from '../localize.ts'
 import { cleanFields, cleanLocaleText } from '../sanitize.ts'
 import { type AdminMessage, httpUrl, parseFrameMessage } from '../site/live-preview.ts'
 import { shownLocale, useCmsContext, usePages } from './use-cms.ts'
@@ -18,7 +17,8 @@ const contentLocale = defineModel<string>('contentLocale')
 
 const { t, locale: adminLocale } = useI18n()
 const { definitions } = useCmsContext()
-const locales = usePages().contentLocales
+const pages = usePages()
+const locales = pages.contentLocales
 const heading = useId()
 const locale = computed(() => shownLocale(locales.value, contentLocale.value))
 const picked = computed({
@@ -41,6 +41,7 @@ const target = computed(() => {
 const src = computed(() => target.value?.href)
 let ready = false
 watch(src, () => (ready = false))
+const failed = ref(false)
 
 const saved = (draft: PageDocument): PageDocument => ({
   locales: Object.fromEntries(
@@ -53,26 +54,25 @@ const saved = (draft: PageDocument): PageDocument => ({
 })
 
 let timer: ReturnType<typeof setTimeout> | undefined
-const send = () => {
+let ticket = 0
+const send = async () => {
   clearTimeout(timer)
   const frameWindow = frame.value?.contentWindow
-  if (!ready || !frameWindow || !target.value) return
-  const message = {
-    type: 'opulon:cms:preview',
-    preview: pagePreview(
-      definitions,
-      locales.value,
-      { id: props.page.id, draft: saved(props.draft) },
-      locale.value,
-    ),
-  } satisfies AdminMessage
-  // A plain copy: the draft is a Vue proxy, which postMessage cannot clone.
-  const plain: unknown = JSON.parse(JSON.stringify(message))
-  frameWindow.postMessage(plain, target.value.origin)
+  const origin = target.value?.origin
+  if (!ready || !frameWindow || !origin) return
+  const request = ++ticket
+  try {
+    const preview = await pages.preview(props.page.id, saved(props.draft), locale.value)
+    if (request !== ticket || frame.value?.contentWindow !== frameWindow) return
+    failed.value = false
+    frameWindow.postMessage({ type: 'opulon:cms:preview', preview } satisfies AdminMessage, origin)
+  } catch {
+    if (request === ticket) failed.value = true
+  }
 }
 const schedule = () => {
   clearTimeout(timer)
-  timer = setTimeout(send, 150)
+  timer = setTimeout(() => void send(), 150)
 }
 watch(() => props.draft, schedule, { deep: true })
 watch(locale, schedule)
@@ -84,7 +84,7 @@ const onMessage = (event: MessageEvent) => {
   const message = parseFrameMessage(event.data)
   if (message?.type === 'opulon:cms:ready') {
     ready = true
-    send()
+    void send()
   } else if (message) {
     const section = props.draft.sections.find((s) => s.id === message.sectionId)
     if (!section) return
@@ -135,6 +135,9 @@ onScopeDispose(() => {
         />
       </div>
     </div>
+    <p v-if="src && failed" role="status" class="text-sm text-error">
+      {{ t('cms.page.previewFailed') }}
+    </p>
     <p v-if="!src" class="text-sm text-error">{{ t('cms.page.previewUnavailable') }}</p>
     <iframe
       v-else

@@ -68,6 +68,8 @@ export default {
     previewTitle: 'Anteprima dal vivo della pagina',
     desktop: 'Desktop',
     mobile: 'Mobile',
+    previewFailed:
+      'Impossibile aggiornare l’anteprima. Mostra una versione precedente della bozza.',
     previewUnavailable:
       'Non è possibile mostrare l’anteprima: il suo indirizzo non è un indirizzo web.',
     sections: 'Sezioni',

@@ -136,7 +136,8 @@ export const Page = Schema.Struct({
 })
 export type Page = typeof Page.Type
 
-/** A draft as a site renders it in one locale: localized fields resolved (with fallback). */
+/** A draft as a site renders it in one locale, sections as the Read API gives them: localized
+ *  fields resolved (with fallback), media and links resolved. */
 export const PagePreview = Schema.Struct({
   id: Schema.String,
   locale: Schema.String,
@@ -535,6 +536,15 @@ export const CmsGroup = HttpApiGroup.make('cms')
     HttpApiEndpoint.get('previewPage', '/pages/:id/preview', {
       params: id,
       query: { locale: Schema.optionalKey(Schema.String) },
+      success: PagePreview,
+      error: CmsNotFound,
+    }).annotate(Policy, 'cms.pages.view'),
+  )
+  .add(
+    HttpApiEndpoint.post('previewPageDraft', '/pages/:id/preview', {
+      params: id,
+      query: { locale: Schema.optionalKey(Schema.String) },
+      payload: PageDocument,
       success: PagePreview,
       error: CmsNotFound,
     }).annotate(Policy, 'cms.pages.view'),

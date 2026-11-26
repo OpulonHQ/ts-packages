@@ -1,4 +1,5 @@
 import { ContentLocales, requirePermission } from '@opulonjs/core'
+import { MediaLibrary } from '@opulonjs/media/server'
 import { Context, Effect, Layer } from 'effect'
 import type { Forbidden } from 'effect/http-api/HttpApiError'
 import { SqlClient } from 'effect/sql/SqlClient'
@@ -15,10 +16,11 @@ import {
   type PagePreview,
   type PageSummary,
 } from '../api.ts'
-import { availableLocales, emptyLocale, listLocale, pagePreview } from '../localize.ts'
+import { availableLocales, emptyLocale, listLocale } from '../localize.ts'
 import { publicPath } from '../public.ts'
 import { checkRequired, normalizeDocument } from './document.ts'
 import { type DocumentRow, documentState, makeDocuments } from './documents.ts'
+import { resolveContent } from './read.ts'
 
 /** Cache-Tags of one page's public responses. */
 export const pageTags = (id: string) => [`cms:page:${id}`]
@@ -59,8 +61,15 @@ export class Pages extends Context.Service<
       version: number,
     ) => Effect.Effect<Page, PagesError | CmsInvalid | CmsConflict>
     readonly unpublish: (id: string) => Effect.Effect<Page, PagesError>
-    /** The draft in one content locale (default: the default locale). */
+    /** The draft in one content locale (default: the default locale), as the Read API
+     *  renders a published page. */
     readonly preview: (id: string, locale?: string) => Effect.Effect<PagePreview, PagesError>
+    /** An unsaved draft of the page, rendered as `preview` renders the saved one. */
+    readonly previewDraft: (
+      id: string,
+      draft: PageDocument,
+      locale?: string,
+    ) => Effect.Effect<PagePreview, PagesError>
   }
 >()('@opulonjs/cms/Pages') {
   static readonly layer = (definitions: CmsDefinitions) =>
@@ -69,6 +78,34 @@ export class Pages extends Context.Service<
       Effect.gen(function* () {
         const sql = yield* SqlClient
         const locales = yield* ContentLocales
+        const media = yield* MediaLibrary
+
+        const render = (id: string, draft: PageDocument, requested: string | undefined) =>
+          Effect.gen(function* () {
+            const locale = requested && locales.includes(requested) ? requested : locales[0]!
+            const own = draft.locales[locale] ?? emptyLocale()
+            const sections = draft.sections.flatMap((section) => {
+              const group = Object.hasOwn(definitions.sections, section.type)
+                ? definitions.sections[section.type]
+                : undefined
+              return group ? [{ section, group }] : []
+            })
+            const content = yield* resolveContent(
+              locale,
+              sections.map(({ section, group }) => ({ group, data: section.data })),
+            )
+            return {
+              id,
+              locale,
+              path: own.path,
+              seo: own.seo,
+              sections: sections.map(({ section }, i) => ({ ...section, data: content.data[i]! })),
+            }
+          }).pipe(
+            Effect.provideService(SqlClient, sql),
+            Effect.provideService(MediaLibrary, media),
+            Effect.provideService(ContentLocales, locales),
+          )
 
         const toSummary = (row: DocumentRow<PageDocument>): PageSummary => {
           const available = availableLocales(locales, row.draft.locales, true)
@@ -164,9 +201,9 @@ export class Pages extends Context.Service<
           publish: (id, version) => documents.publish(id, version).pipe(Effect.map(toPage)),
           unpublish: (id) => documents.unpublish(id).pipe(Effect.map(toPage)),
           preview: (id, requested) =>
-            documents
-              .get(id)
-              .pipe(Effect.map((row) => pagePreview(definitions, locales, row, requested))),
+            documents.get(id).pipe(Effect.flatMap((row) => render(id, row.draft, requested))),
+          previewDraft: (id, draft, requested) =>
+            documents.get(id).pipe(Effect.flatMap(() => render(id, draft, requested))),
         }
       }),
     )

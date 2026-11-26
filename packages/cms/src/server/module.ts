@@ -179,6 +179,9 @@ const handlers = (api: HttpApi.HttpApi<'opulon', typeof CmsGroup | typeof CmsRea
         .handle('previewPage', ({ params, query }) =>
           preview(pages.preview(params.id, query.locale)),
         )
+        .handle('previewPageDraft', ({ params, query, payload }) =>
+          preview(pages.previewDraft(params.id, payload, query.locale)),
+        )
         .handle('listItems', ({ params, query }) => items.list(params.collection, query))
         .handle('createItem', ({ params, payload }) => items.create(params.collection, payload))
         .handle('getItem', ({ params }) => items.get(params.id))

@@ -93,10 +93,7 @@ test('the Read API answers list items in order, localized, with media and links 
   )
 
   const preview = await host.call<PagePreview>('GET', `/pages/${created.body.id}/preview?locale=it`)
-  expect(preview.body.sections[0]!.data['cards']).toMatchObject([
-    { id: first, data: { title: 'Uno', image: lake } },
-    { id: second, data: { title: 'Two' } },
-  ])
+  expect(preview.body.sections[0]!.data['cards']).toEqual(data['cards'])
 })
 
 test('collection items and site settings hold lists too', async () => {

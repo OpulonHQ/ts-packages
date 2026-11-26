@@ -1,4 +1,4 @@
-import { fields, type Page, type PagePreview } from '@opulonjs/cms/api'
+import type { Page, PagePreview } from '@opulonjs/cms/api'
 import { cmsAdmin, type CmsAdminOptions } from '@opulonjs/cms/admin'
 import { defineComponent, h } from 'vue'
 import { expect, onTestFinished, test, vi } from 'vitest'
@@ -93,6 +93,16 @@ const twoHeroes = async () =>
     )
   ).body
 
+const heroAndCards = async () =>
+  (
+    await host.create(
+      page({ en: `/cards-${crypto.randomUUID()}` }, [
+        section('hero', { title: { en: 'First' }, tone: 'light' }),
+        section('cards', { cards: [{ id: crypto.randomUUID(), data: { title: { en: 'Card' } } }] }),
+      ]),
+    )
+  ).body
+
 test('the editor shows outline, preview and inputs; the first section is selected', async () => {
   const created = await twoHeroes()
   mountAdmin(`/admin/cms/pages/${created.id}`)
@@ -130,7 +140,7 @@ test('the frame gets the unsaved draft after it is ready, debounced, and nothing
   expect(posted.mock.calls).toEqual([])
 
   ready()
-  expect(previews(posted)).toHaveLength(1)
+  await vi.waitFor(() => expect(previews(posted)).toHaveLength(1))
   expect(previews(posted)[0]!.origin).toBe(location.origin)
   expect(previews(posted)[0]!.message.type).toBe('opulon:cms:preview')
   expect(lastPreview(posted)!.sections[0]!.data.title).toBe('Before ready')
@@ -139,7 +149,7 @@ test('the frame gets the unsaved draft after it is ready, debounced, and nothing
   await vi.advanceTimersByTimeAsync(100)
   expect(previews(posted)).toHaveLength(1)
   await vi.advanceTimersByTimeAsync(50)
-  expect(previews(posted)).toHaveLength(2)
+  await vi.waitFor(() => expect(previews(posted)).toHaveLength(2))
   expect(lastPreview(posted)!.sections[0]!.data.title).toBe('<b>Typed</b> live')
   vi.useRealTimers()
 
@@ -230,7 +240,7 @@ test.each([
   [
     'a malformed link from a custom widget does not stop the live preview',
     { type: 'url' },
-    { cta: { type: 'url' } },
+    { more: { type: 'url' } },
   ],
   [
     'a script URL link from a custom widget never reaches the frame',
@@ -238,7 +248,7 @@ test.each([
     {},
   ],
 ])('%s', async (_, link, expected) => {
-  const created = await twoHeroes()
+  const created = await heroAndCards()
   const Broken = defineComponent({
     props: { name: { type: String, required: true } },
     emits: ['update:modelValue'],
@@ -250,32 +260,35 @@ test.each([
           onInput: () => emit('update:modelValue', link),
         }),
   })
-  const cta = fields.link({ label: 'CTA', widget: 'broken' })
-  const hero = definitions.sections.hero
+  const cards = definitions.sections.cards
+  const more = { ...cards.fields.more, widget: 'broken' }
   const modules = withCms({
     definitions: {
       ...definitions,
-      sections: { ...definitions.sections, hero: { ...hero, fields: { ...hero.fields, cta } } },
+      sections: { ...definitions.sections, cards: { ...cards, fields: { ...cards.fields, more } } },
     },
     widgets: { ...cmsOptions.widgets, broken: async () => ({ default: Broken }) },
   })
   mountAdmin(`/admin/cms/pages/${created.id}`, modules)
-  await expect.poll(() => input('sections.0.cta')).toBeTruthy()
+  await expect.poll(() => input('sections.1.more')).toBeTruthy()
   const posted = listen()
   ready()
 
-  type('sections.0.cta', 'x')
+  type('sections.1.more', 'x')
   type('sections.0.title.en', 'After the link')
   await expect
-    .poll(() => lastPreview(posted)?.sections[0]?.data)
-    .toEqual({ title: 'After the link', tone: 'light', ...expected })
+    .poll(() => lastPreview(posted)?.sections.map((s) => s.data))
+    .toEqual([
+      { title: 'After the link', tone: 'light' },
+      { cards: [{ id: expect.any(String), data: { title: 'Card' } }], ...expected },
+    ])
 })
 
 test('an unsaved media or link edit reaches the frame resolved, as the Read API gives it', async () => {
   const lake = await host.upload(files.png(800, 600), 'lake.png', { en: 'A lake' })
   const target = (await host.create(page({ en: `/target-${crypto.randomUUID()}` }))).body
   expect((await host.publish(target.id)).status).toBe(200)
-  const created = await twoHeroes()
+  const created = await heroAndCards()
   const emitting = (value: unknown) =>
     defineComponent({
       props: { name: { type: String, required: true } },
@@ -285,7 +298,7 @@ test('an unsaved media or link edit reaches the frame resolved, as the Read API 
         () =>
           h('textarea', { name: props.name, onInput: () => emit('update:modelValue', value) }),
     })
-  const hero = definitions.sections.hero
+  const { hero, cards } = definitions.sections
   const modules = withCms({
     definitions: {
       ...definitions,
@@ -293,11 +306,11 @@ test('an unsaved media or link edit reaches the frame resolved, as the Read API 
         ...definitions.sections,
         hero: {
           ...hero,
-          fields: {
-            ...hero.fields,
-            image: { ...hero.fields.image, widget: 'pickImage' },
-            cta: fields.link({ label: 'CTA', widget: 'pickLink' }),
-          },
+          fields: { ...hero.fields, image: { ...hero.fields.image, widget: 'pickImage' } },
+        },
+        cards: {
+          ...cards,
+          fields: { ...cards.fields, more: { ...cards.fields.more, widget: 'pickLink' } },
         },
       },
     },
@@ -308,17 +321,41 @@ test('an unsaved media or link edit reaches the frame resolved, as the Read API 
     },
   })
   mountAdmin(`/admin/cms/pages/${created.id}`, modules)
-  await expect.poll(() => input('sections.0.cta')).toBeTruthy()
+  await expect.poll(() => input('sections.1.more')).toBeTruthy()
   const posted = listen()
   ready()
 
   type('sections.0.image', 'x')
-  type('sections.0.cta', 'x')
-  await expect.poll(() => lastPreview(posted)?.sections[0]?.data).toMatchObject({
-    image: { id: lake, url: `/media/${lake}/1/lake.png`, alt: 'A lake' },
-    cta: { type: 'page', id: target.id, href: target.draft.locales.en!.path },
-  })
-  expect((await stored(created.id)).draft.sections[0]!.data).not.toHaveProperty('cta')
+  type('sections.1.more', 'x')
+  await expect
+    .poll(() => lastPreview(posted)?.sections.map((s) => s.data))
+    .toMatchObject([
+      { image: { id: lake, url: `/media/${lake}/1/lake.png`, alt: 'A lake' } },
+      { more: { type: 'page', id: target.id, href: target.draft.locales.en!.path } },
+    ])
+  expect((await stored(created.id)).draft).toEqual(created.draft)
+})
+
+test('the pane says so when the server cannot render the draft, and recovers', async () => {
+  const created = await twoHeroes()
+  let refuse = true
+  const fetch: typeof host.fetch = (input, init) => {
+    const request = new Request(input, init)
+    return refuse && request.method === 'POST' && new URL(request.url).pathname.endsWith('/preview')
+      ? Promise.resolve(new Response(null, { status: 503 }))
+      : host.fetch(request)
+  }
+  const text = admin.mount(`/admin/cms/pages/${created.id}`, { fetch, modules: adminModules })
+  await expect.poll(() => input('sections.0.title.en')).toBeTruthy()
+  const posted = listen()
+  ready()
+  await expect.poll(text).toContain('Náhľad sa nepodarilo aktualizovať.')
+  expect(previews(posted)).toEqual([])
+
+  refuse = false
+  type('sections.0.title.en', 'Back')
+  await expect.poll(() => lastPreview(posted)?.sections[0]?.data.title).toBe('Back')
+  expect(text()).not.toContain('Náhľad sa nepodarilo aktualizovať.')
 })
 
 test('the live preview is the draft as Save stores it', async () => {

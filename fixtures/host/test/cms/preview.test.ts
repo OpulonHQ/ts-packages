@@ -68,4 +68,11 @@ test('preview needs a signed-in user with cms.pages.view', async () => {
   expect((await host.call('GET', path, { as: null })).status).toBe(401)
   expect((await host.call('GET', path, { as: ['media.view'] })).status).toBe(403)
   expect((await host.call('GET', path, { as: ['cms.pages.view'] })).status).toBe(200)
+  const body = page({ en: '/secret' })
+  expect((await host.call('POST', path, { body, as: null })).status).toBe(401)
+  expect((await host.call('POST', path, { body, as: ['media.view'] })).status).toBe(403)
+  expect((await host.call('POST', path, { body, as: ['cms.pages.view'] })).status).toBe(200)
+  expect((await host.call('POST', `/pages/${crypto.randomUUID()}/preview`, { body })).status).toBe(
+    404,
+  )
 })

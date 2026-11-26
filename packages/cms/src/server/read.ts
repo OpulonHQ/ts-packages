@@ -1,7 +1,7 @@
 import { ContentLocales } from '@opulonjs/core'
 import { mediaCacheTag } from '@opulonjs/media/api'
 import { MediaLibrary, type ResolvedMedia } from '@opulonjs/media/server'
-import { Effect, Option, Predicate, Schema } from 'effect'
+import { Effect, Option, Schema } from 'effect'
 import { SqlClient } from 'effect/sql/SqlClient'
 import type { Fragment } from 'effect/sql/Statement'
 import {
@@ -11,7 +11,7 @@ import {
   CmsNotFound,
   type FieldGroup,
   ItemDocument,
-  type Link,
+  Link,
   MenuDocument,
   PageDocument,
   type PublicData,
@@ -34,8 +34,7 @@ export interface Tagged<A> {
   readonly tags: ReadonlyArray<string>
 }
 
-const isLink = (value: unknown): value is Link =>
-  Predicate.isObject(value) && 'type' in value && typeof value.type === 'string'
+const isLink = Schema.is(Link)
 
 const decodePage = Schema.decodeUnknownSync(PageDocument)
 const decodeItem = Schema.decodeUnknownSync(ItemDocument)
@@ -51,6 +50,47 @@ const PublishedRow = Schema.Struct({
 })
 const decodePublished = Schema.decodeUnknownSync(Schema.Array(PublishedRow))
 
+export const resolveContent = (
+  locale: string,
+  contents: ReadonlyArray<{ readonly group: FieldGroup; readonly data: PublicData }>,
+  extra: { readonly media?: ReadonlyArray<string>; readonly links?: ReadonlyArray<Link> } = {},
+) =>
+  Effect.gen(function* () {
+    const media = yield* MediaLibrary
+    const defaultLocale = (yield* ContentLocales)[0]!
+    const localized = contents.map(({ group, data }) => ({
+      group,
+      data: localizeData(group, data, locale, defaultLocale),
+    }))
+    const mediaIds = [...(extra.media ?? [])]
+    const links = [...(extra.links ?? [])]
+    for (const { group, data } of localized)
+      mapFields(group, data, (field, value) => {
+        if (field.kind === 'media' && typeof value === 'string') mediaIds.push(value)
+        if (field.kind === 'link' && isLink(value)) links.push(value)
+      })
+    const [resolved, linked] = yield* Effect.all(
+      [media.resolve(mediaIds, locale), resolveLinks(links, locale).pipe(Effect.orDie)],
+      { concurrency: 'unbounded' },
+    )
+    const mediaOf = (id: string | null): ResolvedMedia | null =>
+      id === null ? null : (resolved.get(id) ?? null)
+    return {
+      data: localized.map(({ group, data }) =>
+        mapFields(group, data, (field, value) =>
+          field.kind === 'media' && typeof value === 'string'
+            ? mediaOf(value)
+            : field.kind === 'link' && isLink(value)
+              ? { ...value, href: linked.href(value) }
+              : value,
+        ),
+      ),
+      media: mediaOf,
+      href: linked.href,
+      tags: [...linked.tags, ...mediaIds.map(mediaCacheTag)],
+    }
+  })
+
 /**
  * The Read API (TSPACK-11 §11): published content only, for anyone. Every method answers with
  * the Cache-Tags its body depends on (see `cacheTags`).
@@ -65,52 +105,12 @@ export const makeReader = (definitions: CmsDefinitions) =>
     const pathOf = (locale: string, path: string) => publicPath(locales, locale, path)
     const withSql = Effect.provideService(SqlClient, sql)
 
-    /**
-     * Field groups' data in one locale, ready for a public site: localized fields resolved,
-     * media ids to `ResolvedMedia` (null when gone), links to `ResolvedLink`. Media and links
-     * of all groups (plus `extra`) are looked up together.
-     */
-    const publicContent = (
-      locale: string,
-      contents: ReadonlyArray<{ readonly group: FieldGroup; readonly data: PublicData }>,
-      extra: { readonly media?: ReadonlyArray<string>; readonly links?: ReadonlyArray<Link> } = {},
-    ) =>
-      Effect.gen(function* () {
-        const localized = contents.map(({ group, data }) => ({
-          group,
-          data: localizeData(group, data, locale, defaultLocale),
-        }))
-        const mediaIds = [...(extra.media ?? [])]
-        const links = [...(extra.links ?? [])]
-        for (const { group, data } of localized)
-          mapFields(group, data, (field, value) => {
-            if (field.kind === 'media' && typeof value === 'string') mediaIds.push(value)
-            if (field.kind === 'link' && isLink(value)) links.push(value)
-          })
-        const [resolved, linked] = yield* Effect.all(
-          [
-            media.resolve(mediaIds, locale),
-            resolveLinks(links, locale).pipe(withSql, Effect.orDie),
-          ],
-          { concurrency: 'unbounded' },
-        )
-        const mediaOf = (id: string | null): ResolvedMedia | null =>
-          id === null ? null : (resolved.get(id) ?? null)
-        return {
-          data: localized.map(({ group, data }) =>
-            mapFields(group, data, (field, value) =>
-              field.kind === 'media' && typeof value === 'string'
-                ? mediaOf(value)
-                : field.kind === 'link' && isLink(value)
-                  ? { ...value, href: linked.href(value) }
-                  : value,
-            ),
-          ),
-          media: mediaOf,
-          href: linked.href,
-          tags: [...linked.tags, ...mediaIds.map(mediaCacheTag)],
-        }
-      })
+    const publicContent: typeof resolveContent = (...args) =>
+      resolveContent(...args).pipe(
+        withSql,
+        Effect.provideService(MediaLibrary, media),
+        Effect.provideService(ContentLocales, locales),
+      )
 
     const checkLocale = (requested: string | undefined) =>
       requested === undefined
