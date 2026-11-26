@@ -3,6 +3,7 @@ import { cmsAdmin, type CmsAdminOptions } from '@opulonjs/cms/admin'
 import { defineComponent, h } from 'vue'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import { adminModules, cmsOptions } from '../../admin/modules.ts'
+import { files } from '../media/helpers.ts'
 import { definitions } from '../../cms/definitions.ts'
 import { useAdminLifetime } from '../admin-lifetime.ts'
 import {
@@ -268,6 +269,56 @@ test.each([
   await expect
     .poll(() => lastPreview(posted)?.sections[0]?.data)
     .toEqual({ title: 'After the link', tone: 'light', ...expected })
+})
+
+test('an unsaved media or link edit reaches the frame resolved, as the Read API gives it', async () => {
+  const lake = await host.upload(files.png(800, 600), 'lake.png', { en: 'A lake' })
+  const target = (await host.create(page({ en: `/target-${crypto.randomUUID()}` }))).body
+  expect((await host.publish(target.id)).status).toBe(200)
+  const created = await twoHeroes()
+  const emitting = (value: unknown) =>
+    defineComponent({
+      props: { name: { type: String, required: true } },
+      emits: ['update:modelValue'],
+      setup:
+        (props, { emit }) =>
+        () =>
+          h('textarea', { name: props.name, onInput: () => emit('update:modelValue', value) }),
+    })
+  const hero = definitions.sections.hero
+  const modules = withCms({
+    definitions: {
+      ...definitions,
+      sections: {
+        ...definitions.sections,
+        hero: {
+          ...hero,
+          fields: {
+            ...hero.fields,
+            image: { ...hero.fields.image, widget: 'pickImage' },
+            cta: fields.link({ label: 'CTA', widget: 'pickLink' }),
+          },
+        },
+      },
+    },
+    widgets: {
+      ...cmsOptions.widgets,
+      pickImage: async () => ({ default: emitting(lake) }),
+      pickLink: async () => ({ default: emitting({ type: 'page', id: target.id }) }),
+    },
+  })
+  mountAdmin(`/admin/cms/pages/${created.id}`, modules)
+  await expect.poll(() => input('sections.0.cta')).toBeTruthy()
+  const posted = listen()
+  ready()
+
+  type('sections.0.image', 'x')
+  type('sections.0.cta', 'x')
+  await expect.poll(() => lastPreview(posted)?.sections[0]?.data).toMatchObject({
+    image: { id: lake, url: `/media/${lake}/1/lake.png`, alt: 'A lake' },
+    cta: { type: 'page', id: target.id, href: target.draft.locales.en!.path },
+  })
+  expect((await stored(created.id)).draft.sections[0]!.data).not.toHaveProperty('cta')
 })
 
 test('the live preview is the draft as Save stores it', async () => {

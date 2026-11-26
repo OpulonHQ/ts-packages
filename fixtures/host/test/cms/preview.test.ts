@@ -1,5 +1,6 @@
 import type { PagePreview } from '@opulonjs/cms/api'
 import { expect, test } from 'vitest'
+import { files } from '../media/helpers.ts'
 import { locale, page, section, useCmsHost } from './helpers.ts'
 
 const host = useCmsHost()
@@ -36,24 +37,28 @@ test('preview shows the draft in one locale, falling back to the default, never 
   expect(fallback.body.locale).toBe('en')
 })
 
-test('preview leaves media ids and links as stored, at the top level and inside list items', async () => {
-  const image = crypto.randomUUID()
-  const link = { type: 'system', key: 'contact' }
+test('preview resolves media and links like the Read API, at the top level and inside list items', async () => {
+  const lake = await host.upload(files.png(800, 600), 'lake.png', { en: 'A lake' })
+  const target = (await host.create(page({ en: '/preview-target' }))).body.id
+  expect((await host.publish(target)).status).toBe(200)
+  const link = { type: 'page', id: target }
   const created = (
     await host.create(
-      page({ en: '/preview-stored' }, [
-        section('hero', { title: { en: 'Stored' }, image }),
+      page({ en: '/preview-resolved' }, [
+        section('hero', { title: { en: 'Resolved' }, image: lake }),
         section('cards', {
           more: link,
-          cards: [{ id: crypto.randomUUID(), data: { image, link } }],
+          cards: [{ id: crypto.randomUUID(), data: { image: lake, link } }],
         }),
       ]),
     )
   ).body
+  const media = { id: lake, url: `/media/${lake}/1/lake.png`, alt: 'A lake', mime: 'image/png' }
+  const resolved = { ...link, href: '/preview-target' }
   const { body } = await host.call<PagePreview>('GET', `/pages/${created.id}/preview`)
-  expect(body.sections.map((s) => s.data)).toEqual([
-    { title: 'Stored', image },
-    { more: link, cards: [{ id: expect.any(String), data: { image, link } }] },
+  expect(body.sections.map((s) => s.data)).toMatchObject([
+    { title: 'Resolved', image: media },
+    { more: resolved, cards: [{ id: expect.any(String), data: { image: media, link: resolved } }] },
   ])
 })
 
