@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { useI18n } from '@opulonjs/admin'
-import { UButton } from '@opulonjs/ui'
+import { UButton, UIcon } from '@opulonjs/ui'
 import FieldSelect from '@opulonjs/ui/components/Field/Select'
 import { computed, ref, useId } from 'vue'
 import { labelText } from '../api.ts'
 import { isRecord } from '../localize.ts'
 import { type PageSelection, useCmsContext, usePages } from './use-cms.ts'
 
-type DraftSection = { id: string; type: string; data: Record<string, unknown> }
+type DraftSection = { id: string; type: string; data: Record<string, unknown>; hidden?: boolean }
 
 const sections = defineModel<Array<DraftSection>>('sections', { required: true })
 const selection = defineModel<PageSelection>('selection', { required: true })
@@ -83,6 +83,10 @@ function add() {
         >
           <span class="flex min-w-0 flex-col items-start text-left">
             <span class="font-medium">{{ index + 1 }}. {{ typeLabel(section.type) }}</span>
+            <span v-if="section.hidden" class="flex items-center gap-1 text-xs text-warning">
+              <UIcon name="i-lucide-eye-off" aria-hidden="true" />
+              {{ t('cms.page.hiddenSection') }}
+            </span>
             <span class="w-full truncate text-xs text-muted">{{ summary(section) }}</span>
           </span>
         </UButton>

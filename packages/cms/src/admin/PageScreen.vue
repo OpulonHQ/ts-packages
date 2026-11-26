@@ -2,6 +2,7 @@
 import { CachePurgeNotice, useI18n } from '@opulonjs/admin'
 import ConfirmDialog from '@opulonjs/ui/components/ConfirmDialog'
 import LocaleSwitch from '@opulonjs/ui/components/LocaleSwitch'
+import FieldToggle from '@opulonjs/ui/components/Field/Toggle'
 import PageHeader from '@opulonjs/ui/components/PageHeader'
 import { computed, nextTick, ref, shallowRef, useId, watch, useTemplateRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -30,7 +31,7 @@ import {
 /** The draft as edited: plain mutable copies of the document's parts. */
 interface Draft {
   locales: Record<string, PageLocale>
-  sections: Array<{ id: string; type: string; data: Record<string, unknown> }>
+  sections: Array<{ id: string; type: string; data: Record<string, unknown>; hidden?: boolean }>
 }
 
 const { t, locale } = useI18n()
@@ -89,6 +90,11 @@ async function focusField(sectionId: string, field: string | undefined, locale: 
   )
   const control = (wrapper && firstControl(wrapper)) ?? firstControl(panel) ?? panel
   control.focus()
+}
+
+const setHidden = (section: Draft['sections'][number], hidden: boolean) => {
+  if (hidden) section.hidden = true
+  else delete section.hidden
 }
 
 const toDraft = (document: PageDocument): Draft => {
@@ -246,7 +252,16 @@ useDraftChanges({
                 :id="`${panels}-${section.id}`"
                 :key="section.id"
                 tabindex="-1"
+                class="space-y-4"
               >
+                <FieldToggle
+                  :model-value="section.hidden === true"
+                  :name="`sections.${index}.hidden`"
+                  :label="t('cms.page.hideSection')"
+                  :help="t('cms.page.hideSectionHelp')"
+                  :disabled="locked"
+                  @update:model-value="setHidden(section, $event)"
+                />
                 <FieldsForm
                   v-if="definitions.sections[section.type]"
                   v-model:data="section.data"

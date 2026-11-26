@@ -108,6 +108,10 @@ _Avoid_: fixed page, static page, core page
 One block of a page's content, of a single section type, placed in the page's order.
 _Avoid_: block, component, widget
 
+**Hidden section**:
+A section an editor keeps in the page's draft but leaves out of the public website; the editor's preview still shows it, marked as hidden.
+_Avoid_: disabled section, draft section, inactive section
+
 **Section type**:
 A kind of section the host app defines, with its fields and its own rendering on the public website.
 _Avoid_: block type, template, layout

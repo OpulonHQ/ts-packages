@@ -638,3 +638,40 @@ test('without a preview the editor has two panes', async () => {
   expect(shown('sections.1.note')).toBe(true)
   expect(shown('sections.0.title.en')).toBe(false)
 })
+
+test('every section has a Hide on the site switch; hiding marks the outline and saves, showing again leaves nothing unsaved', async () => {
+  const created = (
+    await host.create(
+      page({ en: `/hide-${crypto.randomUUID()}` }, [
+        section('hero', { title: { en: 'First' } }),
+        section('stats', { note: 'Second' }),
+        section('cards', { cards: [{ id: crypto.randomUUID(), data: { title: { en: 'Card' } } }] }),
+      ]),
+    )
+  ).body
+  mountAdmin(`/admin/cms/pages/${created.id}`)
+  const bar = () => document.querySelector('[role="region"][aria-label="Neuložené zmeny"]')
+  const hideSwitches = () =>
+    [...document.querySelectorAll<HTMLElement>('button[role="switch"]')].filter(
+      (el) => document.querySelector(`label[for="${el.id}"]`)?.textContent?.trim() === 'Skryť na webe',
+    )
+  await expect.poll(() => hideSwitches().length).toBe(3)
+  expect(outline().textContent).not.toContain('Skrytá')
+
+  selectItem(1)
+  hideSwitches()[1]!.click()
+  await expect.poll(() => item(1).textContent).toContain('Skrytá')
+  expect(item(0).textContent).not.toContain('Skrytá')
+  await expect.poll(bar).toBeTruthy()
+
+  hideSwitches()[1]!.click()
+  await expect.poll(() => item(1).textContent).not.toContain('Skrytá')
+  await expect.poll(bar).toBeNull()
+
+  hideSwitches()[1]!.click()
+  await saveDraft()
+  await expect.poll(async () => (await stored(created.id)).draft.sections[1]?.hidden).toBe(true)
+  const sections = (await stored(created.id)).draft.sections
+  expect(sections[0]).not.toHaveProperty('hidden')
+  expect(sections[2]).not.toHaveProperty('hidden')
+})
