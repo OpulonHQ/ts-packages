@@ -66,6 +66,7 @@ export default {
     previewTitle: 'Živý náhľad stránky',
     desktop: 'Počítač',
     mobile: 'Mobil',
+    previewFailed: 'Náhľad sa nepodarilo aktualizovať. Zobrazuje staršiu verziu konceptu.',
     previewUnavailable: 'Náhľad sa nedá zobraziť: jeho adresa nie je webová adresa.',
     sections: 'Sekcie',
     noSections: 'Zatiaľ žiadne sekcie. Pridajte prvú nižšie.',

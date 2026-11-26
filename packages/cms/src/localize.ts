@@ -1,13 +1,4 @@
-import type {
-  CmsDefinitions,
-  Field,
-  FieldGroup,
-  ListItem,
-  PageDocument,
-  PageLocale,
-  PagePreview,
-  Section,
-} from './api.ts'
+import type { Field, FieldGroup, ListItem, PageLocale } from './api.ts'
 
 export const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -70,31 +61,3 @@ export const localizeData = (
     const values = isRecord(value) ? value : {}
     return values[locale] ?? values[fallback] ?? null
   })
-
-const localizeSection = (
-  definitions: CmsDefinitions,
-  section: Section,
-  locale: string,
-  fallback: string,
-): Section => {
-  const type = definitions.sections[section.type]
-  return type ? { ...section, data: localizeData(type, section.data, locale, fallback) } : section
-}
-
-export const pagePreview = (
-  definitions: CmsDefinitions,
-  locales: ReadonlyArray<string>,
-  page: { readonly id: string; readonly draft: PageDocument },
-  requested?: string,
-): PagePreview => {
-  const fallback = locales[0]!
-  const locale = requested && locales.includes(requested) ? requested : fallback
-  const own = page.draft.locales[locale] ?? emptyLocale()
-  return {
-    id: page.id,
-    locale,
-    path: own.path,
-    seo: own.seo,
-    sections: page.draft.sections.map((s) => localizeSection(definitions, s, locale, fallback)),
-  }
-}

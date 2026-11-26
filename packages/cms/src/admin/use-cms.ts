@@ -75,6 +75,10 @@ export const usePages = () => {
     publish: (id: string, version: number) =>
       cms((client) => client.publishPage({ params: { id }, query: { version } })),
     unpublish: (id: string) => cms((client) => client.unpublishPage({ params: { id } })),
+    preview: (id: string, draft: PageDocument, locale: string) =>
+      cms((client) =>
+        client.previewPageDraft({ params: { id }, query: { locale }, payload: draft }),
+      ),
     can: admin.can,
     contentLocales: computed(() => admin.me.value?.contentLocales ?? []),
   }

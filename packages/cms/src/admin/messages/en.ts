@@ -66,6 +66,7 @@ export default {
     previewTitle: 'Live preview of the page',
     desktop: 'Desktop',
     mobile: 'Mobile',
+    previewFailed: 'The preview could not be updated. It shows an earlier version of the draft.',
     previewUnavailable: 'The preview cannot be shown: its address is not a web address.',
     sections: 'Sections',
     noSections: 'No sections yet. Add the first one below.',

@@ -62,9 +62,7 @@ A list is stored as `[{ id, data }]` in the editor's order; `data` is stored lik
 data, so a localized item field holds `{ [locale]: value }`. The server keeps each item's id
 across saves, reorders and revisions. The Read API returns `[{ id, data }]` in one locale, with
 media and links inside items resolved like top-level ones. A page preview (the preview endpoint
-and the live preview) has the same items in one locale, but with media ids and links as stored,
-without `href`, at the top level and inside items alike. A component rendered in a preview has to
-accept both.
+and the live preview) gives sections the same shape.
 
 `SectionData` types a section component's `data` prop from the definitions, list items included:
 
@@ -128,8 +126,9 @@ default locale, which the Read API falls back to.
 ## Live preview
 
 The page editor can show the host site's page in a frame and update it as the editor types,
-before anything is saved. The admin computes the draft as `GET /pages/:id/preview` would return
-it and posts it to the frame.
+before anything is saved. The admin sends the unsaved draft to `POST /pages/:id/preview`, which
+renders it as `GET /pages/:id/preview` renders the saved one, and posts the answer to the frame.
+When that request fails, the pane says so and the frame keeps the last draft it got.
 
 1. In the admin, tell `cmsAdmin` where a page's preview lives. The URL is absolute or relative to
    the admin; the admin posts only to its origin and accepts messages only from it.
@@ -193,7 +192,7 @@ it and posts it to the frame.
 In the preview, `CmsSections` adds `data-cms-section` to each section component's root element,
 so a section component needs a single root element to be clickable. Clicks inside sections do
 not follow links. The posted data is the unsaved draft: fields the editor has not filled are
-missing, and media and link fields hold ids and references, as in `GET /pages/:id/preview`.
+missing, and media and link fields are resolved as the Read API resolves them.
 The posted draft is cleaned as Save cleans it (rich text sanitized, URL links and SEO text
 trimmed, empty values dropped), whichever widget produced it. A URL link Save would refuse
 (not `https://`, `http://`, `mailto:`, `tel:`, `/` or `#`) is left out of the preview.
