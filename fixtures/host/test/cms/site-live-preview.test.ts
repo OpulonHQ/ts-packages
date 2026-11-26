@@ -376,3 +376,20 @@ test('clearing a reactive admin origin ends live mode', async () => {
   await nextTick()
   await leftPreview(site, parent)
 })
+
+test('a hidden section in the live preview is marked hidden; the others are not', async () => {
+  inFrame()
+  const site = mount(admin)
+  await send(edited('Welcome'))
+  expect(site.el.querySelector('[data-cms-hidden]')).toBeNull()
+  expect(site.el.querySelector('style')).toBeNull()
+
+  await send(
+    edited('Welcome', { sections: [initial.sections[0], { ...initial.sections[1], hidden: true }] }),
+  )
+  expect(
+    [...site.el.querySelectorAll('[data-cms-hidden]')].map((e) => e.getAttribute('data-cms-section')),
+  ).toEqual(['s2'])
+  expect(site.el.querySelectorAll('style')).toHaveLength(1)
+  expect(site.el.querySelector('style')?.textContent).toContain('Hidden on the site')
+})

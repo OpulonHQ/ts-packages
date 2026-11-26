@@ -43,7 +43,12 @@ const parsePreview = (value: unknown): PagePreview | undefined => {
   for (const section of value.sections) {
     if (!isRecord(section) || !isString(section.id) || !isString(section.type)) return undefined
     if (!isRecord(section.data)) return undefined
-    sections.push({ id: section.id, type: section.type, data: section.data })
+    sections.push({
+      id: section.id,
+      type: section.type,
+      data: section.data,
+      ...(section.hidden === true ? { hidden: true } : {}),
+    })
   }
   return {
     id: value.id,
