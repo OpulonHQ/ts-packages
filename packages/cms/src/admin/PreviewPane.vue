@@ -72,6 +72,7 @@ const send = async () => {
 }
 const schedule = () => {
   clearTimeout(timer)
+  ticket++
   timer = setTimeout(() => void send(), 150)
 }
 watch(() => props.draft, schedule, { deep: true })
