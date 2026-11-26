@@ -387,9 +387,9 @@ test('a hidden section is left out of resolve; hiding and showing are draft chan
   expect((await host.publish(id)).status).toBe(200)
   expect(await titles()).toEqual(['Shown', 'Secret'])
 
-  expect((await host.save(id, page({ en: '/hidden-section' }, [shown, hidden]))).body).toMatchObject(
-    { status: 'changed', draft: { sections: [{}, { hidden: true }] } },
-  )
+  expect(
+    (await host.save(id, page({ en: '/hidden-section' }, [shown, hidden]))).body,
+  ).toMatchObject({ status: 'changed', draft: { sections: [{}, { hidden: true }] } })
   expect(await titles()).toEqual(['Shown', 'Secret'])
   expect((await host.save(id, visible)).body.status).toBe('published')
 })

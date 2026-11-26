@@ -385,10 +385,14 @@ test('a hidden section in the live preview is marked hidden; the others are not'
   expect(site.el.querySelector('style')).toBeNull()
 
   await send(
-    edited('Welcome', { sections: [initial.sections[0], { ...initial.sections[1], hidden: true }] }),
+    edited('Welcome', {
+      sections: [initial.sections[0], { ...initial.sections[1], hidden: true }],
+    }),
   )
   expect(
-    [...site.el.querySelectorAll('[data-cms-hidden]')].map((e) => e.getAttribute('data-cms-section')),
+    [...site.el.querySelectorAll('[data-cms-hidden]')].map((e) =>
+      e.getAttribute('data-cms-section'),
+    ),
   ).toEqual(['s2'])
   expect(site.el.querySelectorAll('style')).toHaveLength(1)
   expect(site.el.querySelector('style')?.textContent).toContain('Hidden on the site')

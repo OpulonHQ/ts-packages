@@ -653,7 +653,8 @@ test('every section has a Hide on the site switch; hiding marks the outline and 
   const bar = () => document.querySelector('[role="region"][aria-label="Neuložené zmeny"]')
   const hideSwitches = () =>
     [...document.querySelectorAll<HTMLElement>('button[role="switch"]')].filter(
-      (el) => document.querySelector(`label[for="${el.id}"]`)?.textContent?.trim() === 'Skryť na webe',
+      (el) =>
+        document.querySelector(`label[for="${el.id}"]`)?.textContent?.trim() === 'Skryť na webe',
     )
   await expect.poll(() => hideSwitches().length).toBe(3)
   expect(outline().textContent).not.toContain('Skrytá')

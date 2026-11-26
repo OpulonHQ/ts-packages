@@ -76,7 +76,8 @@ export default {
     moveDown: 'Move down',
     removeSection: 'Remove section',
     hideSection: 'Hide on the site',
-    hideSectionHelp: 'The section stays in the draft and the preview but is left out of the website.',
+    hideSectionHelp:
+      'The section stays in the draft and the preview but is left out of the website.',
     hiddenSection: 'Hidden',
     save: 'Save draft',
     saved: 'Draft saved.',
