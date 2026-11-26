@@ -1,6 +1,6 @@
 import type { Page, PagePreview } from '@opulonjs/cms/api'
 import { cmsAdmin, type CmsAdminOptions } from '@opulonjs/cms/admin'
-import { defineComponent, h } from 'vue'
+import { defineComponent, h, nextTick } from 'vue'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import { adminModules, cmsOptions } from '../../admin/modules.ts'
 import { files } from '../media/helpers.ts'
@@ -157,6 +157,40 @@ test('the frame gets the unsaved draft after it is ready, debounced, and nothing
     title: { en: 'First', it: 'Primo' },
     tone: 'light',
   })
+})
+
+test('an answer an edit has superseded never reaches the frame', async () => {
+  const created = await twoHeroes()
+  const release = Promise.withResolvers<void>()
+  const answered = Promise.withResolvers<void>()
+  let requests = 0
+  const fetch: typeof host.fetch = async (input, init) => {
+    const request = new Request(input, init)
+    if (request.method !== 'POST' || !new URL(request.url).pathname.endsWith('/preview'))
+      return host.fetch(request)
+    if (++requests !== 1) return host.fetch(request)
+    const answer = await host.fetch(request)
+    answered.resolve()
+    await release.promise
+    return answer
+  }
+  admin.mount(`/admin/cms/pages/${created.id}`, { fetch, modules: adminModules })
+  await expect.poll(() => input('sections.0.title.en')).toBeTruthy()
+  const posted = listen()
+  ready()
+  await answered.promise
+
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  onTestFinished(() => void vi.useRealTimers())
+  type('sections.0.title.en', 'Newer draft')
+  await nextTick()
+  release.resolve()
+  await vi.advanceTimersByTimeAsync(100)
+  expect(previews(posted)).toEqual([])
+
+  await vi.advanceTimersByTimeAsync(50)
+  await vi.waitFor(() => expect(previews(posted)).toHaveLength(1))
+  expect(lastPreview(posted)!.sections[0]!.data.title).toBe('Newer draft')
 })
 
 test('the live preview is the server preview, per preview language', async () => {
